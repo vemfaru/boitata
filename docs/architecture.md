@@ -3,11 +3,11 @@
 Dependencies point down only.
 
 ```
-boitata-weather ──┐
-                  ├──> boitata-core
-boitata-light ────┘        ^
-      │                    │
-      └──> boitata-scene ──┘ (scene has no Boitatá dependency)
+boitata-light ───> boitata-core
+      │
+      └──────────> boitata-scene
+
+boitata-weather ─> boitata-core
 ```
 
 
