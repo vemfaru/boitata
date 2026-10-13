@@ -47,10 +47,10 @@ fun WeatherScene(seconds: () -> Float, hour: Float, kind: WeatherKind, modifier:
             seconds = seconds, clouds = art.clouds, storm = if (kind == WeatherKind.Storm) view else null, horizon = ART_HORIZON,
         )
         when (kind) {
-            WeatherKind.Rain -> Rain(seconds, intensity = 0.7f)
-            WeatherKind.Storm -> Rain(seconds, intensity = 1f, wind = 0.6f)
-            WeatherKind.Snow -> Snow(seconds, intensity = 0.8f)
-            WeatherKind.Fog -> Fog(seconds, density = 0.9f)
+            WeatherKind.Rain -> Rain(intensity = 0.7f, seconds = seconds)
+            WeatherKind.Storm -> Rain(intensity = 1f, wind = 0.6f, seconds = seconds)
+            WeatherKind.Snow -> Snow(intensity = 0.8f, seconds = seconds)
+            WeatherKind.Fog -> Fog(density = 0.9f, seconds = seconds)
             else -> {}
         }
     }

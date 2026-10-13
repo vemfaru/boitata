@@ -23,4 +23,4 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Unit tests, Android and web compile
-        run: ./gradlew jvmTest compileAndroidMain compileKotlinWasmJs
+        run: ./gradlew checkPerformanceRules jvmTest compileAndroidMain compileKotlinWasmJs

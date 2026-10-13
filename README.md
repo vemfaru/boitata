@@ -12,8 +12,11 @@ Named after the **Boitatá** (*mboi tatá*, "fire snake"), the giant serpent of 
 
 ## What you get
 
-Everything is drawn on a plain Compose canvas (no shaders, no platform code), so it looks the same on every target. Fire, rain, snow and fog are pure functions of time: give them
-the same `seconds` and you get the same frame, so you can scrub them, pause them, or record them.
+Everything is drawn on a plain Compose canvas (no shaders, no platform code), so it looks the same on every target. Fire, rain, snow and fog are pure functions of time: the same
+time gives the same frame, so you can scrub them, pause them, or record them.
+
+Put a scene inside `BoitataScene` and it is smooth by default: one frame loop for everything, nothing recomposing per frame, moving pictures placed without whole-pixel steps, a quality
+budget that lightens a heavy scene by itself, and a pause when the screen is not in the foreground. See [docs/performance.md](docs/performance.md) for what is promised and how it is checked.
 
 ### Fire that lights what is near it
 
@@ -22,9 +25,8 @@ the same `seconds` and you get the same frame, so you can scrub them, pause them
 ```kotlin
 @Composable
 fun MinimalFire() {
-    val seconds = rememberSkySeconds()
-    Box(Modifier.fillMaxSize().background(Color(0xFF06080C))) {
-        Fire(seconds, Modifier.align(Alignment.Center).size(260.dp), intensity = 0.9f, palette = FlamePalette.Boitata)
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF06080C))) {
+        Fire(Modifier.align(Alignment.Center).size(260.dp), intensity = 0.9f, palette = FlamePalette.Boitata)
     }
 }
 ```
@@ -41,7 +43,7 @@ fun MinimalFire() {
 @Composable
 fun MinimalShadow() {
     val lamp = LightSource(x = 200f, y = 120f, color = Color(0xFFFFD08A), strength = 0.9f, reach = 700f, groundX = 200f, groundY = 360f)
-    Box(Modifier.fillMaxSize().background(Color(0xFF14110D))) {
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF14110D))) {
         CastShadow(lamp, feetX = 520f, feetY = 380f, height = 160f) { color ->
             // Feet at (0, 0), up is negative y; `color` is the shadow's colour when it is drawn as a shadow.
             drawRect(color, Offset(-8f, -160f), Size(16f, 160f))
@@ -59,12 +61,11 @@ Anything you can draw with a `DrawScope` can cast a shadow. The shadow leans awa
 ```kotlin
 @Composable
 fun MinimalWindowLight() {
-    val seconds = rememberSkySeconds()
     val sky = SkyModel.at(hour = 17f, SkyWeather.Clear)
-    Box(Modifier.fillMaxSize().background(Color(0xFF3A2F26))) {
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF3A2F26))) {
         WindowLight(
             window = Rect(80f, 60f, 330f, 320f), floorY = 380f, depth = 160f, lean = 0.9f,
-            color = sky.lightColor, strength = sky.lightStrength, elevation = sky.sunElevation, seconds = seconds,
+            color = sky.lightColor, strength = sky.lightStrength, elevation = sky.sunElevation,
         )
     }
 }
@@ -81,9 +82,8 @@ fun MinimalWindowLight() {
 ```kotlin
 @Composable
 fun MinimalRain() {
-    val seconds = rememberSkySeconds()
-    Box(Modifier.fillMaxSize().background(Color(0xFF0B1220))) {
-        Rain(seconds, intensity = 0.8f, wind = 0.3f)
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B1220))) {
+        Rain(intensity = 0.8f, wind = 0.3f)
     }
 }
 ```
@@ -114,10 +114,11 @@ The GIFs in this README are drawn offscreen by the same code, frame by frame, so
 
 | Module | What it gives | Depends on |
 |---|---|---|
-| `boitata-core` | Pure maths and models, nothing drawn: `Perspective`, `FastNoise`, `SkyModel`, `StormModel`, time cycles, window-light geometry | Compose graphics types only |
+| `boitata-core` | `BoitataScene` and the scene clock (time, quality, reduced motion, pause), `drawImageSmooth`, and the pure maths: `Perspective`, `FastNoise`, `SkyModel`, `StormModel`, window-light geometry | Compose runtime |
 | `boitata-scene` | `SceneCamera`, `SceneViewport` (fits a world to any window), `Modifier.worldBounds` | core |
 | `boitata-light` | `LightSource`, `LightShade`, `Fire`, `drawFlameTrail`, `CastShadow`, `CastSilhouette`, `WindowLight`, flicker | core, scene |
 | `boitata-weather` | `Rain`, `Snow`, `Fog`, `SkyWindow`, `rememberStorm` (lightning) | core |
+| `boitata-testing` | `measureScene`: draws a scene frame by frame and tells you its cost and whether it changed each frame (JVM, for tests) | core |
 
 See [docs/architecture.md](docs/architecture.md) for how they fit together.
 

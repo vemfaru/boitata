@@ -110,10 +110,10 @@ fun CastSilhouette(layers: List<ShadowLayer>, feetX: Float, feetY: Float, footW:
                     }) {
                         layers.forEachIndexed { i, layer ->
                             translate((layer.rect.left - minX) * d, (layer.rect.top - minY) * d) {
-                                // High-quality sampling (mipmapped): the picture is laid flat and shrunk, which aliases badly otherwise.
+                                // Mipmapped sampling (Medium): the picture is laid flat and shrunk, which aliases badly otherwise. High is bicubic with no mipmaps: it costs several times more and aliases more.
                                 drawImage(
                                     images[i], dstSize = androidx.compose.ui.unit.IntSize((layer.rect.width * d).toInt().coerceAtLeast(1), (layer.rect.height * d).toInt().coerceAtLeast(1)),
-                                    alpha = alpha * (if (light != null && light.strength > 0f) present else 1f), colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.Black), filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                                    alpha = alpha * (if (light != null && light.strength > 0f) present else 1f), colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.Black), filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium,
                                 )
                             }
                         }
@@ -158,7 +158,7 @@ fun WallShadow(image: ImageBitmap, rect: Rect, light: LightSource?, gap: Float =
                 translate(pad * d, pad * d) {
                     drawImage(
                         image, dstSize = androidx.compose.ui.unit.IntSize((rect.width * d).toInt().coerceAtLeast(1), (rect.height * d).toInt().coerceAtLeast(1)),
-                        alpha = alpha, colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.Black), filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                        alpha = alpha, colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.Black), filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium,
                     )
                 }
             },

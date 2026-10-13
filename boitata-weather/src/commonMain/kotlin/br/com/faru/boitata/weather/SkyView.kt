@@ -21,32 +21,28 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import br.com.faru.boitata.core.FastNoise
+import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.clock.rememberSceneQuality
+import br.com.faru.boitata.core.clock.rememberSceneSeconds
+import br.com.faru.boitata.core.draw.drawImageSmooth
 import br.com.faru.boitata.core.sky.SkyModel
 import br.com.faru.boitata.core.sky.SkyState
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Seconds since the view began, advanced every frame, for the things that move on their own (clouds, twinkle, drift). Frozen under [frozen]. */
+/**
+ * Seconds on the scene's clock, for the things that move on their own (clouds, twinkle, drift). Inside a [br.com.faru.boitata.core.clock.BoitataScene] this is the
+ * shared clock; outside one it makes a clock for you. Frozen under [frozen].
+ */
 @Composable
-fun rememberSkySeconds(frozen: Boolean = false): () -> Float {
-    var seconds by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(frozen) {
-        if (frozen) return@LaunchedEffect
-        var last = 0L
-        while (true) {
-            androidx.compose.runtime.withFrameNanos { now ->
-                if (last != 0L) seconds += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
-                last = now
-            }
-        }
-    }
-    return { seconds }
+public fun rememberSkySeconds(frozen: Boolean = false): () -> Float {
+    val seconds = rememberSceneSeconds()
+    return if (frozen) ({ 0f }) else seconds
 }
 
 /** One layer of the view: a picture the size of the view, how near it is (0 far to 1 near: how far it shifts with [parallax]) and how much of the sky's veil it takes. */
@@ -68,16 +64,19 @@ fun SkyWindow(
     sky: () -> SkyState,
     layers: List<ViewLayer>,
     parallax: () -> Offset,
-    seconds: () -> Float,
+    seconds: (() -> Float)? = null,
     modifier: Modifier = Modifier.fillMaxSize(),
     clouds: ImageBitmap? = null,
     storm: StormView? = null,
     horizon: Float = SkyModel.HORIZON_Y,
+    quality: (() -> Quality)? = null,
 ) {
+    val time = seconds ?: rememberSceneSeconds()
+    val level = quality ?: rememberSceneQuality()
     Box(modifier) {
         Spacer(
             Modifier.fillMaxSize().drawBehind {
-                drawSky(sky(), seconds(), parallax(), clouds, horizon)
+                drawSky(sky(), time(), parallax(), clouds, horizon, level())
                 // Lightning: the sky flares and the bolt stands behind the roofs.
                 storm?.let { st ->
                     drawFlash(st.flash() * 0.9f)
@@ -90,7 +89,7 @@ fun SkyWindow(
                 Modifier.fillMaxSize().drawBehind {
                     val s = sky()
                     val shift = parallax()
-                    drawLayer(layer.image, layer.depth, shift, layerVeil(s, layer), horizon = horizon)
+                    drawLayer(layer.image, layer.depth, shift, layerVeil(s, layer), horizon = horizon, quality = level())
                     // Mist stands in front of what is behind it: thicker over the far layers.
                     if (s.weather.fog > 0f) {
                         val mist = s.weather.fog * (1f - layer.depth * 0.75f) * 0.55f
@@ -100,8 +99,8 @@ fun SkyWindow(
                     layer.lit?.let { lit ->
                         if (s.windowsLit > 0.01f) {
                             // The lights breathe a little, window by window as one: a slow flicker of the street's power.
-                            val flicker = 0.94f + 0.06f * sin(seconds() * 1.7f)
-                            drawLayer(lit, layer.depth, shift, null, alpha = (s.windowsLit * flicker).coerceIn(0f, 1f), horizon = horizon)
+                            val flicker = 0.94f + 0.06f * sin(time() * 1.7f)
+                            drawLayer(lit, layer.depth, shift, null, alpha = (s.windowsLit * flicker).coerceIn(0f, 1f), horizon = horizon, quality = level())
                         }
                     }
                 },
@@ -121,7 +120,7 @@ internal fun layerVeil(sky: SkyState, layer: ViewLayer): Color {
     return if (veil.alpha > air.alpha) veil else lerp(veil, air, 0.6f).copy(alpha = maxOf(veil.alpha, air.alpha))
 }
 
-private fun DrawScope.drawLayer(image: ImageBitmap, depth: Float, shift: Offset, veil: Color?, alpha: Float = 1f, horizon: Float = SkyModel.HORIZON_Y) {
+private fun DrawScope.drawLayer(image: ImageBitmap, depth: Float, shift: Offset, veil: Color?, alpha: Float = 1f, horizon: Float = SkyModel.HORIZON_Y, quality: Quality = Quality.High) {
     // Enlarged a little so the picture still covers the view when it has shifted; nearer layers shift more.
     val margin = 0.07f
     val w = size.width * (1f + 2f * margin); val h = size.height * (1f + 2f * margin)
@@ -129,18 +128,15 @@ private fun DrawScope.drawLayer(image: ImageBitmap, depth: Float, shift: Offset,
     val x = -size.width * margin + shift.x * reach
     // The art has its horizon at ART_HORIZON_Y; the view puts it at HORIZON_Y, so the roofs clear what stands in front of the window.
     val y = -size.height * margin + (horizon - SkyModel.ART_HORIZON_Y) * size.height + shift.y * reach * 0.6f
-    // Placed with a float translation, not an IntOffset: the parallax moves a fraction of a pixel per frame, and snapping it to whole pixels
-    // makes the layer sit still for tens of frames and then jump (visible stutter). A float translation moves it smoothly.
-    // Medium (bilinear with mipmaps) is what a big picture shrunk to the view wants; High (bicubic) costs several times more here for no gain.
-    translate(x, y) {
-        drawImage(
-            image, dstSize = IntSize(w.toInt(), h.toInt()),
-            alpha = alpha, colorFilter = veil?.takeIf { it.alpha > 0.005f }?.let { ColorFilter.tint(it, BlendMode.SrcAtop) }, filterQuality = FilterQuality.Medium,
-        )
-    }
+    // Placed with a float translation (drawImageSmooth), never an IntOffset: the parallax moves a fraction of a pixel per frame, and snapping it to whole
+    // pixels makes the layer sit still for tens of frames and then jump.
+    drawImageSmooth(
+        image, x, y, w.toInt(), h.toInt(), alpha = alpha,
+        colorFilter = veil?.takeIf { it.alpha > 0.005f }?.let { ColorFilter.tint(it, BlendMode.SrcAtop) }, quality = quality,
+    )
 }
 
-private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, clouds: ImageBitmap?, horizon: Float) {
+private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, clouds: ImageBitmap?, horizon: Float, quality: Quality) {
     val w = size.width; val h = size.height
     val horizonY = h * horizon
     val arc = horizon / SkyModel.HORIZON_Y
@@ -186,11 +182,11 @@ private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, c
         drawPath(lit, Color(0xFFDDE5F0).copy(alpha = a))
     }
 
-    drawClouds(sky, seconds, shift, clouds, horizonY)
+    drawClouds(sky, seconds, shift, clouds, horizonY, quality)
 }
 
 /** Clouds painted as clusters of soft puffs drifting with the wind, or, with a picture, that strip scrolled across; lit from the sun's side. */
-private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, strip: ImageBitmap?, horizonY: Float) {
+private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, strip: ImageBitmap?, horizonY: Float, quality: Quality) {
     val cover = sky.weather.cloud
     if (cover < 0.04f) return
     val w = size.width
@@ -202,15 +198,13 @@ private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, st
     if (strip != null) {
         val sw = w * 2f; val sh = sw * strip.height / strip.width
         val offset = -((seconds * wind * w) % sw)
-        // Drifts a fraction of a pixel per frame, so it is placed with a float translation (see drawLayer).
+        // Drifts a fraction of a pixel per frame: drawImageSmooth places it with a float translation (see drawLayer).
         val filter = ColorFilter.tint(body.copy(alpha = 0.55f), BlendMode.Modulate)
-        for (k in 0..1) translate(offset + k * sw + shift, horizonY * 0.08f) {
-            drawImage(strip, dstSize = IntSize(sw.toInt(), sh.toInt()), alpha = (cover * 1.1f).coerceIn(0f, 1f), colorFilter = filter, filterQuality = FilterQuality.Medium)
-        }
+        for (k in 0..1) drawImageSmooth(strip, offset + k * sw + shift, horizonY * 0.08f, sw.toInt(), sh.toInt(), alpha = (cover * 1.1f).coerceIn(0f, 1f), colorFilter = filter, quality = quality)
         return
     }
     val noise = FastNoise(5L)
-    val count = (3 + cover * 11).toInt()
+    val count = quality.scaled((3 + cover * 11).toInt())
     repeat(count) { i ->
         val speed = wind * (0.6f + noise.at(i, 0))
         val x = (((noise.at(i, 1) + seconds * speed) % 1.3f) - 0.15f) * w + shift * (0.5f + noise.at(i, 2))

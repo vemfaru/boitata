@@ -28,7 +28,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
-import br.com.faru.boitata.weather.rememberSkySeconds
+import br.com.faru.boitata.core.clock.BoitataScene
+import br.com.faru.boitata.core.clock.rememberSceneSeconds
 
 /** The demos, in the order of the tabs. */
 enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Fire("Fire") }
@@ -38,8 +39,9 @@ enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Win
 fun PlaygroundApp() {
     MaterialTheme(colorScheme = darkColorScheme(background = Color(0xFF0B0D10), surface = Color(0xFF14181D), primary = Color(0xFFF2A83B))) {
         var demo by remember { mutableStateOf(Demo.Forest) }
-        val seconds = rememberSkySeconds()
-        Column(Modifier.fillMaxSize().background(Color(0xFF0B0D10))) {
+        BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B0D10))) {
+        val seconds = rememberSceneSeconds()
+        Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (d in Demo.entries) FilterChip(selected = d == demo, onClick = { demo = d }, label = { Text(d.label) })
             }
@@ -56,6 +58,7 @@ fun PlaygroundApp() {
                 }
                 }
             }
+        }
         }
     }
 }

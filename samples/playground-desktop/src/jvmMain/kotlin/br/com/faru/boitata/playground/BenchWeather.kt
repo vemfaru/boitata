@@ -1,6 +1,8 @@
 package br.com.faru.boitata.playground
 
 import androidx.compose.runtime.CompositionLocalProvider
+import br.com.faru.boitata.core.clock.FixedSceneClock
+import br.com.faru.boitata.core.clock.WithSceneClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
@@ -19,7 +21,7 @@ fun main() {
     for ((name, kind) in listOf("rain" to WeatherKind.Rain, "storm" to WeatherKind.Storm, "clear" to WeatherKind.Clear)) {
         var t by mutableFloatStateOf(0f)
         val scene = ImageComposeScene(width = 1280, height = 720, density = Density(1f)) {
-            CompositionLocalProvider(LocalSprites provides sprites) { WeatherScene({ t }, hour = 15f, kind = kind) }
+            CompositionLocalProvider(LocalSprites provides sprites) { WithSceneClock(FixedSceneClock({ t })) { WeatherScene({ t }, hour = 15f, kind = kind) } }
         }
         repeat(30) { scene.render(it * 16_666_667L) }
         val frames = 180
@@ -41,7 +43,7 @@ private fun stutter() {
     for ((name, kind) in listOf("clear (layers)" to WeatherKind.Clear, "cloudy (layers and clouds)" to WeatherKind.Cloudy)) {
         var t by mutableFloatStateOf(0f)
         val scene = ImageComposeScene(width = 1280, height = 720, density = Density(1f)) {
-            CompositionLocalProvider(LocalSprites provides sprites) { WeatherScene({ t }, hour = 15f, kind = kind) }
+            CompositionLocalProvider(LocalSprites provides sprites) { WithSceneClock(FixedSceneClock({ t })) { WeatherScene({ t }, hour = 15f, kind = kind) } }
         }
         repeat(10) { scene.render(it * 16_666_667L) }
         var previous: Int? = null

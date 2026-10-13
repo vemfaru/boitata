@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.FastNoise
+import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.clock.rememberSceneQuality
 import br.com.faru.boitata.core.sky.SkyModel
 import br.com.faru.boitata.core.sky.SkyWeather
 import br.com.faru.boitata.light.FlamePalette
@@ -41,7 +43,8 @@ fun ForestScene(
     hour: Float = 23.5f,
 ) {
     val art = LocalSprites.current ?: return
-    Spacer(modifier.drawBehind { drawForest(art, seconds(), rain, fog, hour) })
+    val quality = rememberSceneQuality()
+    Spacer(modifier.drawBehind { drawForest(art, seconds(), rain, fog, hour, quality()) })
 }
 
 /** Where each tree of `layer_mid` stands, in the art's own pixels; its feet are at the bottom centre of the box. */
@@ -50,7 +53,7 @@ private val MidTrees = listOf(
     Crop(1034, 391, 241, 393), Crop(1309, 448, 137, 320), Crop(1490, 512, 204, 292), Crop(1706, 473, 193, 317),
 )
 
-fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: Float) {
+fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: Float, quality: Quality = Quality.High) {
     val w = size.width; val h = size.height
     val v = cover()
     val sc = v.scale
@@ -96,7 +99,7 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
     for (tr in MidTrees) {
         val feetX = v.px(tr.x + tr.w / 2f); val feetY = v.py((tr.y + tr.h).toFloat())
         val near = (1f - hypot(feetX - head.x, feetY - h * 0.1f - head.y) / light.reach).coerceIn(0f, 1f) * light.strength
-        drawCastShadow(light, feetX, feetY, tr.h * sc, 0.6f) { c -> drawArt(art.mid, Offset(-tr.w / 2f * sc, -tr.h * sc), sc, c, tr) }
+        drawCastShadow(light, feetX, feetY, tr.h * sc, 0.6f, quality) { c -> drawArt(art.mid, Offset(-tr.w / 2f * sc, -tr.h * sc), sc, c, tr) }
         val base = tint(0xFF08130F, 0xFF33463C)
         drawArt(art.mid, Offset(v.px(tr.x.toFloat()), v.py(tr.y.toFloat())), sc, lerp(base, Color(0xFF8A4B1F), (near * 0.6f).coerceIn(0f, 0.65f)), tr)
     }
@@ -105,14 +108,14 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
     val glow = Offset(head.x, v.py(1080f * 0.78f))
     drawCircle(Brush.radialGradient(0f to Color(0x44FFA63C), 1f to Color.Transparent, center = glow, radius = w * 0.28f), radius = w * 0.28f, center = glow, blendMode = BlendMode.Plus)
     for (k in 1..3) drawCircle(Color(0xFFF2A83B).copy(alpha = 0.35f / k * (1f - day)), radius = h * 0.09f * k, center = head, style = Stroke(2f))
-    drawFlameTrail(pts, count, h * 0.052f, t, FlamePalette.Boitata)
+    drawFlameTrail(pts, count, h * 0.052f, t, FlamePalette.Boitata, quality = quality)
     drawSerpentHead(art, pts, h * 0.052f)
 
     val nearTint = tint(0xFF040A08, 0xFF16201A)
     drawArt(art.near, Offset(v.x, v.y), sc, lerp(nearTint, Color(0xFF5A3216), (0.25f * light.strength).coerceIn(0f, 0.3f)))
 
-    if (fog > 0f) drawFog(t, fog, Color(0xFF8DA2B5))
-    if (rain > 0f) drawRain(t, rain, 0.3f, Color(0xFFB7C8DC))
+    if (fog > 0f) drawFog(t, fog, Color(0xFF8DA2B5), quality = quality)
+    if (rain > 0f) drawRain(t, rain, 0.3f, Color(0xFFB7C8DC), quality = quality)
 }
 
 /** The head sprite on the front of the flame, turned the way the serpent is going, its eyes lit from behind through the sockets cut in it. */

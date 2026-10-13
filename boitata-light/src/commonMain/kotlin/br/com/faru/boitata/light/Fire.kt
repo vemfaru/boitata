@@ -12,7 +12,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.lerp
+import br.com.faru.boitata.core.AdvancedBoitataApi
 import br.com.faru.boitata.core.FastNoise
+import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.clock.rememberSceneQuality
+import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.fx.bump
 import br.com.faru.boitata.core.fx.cycle
 import kotlin.math.cos
@@ -32,35 +36,40 @@ public data class FlamePalette(val outer: Color, val mid: Color, val core: Color
 
 /**
  * A fire: tongues of flame that sway and flicker, three layers deep (edge, body, core), with embers rising off it.
- * Drawn on a plain canvas, additive, as a pure function of [seconds] (see the weather module's rain for why). The fire stands on the bottom
+ * Drawn on a plain canvas, additive, as a pure function of time (see the weather module's rain for why); time and quality come from the scene's clock,
+ * so a heavy scene gets a lighter fire on its own. The fire stands on the bottom
  * centre of the area; [intensity] 0..1 sets its height and how many embers fly.
  */
 @Composable
 public fun Fire(
-    seconds: () -> Float,
     modifier: Modifier = Modifier.fillMaxSize(),
     intensity: Float = 1f,
     palette: FlamePalette = FlamePalette.Campfire,
     seed: Long = 11L,
+    seconds: (() -> Float)? = null,
+    quality: (() -> Quality)? = null,
 ) {
+    val time = seconds ?: rememberSceneSeconds()
+    val level = quality ?: rememberSceneQuality()
     Spacer(
         modifier.drawBehind {
-            drawFlame(size.width * 0.5f, size.height, size.width * 0.8f, size.height * 0.9f, seconds(), intensity, palette, seed)
+            drawFlame(size.width * 0.5f, size.height, size.width * 0.8f, size.height * 0.9f, time(), intensity, palette, seed, level())
         },
     )
 }
 
 /** A flame with its foot at ([baseX], [baseY]), [width] wide at the foot and [height] tall at most. */
+@AdvancedBoitataApi
 public fun DrawScope.drawFlame(
     baseX: Float, baseY: Float, width: Float, height: Float,
-    seconds: Float, intensity: Float = 1f, palette: FlamePalette = FlamePalette.Campfire, seed: Long = 11L,
+    seconds: Float, intensity: Float = 1f, palette: FlamePalette = FlamePalette.Campfire, seed: Long = 11L, quality: Quality = Quality.High,
 ) {
     val noise = FastNoise(seed)
     val k = intensity.coerceIn(0f, 1f)
-    val tongues = 7
+    val tongues = if (quality == Quality.Low) 5 else 7
     val path = Path()
-    // Glow first, so the flame stands in its own light.
-    drawCircle(
+    // Glow first, so the flame stands in its own light (the costliest part of a fire: skipped at Low).
+    if (quality.softGlow) drawCircle(
         Brush.radialGradient(0f to palette.mid.copy(alpha = 0.38f * k), 1f to Color.Transparent, center = Offset(baseX, baseY - height * 0.3f), radius = height * 1.1f),
         radius = height * 1.1f, center = Offset(baseX, baseY - height * 0.3f), blendMode = BlendMode.Plus,
     )
@@ -83,13 +92,14 @@ public fun DrawScope.drawFlame(
             drawPath(path, color.copy(alpha = 0.55f), blendMode = BlendMode.Plus)
         }
     }
-    drawEmbers(baseX, baseY - height * 0.25f, width, height * 1.6f, seconds, k, palette.ember, seed + 1)
+    drawEmbers(baseX, baseY - height * 0.25f, width, height * 1.6f, seconds, k, palette.ember, seed + 1, quality)
 }
 
 /** Embers lifting off a fire: [count] scales with [intensity]; each rises over about two seconds, drifting, and fades. */
-public fun DrawScope.drawEmbers(x: Float, y: Float, spread: Float, rise: Float, seconds: Float, intensity: Float, color: Color, seed: Long = 12L) {
+@AdvancedBoitataApi
+public fun DrawScope.drawEmbers(x: Float, y: Float, spread: Float, rise: Float, seconds: Float, intensity: Float, color: Color, seed: Long = 12L, quality: Quality = Quality.High) {
     val noise = FastNoise(seed)
-    val count = (22 * intensity.coerceIn(0f, 1f)).toInt()
+    val count = quality.scaled((22 * intensity.coerceIn(0f, 1f)).toInt())
     for (i in 0 until count) {
         val life = cycle(seconds, 1.6f + 1.2f * noise.at(i, 0), noise.at(i, 1))
         val px = x + (noise.at(i, 2) - 0.5f) * spread * 0.6f + sin(seconds * 1.7f + i) * spread * 0.06f * life + (life * life) * spread * 0.25f * (noise.at(i, 3) - 0.3f)
@@ -103,14 +113,15 @@ public fun DrawScope.drawEmbers(x: Float, y: Float, spread: Float, rise: Float, 
  * Fire along a path, like a serpent made of flame. [points] are x,y pairs from the head to the tail ([count] of them); the body is a chain of
  * glowing blobs that thin out and cool from [head] to the tail, with a flicker running down it and embers shed from it.
  */
+@AdvancedBoitataApi
 public fun DrawScope.drawFlameTrail(
     points: FloatArray, count: Int, width: Float, seconds: Float,
-    palette: FlamePalette = FlamePalette.Boitata, seed: Long = 21L,
+    palette: FlamePalette = FlamePalette.Boitata, seed: Long = 21L, quality: Quality = Quality.High,
 ) {
     if (count < 2) return
     val noise = FastNoise(seed)
     // Tail first, so the hot head is drawn over the cooler body. Between every two points three more blobs run together into one ribbon.
-    val steps = 3
+    val steps = when (quality) { Quality.High -> 3; Quality.Medium -> 2; Quality.Low -> 1 }
     for (n in count - 1 downTo 0) {
         for (k in steps - 1 downTo 0) {
             if (n == count - 1 && k > 0) continue
@@ -123,13 +134,13 @@ public fun DrawScope.drawFlameTrail(
             val by = points[n * 2 + 1] + (points[nx * 2 + 1] - points[n * 2 + 1]) * f
             val c = Offset(bx + (noise.at(n, 1) - 0.5f) * width * 0.18f * t, by + (noise.at(n, 2) - 0.5f) * width * 0.18f * t)
             val fade = 1f - t * t
-            drawCircle(Brush.radialGradient(0f to palette.outer.copy(alpha = 0.3f * fade), 1f to Color.Transparent, center = c, radius = r * 2.2f), radius = r * 2.2f, center = c, blendMode = BlendMode.Plus)
+            if (quality.softGlow) drawCircle(Brush.radialGradient(0f to palette.outer.copy(alpha = 0.3f * fade), 1f to Color.Transparent, center = c, radius = r * 2.2f), radius = r * 2.2f, center = c, blendMode = BlendMode.Plus)
             drawCircle(lerp(palette.mid, palette.outer, t).copy(alpha = 0.34f * fade), radius = r, center = c, blendMode = BlendMode.Plus)
             drawCircle(palette.core.copy(alpha = 0.12f * fade * (1f - t) * (1f - t)), radius = r * 0.5f, center = c, blendMode = BlendMode.Plus)
         }
     }
     // Sparks shed along the body.
-    for (i in 0 until count.coerceAtMost(40)) {
+    for (i in 0 until quality.scaled(count.coerceAtMost(40))) {
         val at = ((noise.at(i, 6) * (count - 1)).toInt()).coerceIn(0, count - 1)
         val life = cycle(seconds, 1.1f + noise.at(i, 7), noise.at(i, 8))
         drawCircle(

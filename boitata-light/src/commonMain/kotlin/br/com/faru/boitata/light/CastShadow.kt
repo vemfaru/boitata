@@ -9,6 +9,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
+import br.com.faru.boitata.core.AdvancedBoitataApi
+import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.clock.rememberSceneQuality
 import kotlin.math.abs
 import kotlin.math.hypot
 
@@ -29,13 +32,16 @@ public fun CastShadow(
     modifier: Modifier = Modifier.fillMaxSize(),
     height: Float = 200f,
     maxAlpha: Float = 0.5f,
+    quality: (() -> Quality)? = null,
     silhouette: DrawScope.(Color) -> Unit,
 ) {
-    Spacer(modifier.drawBehind { drawCastShadow(light, feetX, feetY, height, maxAlpha, silhouette) })
+    val level = quality ?: rememberSceneQuality()
+    Spacer(modifier.drawBehind { drawCastShadow(light, feetX, feetY, height, maxAlpha, level(), silhouette) })
 }
 
 /** The shadow onto this scope; the function behind [CastShadow]. Coordinates are in pixels of the scope. */
-public fun DrawScope.drawCastShadow(light: LightSource?, feetX: Float, feetY: Float, height: Float, maxAlpha: Float = 0.5f, silhouette: DrawScope.(Color) -> Unit) {
+@AdvancedBoitataApi
+public fun DrawScope.drawCastShadow(light: LightSource?, feetX: Float, feetY: Float, height: Float, maxAlpha: Float = 0.5f, quality: Quality = Quality.High, silhouette: DrawScope.(Color) -> Unit) {
     if (light == null || light.strength <= 0f) return
     val dx = feetX - light.groundX
     val dy = feetY - light.groundY
@@ -50,7 +56,8 @@ public fun DrawScope.drawCastShadow(light: LightSource?, feetX: Float, feetY: Fl
     // x' = x + (-y) * lean_x ; y' = (-y) * lean_y: the silhouette flipped onto the ground and sheared along the light's direction.
     val leanX = ux * stretch
     val leanY = uy * stretch * 0.5f + SQUASH
-    for (pass in 0..2) {
+    // Three passes soften the edge; the silhouette is drawn once per pass, so Low draws it once.
+    for (pass in 0..(if (quality == Quality.Low) 0 else 2)) {
         val soften = 1f + pass * 0.07f
         val m = Matrix().apply {
             this[0, 0] = 1f

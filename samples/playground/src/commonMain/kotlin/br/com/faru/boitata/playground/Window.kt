@@ -14,6 +14,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.lerp
+import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.clock.rememberSceneQuality
 import br.com.faru.boitata.core.sky.SkyModel
 import br.com.faru.boitata.core.sky.SkyWeather
 import br.com.faru.boitata.light.LightSource
@@ -26,7 +28,8 @@ import br.com.faru.boitata.light.drawWindowLight
 @Composable
 fun WindowScene(seconds: () -> Float, hour: Float, cloud: Float, modifier: Modifier = Modifier.fillMaxSize()) {
     val art = LocalSprites.current ?: return
-    Spacer(modifier.drawBehind { drawRoom(art, seconds(), hour, cloud) })
+    val quality = rememberSceneQuality()
+    Spacer(modifier.drawBehind { drawRoom(art, seconds(), hour, cloud, quality()) })
 }
 
 /** Fills [area] with [image] repeated, each repeat [tile] pixels wide, painted [tint]. */
@@ -43,7 +46,7 @@ private fun DrawScope.drawTiled(image: ImageBitmap, area: Rect, tile: Float, tin
     }
 }
 
-fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float) {
+fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float, quality: Quality = Quality.High) {
     val w = size.width; val h = size.height
     val s = SkyModel.at(hour, SkyWeather(cloud = cloud))
     val day = 0.2f + 0.8f * s.daylight
@@ -66,12 +69,12 @@ fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float) {
     drawArt(art.window, win.topLeft, wh / art.window.height, lerp(Color(0xFF0B0907), Color(0xFF2A1F15), day))
     // The light it lets in, lying on the floor in panes divided by the bars.
     val lean = ((0.5f - s.lightFrom.x) * 2.2f + 0.9f).coerceIn(-1f, 1.4f)
-    drawWindowLight(pane, floorY + h * 0.03f, h * 0.3f, lean, s.lightColor, s.lightStrength, s.sunElevation.coerceIn(0f, 1f), w * 0.5f, 2 to 3, t)
+    drawWindowLight(pane, floorY + h * 0.03f, h * 0.3f, lean, s.lightColor, s.lightStrength, s.sunElevation.coerceIn(0f, 1f), w * 0.5f, 2 to 3, t, quality)
     // Furniture and its shadows, thrown away from the window.
     val lamp = LightSource(win.center.x, win.center.y, s.lightColor, s.lightStrength, w * 1.1f, groundX = win.center.x, groundY = floorY + h * 0.05f)
     val dark = lerp(Color(0xFF0B0907), Color(0xFF2A1F15), day); val lit = lerp(Color(0xFF5B4A3A), Color(0xFFE2C48A), s.lightStrength)
-    drawProp(art.prop("plant"), w * 0.56f, h * 0.84f, h * 0.36f, lamp, dark, lit)
-    drawProp(art.prop("stool"), w * 0.76f, h * 0.86f, h * 0.2f, lamp, dark, lit)
-    drawProp(art.prop("floor_lamp"), w * 0.9f, h * 0.88f, h * 0.42f, lamp, dark, lit)
+    drawProp(art.prop("plant"), w * 0.56f, h * 0.84f, h * 0.36f, lamp, dark, lit, quality)
+    drawProp(art.prop("stool"), w * 0.76f, h * 0.86f, h * 0.2f, lamp, dark, lit, quality)
+    drawProp(art.prop("floor_lamp"), w * 0.9f, h * 0.88f, h * 0.42f, lamp, dark, lit, quality)
     drawRect(Color(0xFF02040A).copy(alpha = (1f - s.daylight) * 0.3f), size = size)
 }

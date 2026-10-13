@@ -108,20 +108,26 @@ fun Modifier.softDropShadow(light: LightSource?, groundX: Float, groundY: Float,
 /**
  * A flicker multiplier near 1 (about 0.95 to 1.05 for a steady lamp, more for a dying bulb), new every ~80 ms; exactly 1 when the
  * light does not flicker or under reduced motion.
+ *
+ * It follows the scene's clock (no loop of its own) and changes only every 80 ms, so reading it recomposes about twelve times a second, not every
+ * frame. For a per-frame flicker read the clock in a draw block instead (see `fireLight`).
  */
 @Composable
 fun rememberFlicker(amount: Float, reduced: Boolean = false): Float {
-    var value by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
-    androidx.compose.runtime.LaunchedEffect(amount, reduced) {
-        if (reduced || amount <= 0f) { value = 1f; return@LaunchedEffect }
-        val random = kotlin.random.Random(7)
-        while (true) {
-            value = 1f + (random.nextFloat() * 2f - 1f) * (0.05f + 0.1f * amount)
-            kotlinx.coroutines.delay(80)
+    val clock = br.com.faru.boitata.core.clock.LocalSceneClock.current ?: br.com.faru.boitata.core.clock.rememberSceneClock()
+    val value by androidx.compose.runtime.remember(amount, reduced, clock) {
+        androidx.compose.runtime.derivedStateOf {
+            if (reduced || clock.reducedMotion || amount <= 0f) 1f
+            else {
+                val step = kotlin.math.floor(clock.seconds() / FLICKER_STEP).toInt()
+                1f + (br.com.faru.boitata.core.FastNoise(7L).at(step, 0) * 2f - 1f) * (0.05f + 0.1f * amount)
+            }
         }
     }
     return value
 }
+
+private const val FLICKER_STEP = 0.08f
 
 /** The flash of the lightning over the room (0..1), read by [LightShade] and the room's own layers in the draw phase. */
 val LocalSceneFlash = compositionLocalOf<() -> Float> { { 0f } }

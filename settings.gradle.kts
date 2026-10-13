@@ -41,3 +41,5 @@ include(":boitata-scene")
 include(":samples:playground")
 include(":samples:playground-desktop")
 include(":samples:playground-web")
+
+include(":boitata-testing")

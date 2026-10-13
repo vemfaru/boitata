@@ -14,6 +14,8 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.FastNoise
+import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.clock.rememberSceneQuality
 import br.com.faru.boitata.light.FlamePalette
 import br.com.faru.boitata.light.drawCastShadow
 import br.com.faru.boitata.light.drawFlame
@@ -28,7 +30,8 @@ enum class FireKind(val label: String, val palette: FlamePalette) { Campfire("Ca
 @Composable
 fun FireScene(seconds: () -> Float, intensity: Float, kind: FireKind, modifier: Modifier = Modifier.fillMaxSize()) {
     val art = LocalSprites.current ?: return
-    Spacer(modifier.drawBehind { drawFireScene(art, seconds(), intensity, kind) })
+    val quality = rememberSceneQuality()
+    Spacer(modifier.drawBehind { drawFireScene(art, seconds(), intensity, kind, quality()) })
 }
 
 /** The seven stones of `fire_stones`, as boxes in its pixels. */
@@ -37,7 +40,7 @@ private val Stones = listOf(
     Crop(581, 151, 132, 85), Crop(728, 123, 132, 113), Crop(873, 139, 134, 97),
 )
 
-fun DrawScope.drawFireScene(art: Sprites, t: Float, intensity: Float, kind: FireKind) {
+fun DrawScope.drawFireScene(art: Sprites, t: Float, intensity: Float, kind: FireKind, quality: Quality = Quality.High) {
     val w = size.width; val h = size.height
     val base = Offset(w * 0.5f, h * 0.8f)
     drawRect(Color(0xFF06080C), size = size)
@@ -55,11 +58,11 @@ fun DrawScope.drawFireScene(art: Sprites, t: Float, intensity: Float, kind: Fire
         val a = i / Stones.size.toFloat() * 6.283f + 0.3f
         val x = base.x + cos(a) * w * 0.27f; val y = base.y + sin(a) * h * 0.075f + h * 0.01f
         val k = h * 0.1f / c.h * (0.8f + 0.3f * (i % 3) / 2f)
-        drawCastShadow(light, x, y, c.h * k, 0.7f) { col -> drawArt(art.stones, Offset(-c.w * k / 2f, -c.h * k), k, col, c) }
+        drawCastShadow(light, x, y, c.h * k, 0.7f, quality) { col -> drawArt(art.stones, Offset(-c.w * k / 2f, -c.h * k), k, col, c) }
         val lit = (1f - hypot(x - base.x, (y - base.y) * 2f) / light.reach).coerceIn(0f, 1f) * light.strength
         drawArt(art.stones, Offset(x - c.w * k / 2f, y - c.h * k), k, lerp(Color(0xFF14110F), kind.palette.mid, lit * 0.65f), c)
     }
     val lk = w * 0.18f / art.logs.width
     drawArt(art.logs, Offset(base.x - art.logs.width * lk / 2f, base.y - art.logs.height * lk * 0.92f), lk, lerp(Color(0xFF14110F), kind.palette.outer, 0.35f * intensity))
-    drawFlame(base.x, base.y - h * 0.02f, w * 0.16f, h * 0.45f, t, intensity, kind.palette)
+    drawFlame(base.x, base.y - h * 0.02f, w * 0.16f, h * 0.45f, t, intensity, kind.palette, quality = quality)
 }

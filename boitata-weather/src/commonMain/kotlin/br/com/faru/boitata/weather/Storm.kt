@@ -2,13 +2,13 @@ package br.com.faru.boitata.weather
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import br.com.faru.boitata.core.clock.LocalSceneClock
+import br.com.faru.boitata.core.clock.rememberSceneClock
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -25,31 +25,28 @@ import br.com.faru.boitata.core.sky.StormModel
 class StormView(val flash: () -> Float, val bolt: () -> Pair<Strike, Float>?)
 
 /**
- * Runs a storm's clock while [active] and tells [onStrike] about each strike as its flash happens (the game plays the thunder [Strike.thunderDelay]
- * later). The flash and the bolt are read in the draw phase. With [frozen] (reduced motion) there is no flicker: only the thunder.
+ * A storm on the scene's clock while [active]; tells [onStrike] about each strike as its flash happens (the game plays the thunder [Strike.thunderDelay]
+ * later). The flash and the bolt are read in the draw phase. Under reduced motion there is no flicker: only the thunder.
  */
 @Composable
-fun rememberStorm(active: Boolean, seed: Long = 17L, intensity: Float = 1f, frozen: Boolean = false, onStrike: (Strike) -> Unit = {}): StormView {
+public fun rememberStorm(active: Boolean, seed: Long = 17L, intensity: Float = 1f, frozen: Boolean = false, onStrike: (Strike) -> Unit = {}): StormView {
     val model = remember(seed, intensity) { StormModel(seed, intensity) }
-    var seconds by remember { mutableFloatStateOf(0f) }
+    val clock = LocalSceneClock.current ?: rememberSceneClock()
     val strikeHandler by rememberUpdatedState(onStrike)
-    LaunchedEffect(active, model) {
+    // No frame loop of its own: strikes are noticed as the scene's clock passes them.
+    LaunchedEffect(active, model, clock) {
         if (!active) return@LaunchedEffect
-        var last = seconds
-        var previous = 0L
-        while (true) {
-            withFrameNanos { now ->
-                if (previous != 0L) seconds += ((now - previous) / 1_000_000_000f).coerceAtMost(0.1f)
-                previous = now
-                model.strikes(last, seconds).forEach { strikeHandler(it) }
-                last = seconds
-            }
+        var last = clock.seconds()
+        snapshotFlow { clock.seconds() }.collect { now ->
+            if (now > last) model.strikes(last, now).forEach { strikeHandler(it) }
+            last = now
         }
     }
-    return remember(model, active, frozen) {
+    val still = frozen || clock.reducedMotion
+    return remember(model, active, still, clock) {
         StormView(
-            flash = { if (active && !frozen) model.flash(seconds) else 0f },
-            bolt = { if (active && !frozen) model.bolt(seconds) else null },
+            flash = { if (active && !still) model.flash(clock.seconds()) else 0f },
+            bolt = { if (active && !still) model.bolt(clock.seconds()) else null },
         )
     }
 }

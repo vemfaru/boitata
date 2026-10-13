@@ -11,6 +11,8 @@ plugins {
 kotlin {
     compilerOptions {
         optIn.add("androidx.compose.ui.ExperimentalComposeUiApi")
+        // Boitatá's own modules and samples may use the low-level drawing functions; an app that does gets a warning and the reasons.
+        optIn.add("br.com.faru.boitata.core.AdvancedBoitataApi")
     }
 
     sourceSets {

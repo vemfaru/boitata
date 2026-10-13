@@ -10,36 +10,45 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import br.com.faru.boitata.core.AdvancedBoitataApi
 import br.com.faru.boitata.core.FastNoise
-import br.com.faru.boitata.core.fx.bump
+import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.clock.rememberSceneQuality
+import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.fx.cycle
-import kotlin.math.PI
 import kotlin.math.sin
 
 /**
  * Rain, snow and fog, drawn on a plain canvas, so they look the same on every platform and need no shaders.
  *
- * Every one is a function of [seconds] alone (each drop or flake is a repeating cycle, see [cycle]), so nothing is kept between frames: the
- * same time gives the same picture, and you can scrub or record them. [seconds] is read in the draw phase, so a moving clock redraws and never recomposes.
+ * Every one is a function of time alone (each drop or flake is a repeating cycle, see [cycle]), so nothing is kept between frames: the same time gives
+ * the same picture, and you can scrub or record them. Time and quality come from the scene's clock ([br.com.faru.boitata.core.clock.BoitataScene]); they are read in the draw phase, so a
+ * moving clock redraws and never recomposes, and a heavy scene draws fewer drops on its own. Pass [seconds] or [quality] only to override the clock.
  */
 
 /** Falling rain: [intensity] 0..1 sets how many drops, [wind] leans them (-1 to 1), [color] is the drop. */
 @Composable
 public fun Rain(
-    seconds: () -> Float,
     modifier: Modifier = Modifier.fillMaxSize(),
     intensity: Float = 0.6f,
     wind: Float = 0.25f,
     color: Color = Color(0xFFBFD0E6),
     seed: Long = 3L,
+    seconds: (() -> Float)? = null,
+    quality: (() -> Quality)? = null,
 ) {
-    Spacer(modifier.drawBehind { drawRain(seconds(), intensity, wind, color, seed) })
+    val time = seconds ?: rememberSceneSeconds()
+    val level = quality ?: rememberSceneQuality()
+    Spacer(modifier.drawBehind { drawRain(time(), intensity, wind, color, seed, level()) })
 }
 
-/** Rain onto this scope; the function behind [Rain], for scenes that draw everything in one canvas. */
-public fun DrawScope.drawRain(seconds: Float, intensity: Float, wind: Float, color: Color, seed: Long = 3L) {
+/** Rain onto this scope; the function behind [Rain]. Read [seconds] and [quality] inside the draw block that calls it. */
+@AdvancedBoitataApi
+public fun DrawScope.drawRain(seconds: Float, intensity: Float, wind: Float, color: Color, seed: Long = 3L, quality: Quality = Quality.High) {
     val noise = FastNoise(seed)
-    val count = (MAX_DROPS * intensity.coerceIn(0f, 1f)).toInt()
+    val count = quality.scaled((MAX_DROPS * intensity.coerceIn(0f, 1f)).toInt())
+    // Fewer drops must not look thinner: the ones that remain are drawn a little stronger.
+    val boost = 1f + (1f - quality.particles) * 0.5f
     val w = size.width; val h = size.height
     val lean = wind * 0.35f
     for (i in 0 until count) {
@@ -49,8 +58,8 @@ public fun DrawScope.drawRain(seconds: Float, intensity: Float, wind: Float, col
         val x = noise.at(i, 2) * (w + h * 0.5f) - h * 0.25f + lean * (y - h * 0.5f) * -1f
         val len = h * (0.025f + 0.04f * depth)
         drawLine(
-            color.copy(alpha = 0.15f + 0.4f * depth), Offset(x, y), Offset(x + lean * len, y + len),
-            strokeWidth = 1f + 1.2f * depth, cap = StrokeCap.Round,
+            color.copy(alpha = ((0.15f + 0.4f * depth) * boost).coerceAtMost(0.9f)), Offset(x, y), Offset(x + lean * len, y + len),
+            strokeWidth = (1f + 1.2f * depth) * boost, cap = StrokeCap.Round,
         )
     }
 }
@@ -58,19 +67,24 @@ public fun DrawScope.drawRain(seconds: Float, intensity: Float, wind: Float, col
 /** Drifting snow: [intensity] 0..1 sets how many flakes. */
 @Composable
 public fun Snow(
-    seconds: () -> Float,
     modifier: Modifier = Modifier.fillMaxSize(),
     intensity: Float = 0.6f,
     wind: Float = 0.1f,
     color: Color = Color.White,
     seed: Long = 5L,
+    seconds: (() -> Float)? = null,
+    quality: (() -> Quality)? = null,
 ) {
-    Spacer(modifier.drawBehind { drawSnow(seconds(), intensity, wind, color, seed) })
+    val time = seconds ?: rememberSceneSeconds()
+    val level = quality ?: rememberSceneQuality()
+    Spacer(modifier.drawBehind { drawSnow(time(), intensity, wind, color, seed, level()) })
 }
 
-public fun DrawScope.drawSnow(seconds: Float, intensity: Float, wind: Float, color: Color, seed: Long = 5L) {
+@AdvancedBoitataApi
+public fun DrawScope.drawSnow(seconds: Float, intensity: Float, wind: Float, color: Color, seed: Long = 5L, quality: Quality = Quality.High) {
     val noise = FastNoise(seed)
-    val count = (MAX_FLAKES * intensity.coerceIn(0f, 1f)).toInt()
+    val count = quality.scaled((MAX_FLAKES * intensity.coerceIn(0f, 1f)).toInt())
+    val boost = 1f + (1f - quality.particles) * 0.5f
     val w = size.width; val h = size.height
     for (i in 0 until count) {
         val depth = noise.at(i, 0)
@@ -78,31 +92,38 @@ public fun DrawScope.drawSnow(seconds: Float, intensity: Float, wind: Float, col
         val y = (life * 1.1f - 0.05f) * h
         val sway = sin((seconds * (0.6f + noise.at(i, 3)) + noise.at(i, 4) * 6.28f)) * w * 0.012f
         val x = noise.at(i, 2) * w + sway + wind * life * w * 0.3f
-        drawCircle(color.copy(alpha = 0.25f + 0.55f * depth), radius = 1f + 2.4f * depth, center = Offset(x, y))
+        drawCircle(color.copy(alpha = (0.25f + 0.55f * depth).coerceAtMost(1f)), radius = (1f + 2.4f * depth) * boost, center = Offset(x, y))
     }
 }
 
 /** Mist drifting across the scene: [density] 0..1; layered soft banks that slide slowly. */
 @Composable
 public fun Fog(
-    seconds: () -> Float,
     modifier: Modifier = Modifier.fillMaxSize(),
     density: Float = 0.5f,
     color: Color = Color(0xFFB9C4D0),
     seed: Long = 9L,
+    seconds: (() -> Float)? = null,
+    quality: (() -> Quality)? = null,
 ) {
-    Spacer(modifier.drawBehind { drawFog(seconds(), density, color, seed) })
+    val time = seconds ?: rememberSceneSeconds()
+    val level = quality ?: rememberSceneQuality()
+    Spacer(modifier.drawBehind { drawFog(time(), density, color, seed, level()) })
 }
 
-public fun DrawScope.drawFog(seconds: Float, density: Float, color: Color, seed: Long = 9L) {
+@AdvancedBoitataApi
+public fun DrawScope.drawFog(seconds: Float, density: Float, color: Color, seed: Long = 9L, quality: Quality = Quality.High) {
     val noise = FastNoise(seed)
     val w = size.width; val h = size.height
-    for (i in 0 until BANKS) {
+    val banks = quality.scaled(BANKS)
+    // Each bank is a soft gradient, the costliest thing here: fewer banks, each a little denser, keeps the same amount of mist.
+    val denser = BANKS.toFloat() / banks
+    for (i in 0 until banks) {
         val speed = 0.01f + 0.02f * noise.at(i, 0)
         val x = ((noise.at(i, 1) + seconds * speed) % 1f) * (w * 1.6f) - w * 0.3f
         val y = h * (0.35f + 0.6f * noise.at(i, 2))
         val r = w * (0.25f + 0.3f * noise.at(i, 3))
-        val a = (0.05f + 0.16f * noise.at(i, 4)) * density.coerceIn(0f, 1f) * (0.8f + 0.2f * sin(seconds * 0.3f + i))
+        val a = ((0.05f + 0.16f * noise.at(i, 4)) * density.coerceIn(0f, 1f) * (0.8f + 0.2f * sin(seconds * 0.3f + i)) * denser).coerceAtMost(0.5f)
         drawCircle(
             Brush.radialGradient(0f to color.copy(alpha = a), 1f to Color.Transparent, center = Offset(x, y), radius = r),
             radius = r, center = Offset(x, y),

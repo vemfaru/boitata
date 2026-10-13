@@ -12,7 +12,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import br.com.faru.boitata.core.AdvancedBoitataApi
 import br.com.faru.boitata.core.FastNoise
+import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.clock.rememberSceneQuality
+import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.fx.bump
 import br.com.faru.boitata.core.fx.cycle
 import br.com.faru.boitata.core.fx.LightShaft
@@ -39,13 +43,18 @@ public fun WindowLight(
     elevation: Float = 0.5f,
     length: Float = 260f,
     panes: Pair<Int, Int> = 2 to 3,
-    seconds: () -> Float = { 0f },
+    seconds: (() -> Float)? = null,
+    quality: (() -> Quality)? = null,
 ) {
-    Spacer(modifier.drawBehind { drawWindowLight(window, floorY, depth, lean, color, strength, elevation, length, panes, seconds()) })
+    val time = seconds ?: rememberSceneSeconds()
+    val level = quality ?: rememberSceneQuality()
+    Spacer(modifier.drawBehind { drawWindowLight(window, floorY, depth, lean, color, strength, elevation, length, panes, time(), level()) })
 }
 
+@AdvancedBoitataApi
 public fun DrawScope.drawWindowLight(
     window: Rect, floorY: Float, depth: Float, lean: Float, color: Color, strength: Float, elevation: Float, length: Float, panes: Pair<Int, Int>, seconds: Float,
+    quality: Quality = Quality.High,
 ) {
     if (strength <= 0.01f) return
     val reach = LightShaft.reachFor(elevation, length)
@@ -71,7 +80,7 @@ public fun DrawScope.drawWindowLight(
     }
     // Dust in the beam, between the window and the patch.
     val noise = FastNoise(31L)
-    for (i in 0 until 26) {
+    for (i in 0 until quality.scaled(26)) {
         val u = noise.at(i, 0); val v = noise.at(i, 1)
         val life = cycle(seconds, 5f + 5f * noise.at(i, 3), noise.at(i, 2))
         val px = window.left + window.width * u + lean * reach * v * 0.8f + sin(seconds * 0.5f + i) * 6f
