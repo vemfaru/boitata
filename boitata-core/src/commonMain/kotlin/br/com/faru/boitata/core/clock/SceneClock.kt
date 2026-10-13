@@ -52,6 +52,15 @@ public interface SceneClock {
 
     /** Whether the scene should hold still (the system asks for less motion). Effects that move should draw their still frame. */
     public val reducedMotion: Boolean
+
+    /**
+     * Seconds that keep running under reduced motion, for things that are not motion: a sound still has to arrive on time when the flash is switched off.
+     * The same as [seconds] otherwise; stands still only while the screen is not in the foreground.
+     */
+    public val realSeconds: () -> Float
+
+    /** Whether the screen is in the foreground. When it is not, the clock is stopped and sound should be suspended. */
+    public val inForeground: () -> Boolean
 }
 
 /** A clock that follows a time you give it, for recordings, screenshots and tests: nothing waits for a frame. */
@@ -59,8 +68,12 @@ public class FixedSceneClock(
     override val seconds: () -> Float,
     private val fixedQuality: Quality = Quality.High,
     override val reducedMotion: Boolean = false,
+    private val foreground: () -> Boolean = { true },
+    private val real: (() -> Float)? = null,
 ) : SceneClock {
     override val quality: () -> Quality = { fixedQuality }
+    override val realSeconds: () -> Float = real ?: seconds
+    override val inForeground: () -> Boolean = foreground
 }
 
 /** The clock of the nearest [BoitataScene]; null outside one, where each effect makes a clock of its own (correct, but not shared). */
@@ -77,9 +90,13 @@ public fun rememberSceneQuality(): () -> Quality = (LocalSceneClock.current ?: r
 @Stable
 private class FrameSceneClock(config: SceneConfig) : SceneClock {
     var time by mutableFloatStateOf(START)
+    var real by mutableFloatStateOf(START)
     var current by mutableStateOf(config.quality)
     var reduced by mutableStateOf(false)
+    var foreground by mutableStateOf(true)
     override val seconds: () -> Float = { time }
+    override val realSeconds: () -> Float = { real }
+    override val inForeground: () -> Boolean = { foreground }
     override val quality: () -> Quality = { current }
     override val reducedMotion: Boolean get() = reduced
 }
@@ -103,8 +120,9 @@ public fun rememberSceneClock(config: SceneConfig = SceneConfig()): SceneClock {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val state by lifecycle.currentStateAsState()
     val running = !config.pauseWhenNotResumed || state.isAtLeast(Lifecycle.State.RESUMED)
+    clock.foreground = running
     LaunchedEffect(running, reduced, config.adaptiveQuality, config.targetFps) {
-        if (!running || reduced) return@LaunchedEffect
+        if (!running) return@LaunchedEffect
         val governor = QualityGovernor(1f / config.targetFps, config.quality)
         var last = 0L
         while (isActive) {
@@ -112,8 +130,13 @@ public fun rememberSceneClock(config: SceneConfig = SceneConfig()): SceneClock {
                 if (last != 0L) {
                     val dt = (now - last) / 1_000_000_000f
                     // A long frame (a hitch, a resume) must not make time jump: clamp what the scene sees, keep the real value for the governor.
-                    clock.time += dt.coerceAtMost(MAX_STEP)
-                    if (config.adaptiveQuality) clock.current = governor.onFrame(dt)
+                    val step = dt.coerceAtMost(MAX_STEP)
+                    clock.real += step
+                    // Under reduced motion only the real time runs (for sound): nothing visible reads it, so nothing is redrawn.
+                    if (!reduced) {
+                        clock.time += step
+                        if (config.adaptiveQuality) clock.current = governor.onFrame(dt)
+                    }
                 }
                 last = now
             }

@@ -44,3 +44,4 @@ include(":samples:playground-web")
 
 include(":boitata-testing")
 include(":boitata-audio-synth")
+include(":boitata-audio")
