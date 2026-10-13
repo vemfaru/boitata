@@ -18,6 +18,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import br.com.faru.boitata.audio.AudioSink
+import br.com.faru.boitata.audio.BoitataAudio
+import br.com.faru.boitata.audio.createAudioSink
+import br.com.faru.boitata.core.sky.SkyWeather
+import br.com.faru.boitata.core.sky.StormModel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,21 +45,26 @@ enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Win
 fun PlaygroundApp() {
     MaterialTheme(colorScheme = darkColorScheme(background = Color(0xFF0B0D10), surface = Color(0xFF14181D), primary = Color(0xFFF2A83B))) {
         var demo by remember { mutableStateOf(Demo.Forest) }
+        var sound by remember { mutableStateOf(false) }
+        val sink = remember { createAudioSink() }
+        DisposableEffect(sink) { onDispose { sink.release() } }
         BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B0D10))) {
         val seconds = rememberSceneSeconds()
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (d in Demo.entries) FilterChip(selected = d == demo, onClick = { demo = d }, label = { Text(d.label) })
+                // The browser keeps sound locked until a tap: turning it on is that tap.
+                FilterChip(selected = sound, onClick = { sound = !sound; if (sound) sink.unlock() }, label = { Text(if (sound) "Sound on" else "Sound off") })
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 ProvideSprites { sprites ->
                 CompositionLocalProvider(LocalSprites provides sprites) {
                 when (demo) {
-                    Demo.Forest -> ForestDemo(seconds)
-                    Demo.Weather -> WeatherDemo(seconds)
+                    Demo.Forest -> ForestDemo(seconds, sink, sound)
+                    Demo.Weather -> WeatherDemo(seconds, sink, sound)
                     Demo.Window -> WindowDemo(seconds)
                     Demo.Shadows -> ShadowDemo(seconds)
-                    Demo.Fire -> FireDemo(seconds)
+                    Demo.Fire -> FireDemo(seconds, sink, sound)
                 }
                 }
                 }
@@ -77,21 +88,26 @@ private fun Labelled(label: String, value: Float, range: ClosedFloatingPointRang
 }
 
 @Composable
-private fun ForestDemo(seconds: () -> Float) {
+private fun ForestDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
     var rain by remember { mutableFloatStateOf(0f) }
     var fog by remember { mutableFloatStateOf(0.35f) }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { ForestScene(seconds, rain = rain, fog = fog) }
+        // The serpent is a fire: its crackle is always there; the rain follows the slider, the mist muffles.
+        BoitataAudio(sink, weather = SkyWeather(cloud = 0.2f + 0.4f * rain, precipitation = rain, fog = fog * 0.5f), fire = 0.7f, enabled = sound)
         Controls { Labelled("Rain", rain, 0f..1f) { rain = it }; Labelled("Mist", fog, 0f..1f) { fog = it } }
     }
 }
 
 @Composable
-private fun WeatherDemo(seconds: () -> Float) {
+private fun WeatherDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
     var hour by remember { mutableFloatStateOf(14f) }
     var kind by remember { mutableStateOf(WeatherKind.Rain) }
+    val storm = remember { StormModel(seed = 17L, intensity = 1f) }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { WeatherScene(seconds, hour, kind) }
+        Box(Modifier.weight(1f)) { WeatherScene(seconds, hour, kind, stormModel = storm) }
+        // The thunder comes from the same storm as the lightning drawn above, so each flash is followed by its sound, distance over the speed of sound later.
+        BoitataAudio(sink, storm = if (kind == WeatherKind.Storm) storm else null, weather = kind.skyWeather(), enabled = sound)
         Controls {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (k in WeatherKind.entries) FilterChip(selected = k == kind, onClick = { kind = k }, label = { Text(k.label) })
@@ -128,11 +144,12 @@ private fun ShadowDemo(seconds: () -> Float) {
 }
 
 @Composable
-private fun FireDemo(seconds: () -> Float) {
+private fun FireDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
     var intensity by remember { mutableFloatStateOf(0.9f) }
     var kind by remember { mutableStateOf(FireKind.Campfire) }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { FireScene(seconds, intensity, kind) }
+        BoitataAudio(sink, fire = intensity, enabled = sound)
         Controls {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { for (k in FireKind.entries) FilterChip(selected = k == kind, onClick = { kind = k }, label = { Text(k.label) }) }
             Labelled("Fire", intensity, 0f..1f) { intensity = it }

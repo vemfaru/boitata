@@ -13,6 +13,7 @@ kotlin {
             api(project(":boitata-scene"))
             api(project(":boitata-light"))
             api(project(":boitata-weather"))
+            api(project(":boitata-audio"))
             implementation(compose.material3)
             implementation(compose.components.resources)
         }

@@ -32,12 +32,15 @@ fun WeatherKind.skyWeather(): SkyWeather = when (this) {
  * speeds, the carved clouds, rain, snow, mist and lightning.
  */
 @Composable
-fun WeatherScene(seconds: () -> Float, hour: Float, kind: WeatherKind, modifier: Modifier = Modifier.fillMaxSize()) {
+fun WeatherScene(
+    seconds: () -> Float, hour: Float, kind: WeatherKind, modifier: Modifier = Modifier.fillMaxSize(),
+    /** The storm whose lightning is drawn; share it with `BoitataAudio` so the thunder follows the same flashes. */
+    stormModel: StormModel = remember { StormModel(seed = 17L, intensity = 1f) },
+) {
     val art = LocalSprites.current ?: return
     // The art has its horizon at 60% of its height; the view is told to put the horizon there.
     val layers = remember(art) { listOf(ViewLayer(art.far, 0.2f), ViewLayer(art.mid, 0.5f), ViewLayer(art.ground, 0.7f), ViewLayer(art.near, 0.95f)) }
-    val storm = remember { StormModel(seed = 17L, intensity = 1f) }
-    val view = remember(storm) { StormView(flash = { storm.flash(seconds()) }, bolt = { storm.bolt(seconds()) }) }
+    val view = remember(stormModel) { StormView(flash = { stormModel.flash(seconds()) }, bolt = { stormModel.bolt(seconds()) }) }
     val weather = kind.skyWeather()
     // The sky only changes when the hour or the weather does: work it out once, not on every frame (and once per layer).
     val skyState = remember(hour, weather) { SkyModel.at(hour, weather) }
