@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Boitatá playground</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0B0D10; }
+    #app { position: fixed; inset: 0; }
+    #splash { position: fixed; inset: 0; z-index: 10; background: #0B0D10; display: flex; align-items: center; justify-content: center;
+      color: #F2A83B; font-family: system-ui, sans-serif; letter-spacing: 0.12em; transition: opacity .35s ease; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="splash">BOITATÁ</div>
+  <script>
+    // Hide the splash once Compose has drawn its first frame.
+    new MutationObserver((_, o) => { if (document.querySelector('#app canvas')) { document.getElementById('splash').style.opacity = 0; setTimeout(() => document.getElementById('splash').remove(), 400); o.disconnect(); } })
+      .observe(document.getElementById('app'), { childList: true, subtree: true });
+  </script>
+  <script src="playground.js"></script>
+</body>
+</html>
