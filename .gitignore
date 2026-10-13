@@ -1,0 +1,19 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# Kotlin
+.kotlin/
+kotlin-js-store/
+node_modules/
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+
+# Signing and publishing secrets
+*.gpg
+*.jks
+*.keystore
