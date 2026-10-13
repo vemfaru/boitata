@@ -7,6 +7,9 @@ plugins {
     id("com.android.kotlin.multiplatform.library")
 }
 
+group = "br.com.faru.boitata"
+version = "0.1.0-SNAPSHOT"
+
 kotlin {
     explicitApiWarning()
     androidLibrary {
