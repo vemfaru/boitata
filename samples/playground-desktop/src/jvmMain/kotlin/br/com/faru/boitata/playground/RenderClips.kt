@@ -1,10 +1,12 @@
 package br.com.faru.boitata.playground
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
+import kotlinx.coroutines.runBlocking
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
 
@@ -12,24 +14,31 @@ private const val WIDTH = 720
 private const val HEIGHT = 405
 private const val FPS = 20
 
-/** Draws every [Clips] entry frame by frame into `<out>/<name>/0000.png ...`; pass a clip name as the second argument to draw only that one. */
+/**
+ * Draws every [Clips] entry frame by frame into `<out>/<name>/0000.png ...`. Arguments: the output folder, then optionally a clip name (only that
+ * one), then optionally `preview` (three frames at a quarter, a half and three quarters of the clip, for a quick look).
+ */
 fun main(args: Array<String>) {
     val out = File(args[0])
-    val only = args.getOrNull(1)
+    val only = args.getOrNull(1)?.takeIf { it.isNotBlank() }
+    val preview = args.getOrNull(2) == "preview"
+    val sprites = runBlocking { loadSprites() }
     for (clip in Clips) {
         if (only != null && clip.name != only) continue
         val dir = File(out, clip.name).apply { deleteRecursively(); mkdirs() }
         var t by mutableFloatStateOf(0f)
-        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) { clip.content { t } }
+        val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
+            CompositionLocalProvider(LocalSprites provides sprites) { clip.content { t } }
+        }
         val frames = (clip.length * FPS).toInt()
-        // A first frame to let the composition settle, then the clip.
         scene.render(0L)
-        for (i in 0 until frames) {
+        val indices = if (preview) listOf(frames / 4, frames / 2, frames * 3 / 4) else (0 until frames).toList()
+        for (i in indices) {
             t = i / FPS.toFloat()
             val image = scene.render((i * 1_000_000_000L) / FPS)
             File(dir, "%04d.png".format(i)).writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
         }
         scene.close()
-        println("${clip.name}: $frames frames")
+        println("${clip.name}: ${indices.size} frames")
     }
 }

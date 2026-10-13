@@ -74,7 +74,9 @@ fun MinimalWindowLight() {
 
 ### Weather that follows the hour
 
-![Rain over the forest at night, with mist](docs/media/boitata-rain.gif)
+![A storm over the forest: rain, carved clouds, lightning](docs/media/weather-storm.gif)
+
+![The sky through a day: dawn, noon, dusk](docs/media/sky-day.gif)
 
 ```kotlin
 @Composable
@@ -86,7 +88,7 @@ fun MinimalRain() {
 }
 ```
 
-`Rain`, `Snow` and `Fog` are the same shape of call. `SkyWindow` draws a whole sky (sun, moon, stars, clouds) with parallax layers and lightning from `rememberStorm`.
+`Rain`, `Snow` and `Fog` are the same shape of call. `SkyWindow` draws a whole sky (sun, moon, stars, clouds) with parallax layers and lightning from `rememberStorm`; `horizon` says where on the screen the horizon stands, so the same sky works as a window above a desk or as a whole scene.
 
 All of these snippets are in [Minimal.kt](samples/playground/src/commonMain/kotlin/br/com/faru/boitata/playground/Minimal.kt) and are compiled with the rest of the project.
 
@@ -103,6 +105,8 @@ A demo app with live controls (hour, weather, light position, fire size) for eve
 ```
 
 Android and iOS shells for the playground are not there yet; the playground code itself is shared (`samples/playground`), so they are thin.
+
+The playground's art is a set of woodcut (*xilogravura*) pictures: solid ink with the carved lines cut out as transparency, so the library can tint them by the hour, light them from a fire and cast shadows from their shapes. The rules for the art are in [docs/design/boitata-style-guide.md](docs/design/boitata-style-guide.md).
 
 The GIFs in this README are drawn offscreen by the same code, frame by frame, so they are the same on every machine: `./docs/media/render.sh` regenerates them (needs `ffmpeg`).
 

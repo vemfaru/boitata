@@ -17,6 +17,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,12 +44,16 @@ fun PlaygroundApp() {
                 for (d in Demo.entries) FilterChip(selected = d == demo, onClick = { demo = d }, label = { Text(d.label) })
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
+                ProvideSprites { sprites ->
+                CompositionLocalProvider(LocalSprites provides sprites) {
                 when (demo) {
                     Demo.Forest -> ForestDemo(seconds)
                     Demo.Weather -> WeatherDemo(seconds)
                     Demo.Window -> WindowDemo(seconds)
                     Demo.Shadows -> ShadowDemo(seconds)
                     Demo.Fire -> FireDemo(seconds)
+                }
+                }
                 }
             }
         }

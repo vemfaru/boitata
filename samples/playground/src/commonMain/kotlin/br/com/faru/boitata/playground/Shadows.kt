@@ -6,45 +6,43 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.light.LightSource
 import br.com.faru.boitata.light.drawCastShadow
 import kotlin.math.hypot
 
-/** A bare floor with a few things on it and one light you can move: each thing throws its shadow away from the light, longer when the light is near. */
+/** A bare floor with a few carved things on it and one light you can move: each throws a shadow of its own shape away from the light, longer when the light is near. */
 @Composable
 fun ShadowScene(light: () -> Offset, reach: Float, modifier: Modifier = Modifier.fillMaxSize()) {
-    Spacer(modifier.drawBehind { drawShadows(light(), reach) })
+    val art = LocalSprites.current ?: return
+    Spacer(modifier.drawBehind { drawShadows(art, light(), reach) })
 }
 
-fun DrawScope.drawShadows(lightFraction: Offset, reach: Float) {
+/** A prop stood on the ground at ([feetX], [feetY]), [height] pixels tall: its shadow first, then the prop, warm where the light reaches it. */
+fun DrawScope.drawProp(image: ImageBitmap, feetX: Float, feetY: Float, height: Float, light: LightSource?, dark: Color, lit: Color) {
+    val k = height / image.height
+    drawCastShadow(light, feetX, feetY, height, 0.7f) { c -> drawArt(image, Offset(-image.width * k / 2f, -height), k, c) }
+    val near = if (light == null) 0f else (1f - hypot(feetX - light.x, feetY - light.y) / light.reach).coerceIn(0f, 1f) * light.strength
+    drawArt(image, Offset(feetX - image.width * k / 2f, feetY - height), k, lerp(dark, lit, near * 0.85f))
+}
+
+fun DrawScope.drawShadows(art: Sprites, lightFraction: Offset, reach: Float) {
     val w = size.width; val h = size.height
     val lp = Offset(lightFraction.x * w, lightFraction.y * h)
     val source = LightSource(lp.x, lp.y, Color(0xFFFFD08A), 0.95f, w * reach, groundX = lp.x, groundY = lp.y + h * 0.04f)
     drawRect(Color(0xFF0A0C10), size = size)
-    drawRect(Brush.radialGradient(0f to Color(0xFF6B5A44), 0.55f to Color(0xFF2A241C), 1f to Color(0xFF0A0C10), center = lp, radius = source.reach), size = size)
-    val things = listOf(Offset(0.2f, 0.78f) to 0, Offset(0.45f, 0.86f) to 1, Offset(0.7f, 0.76f) to 2, Offset(0.88f, 0.88f) to 3)
-    for ((pos, kind) in things) {
-        val x = w * pos.x; val y = h * pos.y; val th = h * (0.22f + 0.04f * kind)
-        drawCastShadow(source, x, y, th, 0.6f) { c -> drawThing(c, th, kind) }
-        val d = hypot(x - lp.x, y - lp.y)
-        val lit = (1f - d / source.reach).coerceIn(0f, 1f)
-        withTransform({ translate(x, y) }) { drawThing(lerp(Color(0xFF111418), Color(0xFFC79B5E), lit * 0.8f), th, kind) }
-    }
+    drawRect(Brush.radialGradient(0f to Color(0xFF4A3F31), 0.55f to Color(0xFF241F18), 1f to Color(0xFF0A0C10), center = lp, radius = source.reach), size = size)
+    for (k in 1..4) drawCircle(Color(0xFFF2A83B).copy(alpha = 0.3f / k), radius = h * 0.07f * k, center = lp, style = Stroke(2f))
+    val dark = Color(0xFF14110F); val lit = Color(0xFFC79B5E)
+    drawProp(art.prop("araucaria"), w * 0.2f, h * 0.8f, h * 0.5f, source, dark, lit)
+    drawProp(art.prop("crate"), w * 0.45f, h * 0.88f, h * 0.2f, source, dark, lit)
+    drawProp(art.prop("figure"), w * 0.7f, h * 0.8f, h * 0.38f, source, dark, lit)
+    drawProp(art.prop("lantern"), w * 0.88f, h * 0.9f, h * 0.45f, source, dark, lit)
     drawCircle(Brush.radialGradient(0f to Color(0xFFFFF1C2), 0.25f to Color(0x88FFD08A), 1f to Color.Transparent, center = lp, radius = h * 0.09f), radius = h * 0.09f, center = lp, blendMode = BlendMode.Plus)
-}
-
-private fun DrawScope.drawThing(c: Color, th: Float, kind: Int) {
-    when (kind) {
-        0 -> drawPine(c, th * 1.3f)
-        1 -> { drawRect(c, Offset(-th * 0.3f, -th * 0.4f), Size(th * 0.6f, th * 0.4f)); drawRect(c, Offset(-th * 0.3f, -th * 0.4f), Size(th * 0.6f, th * 0.06f)) }
-        2 -> { drawCircle(c, th * 0.11f, Offset(0f, -th * 0.88f)); drawRect(c, Offset(-th * 0.13f, -th * 0.76f), Size(th * 0.26f, th * 0.5f)); drawRect(c, Offset(-th * 0.12f, -th * 0.28f), Size(th * 0.09f, th * 0.28f)); drawRect(c, Offset(th * 0.03f, -th * 0.28f), Size(th * 0.09f, th * 0.28f)) }
-        else -> { drawRect(c, Offset(-th * 0.03f, -th), Size(th * 0.06f, th)); drawRect(c, Offset(-th * 0.14f, -th * 1.04f), Size(th * 0.28f, th * 0.1f)); drawRect(c, Offset(-th * 0.12f, -th * 0.04f), Size(th * 0.24f, th * 0.04f)) }
-    }
 }

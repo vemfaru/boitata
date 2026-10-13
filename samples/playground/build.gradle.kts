@@ -14,6 +14,12 @@ kotlin {
             api(project(":boitata-light"))
             api(project(":boitata-weather"))
             implementation(compose.material3)
+            implementation(compose.components.resources)
         }
     }
+}
+
+compose.resources {
+    packageOfResClass = "br.com.faru.boitata.playground.resources"
+    generateResClass = always
 }

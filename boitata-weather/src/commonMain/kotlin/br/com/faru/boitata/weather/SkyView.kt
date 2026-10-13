@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -58,6 +59,9 @@ class ViewLayer(val image: ImageBitmap, val depth: Float, val veil: Float = 1f, 
  *
  * [parallax] is -1..1 on each axis (the viewer's head and the idle sway); [seconds] drives the clouds and the twinkle; [clouds] is an optional
  * strip of cloud pictures, else clouds are painted in code.
+ *
+ * [horizon] is where the horizon stands, as a fraction of the height (a window above a desk keeps it high, a whole-scene view puts it near 0.6, where
+ * the art is drawn); the layers are shifted so the art's own horizon (60%) lands on it.
  */
 @Composable
 fun SkyWindow(
@@ -68,15 +72,16 @@ fun SkyWindow(
     modifier: Modifier = Modifier.fillMaxSize(),
     clouds: ImageBitmap? = null,
     storm: StormView? = null,
+    horizon: Float = SkyModel.HORIZON_Y,
 ) {
     Box(modifier) {
         Spacer(
             Modifier.fillMaxSize().drawBehind {
-                drawSky(sky(), seconds(), parallax(), clouds)
+                drawSky(sky(), seconds(), parallax(), clouds, horizon)
                 // Lightning: the sky flares and the bolt stands behind the roofs.
                 storm?.let { st ->
                     drawFlash(st.flash() * 0.9f)
-                    st.bolt()?.let { (strike, strength) -> drawBolt(strike, strength, size.height * SkyModel.HORIZON_Y) }
+                    st.bolt()?.let { (strike, strength) -> drawBolt(strike, strength, size.height * horizon) }
                 }
             },
         )
@@ -85,7 +90,7 @@ fun SkyWindow(
                 Modifier.fillMaxSize().drawBehind {
                     val s = sky()
                     val shift = parallax()
-                    drawLayer(layer.image, layer.depth, shift, layerVeil(s, layer))
+                    drawLayer(layer.image, layer.depth, shift, layerVeil(s, layer), horizon = horizon)
                     // Mist stands in front of what is behind it: thicker over the far layers.
                     if (s.weather.fog > 0f) {
                         val mist = s.weather.fog * (1f - layer.depth * 0.75f) * 0.55f
@@ -96,7 +101,7 @@ fun SkyWindow(
                         if (s.windowsLit > 0.01f) {
                             // The lights breathe a little, window by window as one: a slow flicker of the street's power.
                             val flicker = 0.94f + 0.06f * sin(seconds() * 1.7f)
-                            drawLayer(lit, layer.depth, shift, null, alpha = (s.windowsLit * flicker).coerceIn(0f, 1f))
+                            drawLayer(lit, layer.depth, shift, null, alpha = (s.windowsLit * flicker).coerceIn(0f, 1f), horizon = horizon)
                         }
                     }
                 },
@@ -116,23 +121,29 @@ internal fun layerVeil(sky: SkyState, layer: ViewLayer): Color {
     return if (veil.alpha > air.alpha) veil else lerp(veil, air, 0.6f).copy(alpha = maxOf(veil.alpha, air.alpha))
 }
 
-private fun DrawScope.drawLayer(image: ImageBitmap, depth: Float, shift: Offset, veil: Color?, alpha: Float = 1f) {
+private fun DrawScope.drawLayer(image: ImageBitmap, depth: Float, shift: Offset, veil: Color?, alpha: Float = 1f, horizon: Float = SkyModel.HORIZON_Y) {
     // Enlarged a little so the picture still covers the view when it has shifted; nearer layers shift more.
     val margin = 0.07f
     val w = size.width * (1f + 2f * margin); val h = size.height * (1f + 2f * margin)
     val reach = size.width * margin * (0.25f + 0.75f * depth)
     val x = -size.width * margin + shift.x * reach
     // The art has its horizon at ART_HORIZON_Y; the view puts it at HORIZON_Y, so the roofs clear what stands in front of the window.
-    val y = -size.height * margin + (SkyModel.HORIZON_Y - SkyModel.ART_HORIZON_Y) * size.height + shift.y * reach * 0.6f
-    drawImage(
-        image, dstOffset = IntOffset(x.toInt(), y.toInt()), dstSize = IntSize(w.toInt(), h.toInt()),
-        alpha = alpha, colorFilter = veil?.takeIf { it.alpha > 0.005f }?.let { ColorFilter.tint(it, BlendMode.SrcAtop) }, filterQuality = FilterQuality.High,
-    )
+    val y = -size.height * margin + (horizon - SkyModel.ART_HORIZON_Y) * size.height + shift.y * reach * 0.6f
+    // Placed with a float translation, not an IntOffset: the parallax moves a fraction of a pixel per frame, and snapping it to whole pixels
+    // makes the layer sit still for tens of frames and then jump (visible stutter). A float translation moves it smoothly.
+    // Medium (bilinear with mipmaps) is what a big picture shrunk to the view wants; High (bicubic) costs several times more here for no gain.
+    translate(x, y) {
+        drawImage(
+            image, dstSize = IntSize(w.toInt(), h.toInt()),
+            alpha = alpha, colorFilter = veil?.takeIf { it.alpha > 0.005f }?.let { ColorFilter.tint(it, BlendMode.SrcAtop) }, filterQuality = FilterQuality.Medium,
+        )
+    }
 }
 
-private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, clouds: ImageBitmap?) {
+private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, clouds: ImageBitmap?, horizon: Float) {
     val w = size.width; val h = size.height
-    val horizonY = h * SkyModel.HORIZON_Y
+    val horizonY = h * horizon
+    val arc = horizon / SkyModel.HORIZON_Y
     // The gradient: zenith at the top to the horizon colour at the horizon, and the horizon's own colour below it.
     drawRect(Brush.verticalGradient(0f to sky.zenith, 1f to sky.horizon, startY = 0f, endY = horizonY))
     drawRect(sky.horizon, topLeft = Offset(0f, horizonY), size = androidx.compose.ui.geometry.Size(w, h - horizonY))
@@ -155,7 +166,7 @@ private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, c
     val hide = (sky.weather.cloud * 0.8f + sky.weather.precipitation * 0.5f + sky.weather.fog * 0.6f).coerceIn(0f, 1f)
     // The sun: a soft halo and a disc, warm when low, dimmed by cloud; gone below the horizon.
     if (sky.sun.up && sky.sunElevation > -0.02f) {
-        val c = Offset(sky.sun.x * w + shift, sky.sun.y * h)
+        val c = Offset(sky.sun.x * w + shift, sky.sun.y * h * arc)
         val r = w * 0.045f
         val a = (1f - hide * 0.92f).coerceIn(0f, 1f) * (0.4f + 0.6f * sky.daylight.coerceAtLeast(sky.twilight))
         drawCircle(Brush.radialGradient(0f to sky.lightColor.copy(alpha = 0.55f * a), 1f to Color.Transparent, center = c, radius = r * 7f), r * 7f, c)
@@ -163,7 +174,7 @@ private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, c
     }
     // The moon: its lit part is the disc less a circle slid across it; a halo in the dark.
     if (sky.moon.up && sky.daylight < 0.85f) {
-        val c = Offset(sky.moon.x * w + shift, sky.moon.y * h)
+        val c = Offset(sky.moon.x * w + shift, sky.moon.y * h * arc)
         val r = w * 0.035f
         val a = (1f - hide * 0.9f).coerceIn(0f, 1f) * (1f - sky.daylight * 1.2f).coerceIn(0f, 1f)
         drawCircle(Brush.radialGradient(0f to Color(0xFFB4C4DA).copy(alpha = 0.22f * a), 1f to Color.Transparent, center = c, radius = r * 6f), r * 6f, c)
@@ -191,10 +202,11 @@ private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, st
     if (strip != null) {
         val sw = w * 2f; val sh = sw * strip.height / strip.width
         val offset = -((seconds * wind * w) % sw)
-        for (k in 0..1) drawImage(
-            strip, dstOffset = IntOffset((offset + k * sw + shift).toInt(), (horizonY * 0.08f).toInt()), dstSize = IntSize(sw.toInt(), sh.toInt()),
-            alpha = (cover * 1.1f).coerceIn(0f, 1f), colorFilter = ColorFilter.tint(body.copy(alpha = 0.55f), BlendMode.Modulate), filterQuality = FilterQuality.High,
-        )
+        // Drifts a fraction of a pixel per frame, so it is placed with a float translation (see drawLayer).
+        val filter = ColorFilter.tint(body.copy(alpha = 0.55f), BlendMode.Modulate)
+        for (k in 0..1) translate(offset + k * sw + shift, horizonY * 0.08f) {
+            drawImage(strip, dstSize = IntSize(sw.toInt(), sh.toInt()), alpha = (cover * 1.1f).coerceIn(0f, 1f), colorFilter = filter, filterQuality = FilterQuality.Medium)
+        }
         return
     }
     val noise = FastNoise(5L)
