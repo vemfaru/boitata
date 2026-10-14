@@ -15,7 +15,10 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import br.com.faru.boitata.core.FastNoise
+import androidx.compose.ui.graphics.drawscope.clipPath
 import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.sky.MoonPhase
+import br.com.faru.boitata.core.sky.MoonShape
 import br.com.faru.boitata.playground.resources.Res
 import br.com.faru.boitata.weather.SkyArt
 import br.com.faru.boitata.weather.StarAtlas
@@ -78,9 +81,15 @@ fun DrawScope.drawNightStars(art: Sprites, t: Float, maxY: Float, level: Float, 
     }
 }
 
-/** Your moon disc centred on [center], [radius] pixels, in [color]; the cut-out detail shows the sky. */
-fun DrawScope.drawMoonArt(art: Sprites, center: Offset, radius: Float, color: Color) {
-    drawArt(art.moon, Offset(center.x - radius, center.y - radius), 2f * radius / art.moon.width, color)
+/**
+ * Your moon disc centred on [center], [radius] pixels, in [color]; the cut-out detail shows the sky. Only the lit part of [phase] is drawn solid (on the side the hemisphere says),
+ * and the dark part faintly, so a crescent or a quarter shows its whole round shape.
+ */
+fun DrawScope.drawMoonArt(art: Sprites, center: Offset, radius: Float, color: Color, phase: MoonPhase = MoonPhase.Full, southern: Boolean = false) {
+    val at = Offset(center.x - radius, center.y - radius)
+    val k = 2f * radius / art.moon.width
+    if (phase.fraction < 0.98f) drawArt(art.moon, at, k, color.copy(alpha = color.alpha * 0.12f))
+    clipPath(MoonShape.litPath(center.x, center.y, radius, phase.fraction, MoonShape.litOnRight(phase.waxing, southern))) { drawArt(art.moon, at, k, color) }
 }
 
 /** Your sun disc with its rays centred on [center], the disc [radius] pixels (the rays reach out past it). */

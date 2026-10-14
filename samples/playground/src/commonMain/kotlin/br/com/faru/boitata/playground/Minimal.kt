@@ -15,6 +15,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import br.com.faru.boitata.core.Perspective
 import br.com.faru.boitata.core.clock.BoitataScene
+import br.com.faru.boitata.core.clock.rememberSceneSeconds
+import br.com.faru.boitata.core.draw.sway
+import br.com.faru.boitata.core.wind.Wind
+import br.com.faru.boitata.core.wind.WindResponse
+import br.com.faru.boitata.core.wind.rememberSceneWind
 import br.com.faru.boitata.core.depth.DepthItem
 import br.com.faru.boitata.core.depth.DepthStage
 import br.com.faru.boitata.core.sky.SkyModel
@@ -32,8 +37,9 @@ import br.com.faru.boitata.weather.Rain
 /** Rain over a night sky: a scene, and the rain in it. */
 @Composable
 fun MinimalRain() {
-    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B1220))) {
-        Rain(intensity = 0.8f, wind = 0.3f)
+    // A fresh breeze: the rain leans with it, and so does everything else in the scene that reacts to wind.
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B1220)), wind = Wind.Windy) {
+        Rain(intensity = 0.8f)
     }
 }
 
@@ -89,3 +95,21 @@ fun MinimalDepth() {
         }
     }
 }
+
+/** A wind from the right, and a palm that sways in it, drawn at its foot with `sway`. The rain and a fire in the same scene lean and blow too. */
+@Composable
+fun MinimalWind() {
+    val seconds = rememberSceneSeconds()
+    val sceneWind = rememberSceneWind()
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B1220)), wind = Wind(speed = 0.6f, direction = -1f, gustiness = 0.5f)) {
+        Rain(intensity = 0.7f)
+        Canvas(Modifier.fillMaxSize()) {
+            // A palm is anchored but flexible: the wind bends it, a stiffer thing less, and a rigid one not at all.
+            val bend = WindResponse.Palm.bend(sceneWind.wind, seconds(), place = 0.5f)
+            sway(feetX = size.width / 2f, feetY = size.height, bend = bend) {
+                drawRect(Color(0xFF2F5D3A), Offset(size.width / 2f - 6f, size.height - 220f), Size(12f, 220f))
+            }
+        }
+    }
+}
+

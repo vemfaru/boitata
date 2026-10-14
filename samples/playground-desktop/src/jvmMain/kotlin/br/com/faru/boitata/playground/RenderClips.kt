@@ -3,6 +3,8 @@ package br.com.faru.boitata.playground
 import androidx.compose.runtime.CompositionLocalProvider
 import br.com.faru.boitata.core.clock.FixedSceneClock
 import br.com.faru.boitata.core.clock.WithSceneClock
+import br.com.faru.boitata.core.wind.Wind
+import br.com.faru.boitata.core.wind.WithSceneWind
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
@@ -30,7 +32,7 @@ fun main(args: Array<String>) {
         val dir = File(out, clip.name).apply { deleteRecursively(); mkdirs() }
         var t by mutableFloatStateOf(0f)
         val scene = ImageComposeScene(width = WIDTH, height = HEIGHT, density = Density(1f)) {
-            CompositionLocalProvider(LocalSprites provides sprites) { WithSceneClock(FixedSceneClock({ t })) { clip.content { t } } }
+            CompositionLocalProvider(LocalSprites provides sprites) { WithSceneClock(FixedSceneClock({ t })) { WithSceneWind(clip.wind) { clip.content { t } } } }
         }
         val frames = (clip.length * FPS).toInt()
         scene.render(0L)

@@ -19,6 +19,9 @@ import br.com.faru.boitata.core.clock.rememberSceneQuality
 import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.fx.bump
 import br.com.faru.boitata.core.fx.cycle
+import br.com.faru.boitata.core.wind.Wind
+import br.com.faru.boitata.core.wind.WindResponse
+import br.com.faru.boitata.core.wind.rememberSceneWind
 import br.com.faru.boitata.core.fx.LightShaft
 import kotlin.math.sin
 
@@ -45,16 +48,22 @@ public fun WindowLight(
     panes: Pair<Int, Int> = 2 to 3,
     seconds: (() -> Float)? = null,
     quality: (() -> Quality)? = null,
+    wind: Wind? = null,
+    dust: WindResponse = WindResponse.Dust,
 ) {
     val time = seconds ?: rememberSceneSeconds()
     val level = quality ?: rememberSceneQuality()
-    Spacer(modifier.drawBehind { drawWindowLight(window, floorY, depth, lean, color, strength, elevation, length, panes, time(), level()) })
+    val sceneWind = rememberSceneWind()
+    // The dust in the beam is blown about by whatever draught there is.
+    Spacer(modifier.drawBehind { val t = time(); drawWindowLight(window, floorY, depth, lean, color, strength, elevation, length, panes, t, level(), dust.drift(wind ?: sceneWind.wind, t, 0.3f)) })
 }
 
 @AdvancedBoitataApi
 public fun DrawScope.drawWindowLight(
     window: Rect, floorY: Float, depth: Float, lean: Float, color: Color, strength: Float, elevation: Float, length: Float, panes: Pair<Int, Int>, seconds: Float,
     quality: Quality = Quality.High,
+    /** How far the dust is blown sideways, as a share of the patch's reach, signed. */
+    dustDrift: Float = 0f,
 ) {
     if (strength <= 0.01f) return
     val reach = LightShaft.reachFor(elevation, length)
@@ -83,7 +92,7 @@ public fun DrawScope.drawWindowLight(
     for (i in 0 until quality.scaled(26)) {
         val u = noise.at(i, 0); val v = noise.at(i, 1)
         val life = cycle(seconds, 5f + 5f * noise.at(i, 3), noise.at(i, 2))
-        val px = window.left + window.width * u + lean * reach * v * 0.8f + sin(seconds * 0.5f + i) * 6f
+        val px = window.left + window.width * u + lean * reach * v * 0.8f + sin(seconds * 0.5f + i) * 6f + dustDrift * life * 40f
         val py = window.bottom + (floorY - window.bottom) * v - life * 20f
         drawCircle(color.copy(alpha = bump(life) * 0.6f * strength), radius = 1f + noise.at(i, 4) * 1.2f, center = Offset(px, py), blendMode = BlendMode.Plus)
     }

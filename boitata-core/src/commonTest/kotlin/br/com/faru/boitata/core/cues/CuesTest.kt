@@ -58,4 +58,13 @@ class CuesTest {
         assertTrue(AmbienceLevels.of(SkyWeather(fog = 1f)).muffle > 0.5f)
         assertEquals(0.6f, AmbienceLevels.of(SkyWeather.Clear, fire = 0.6f).fire)
     }
+
+    @Test
+    fun theWindBedFollowsTheSceneWindAndNeverGoesBelowTheWeather() {
+        val clear = SkyWeather.Clear
+        assertTrue(AmbienceLevels.of(clear, windStrength = 0.9f).wind > AmbienceLevels.of(clear).wind + 0.4f, "a strong wind is loud even on a clear day")
+        val storm = SkyWeather(cloud = 1f, precipitation = 0.9f, storm = 1f)
+        assertEquals(AmbienceLevels.of(storm).wind, AmbienceLevels.of(storm, windStrength = 0.1f).wind, "a weak wind does not quiet a storm")
+        assertTrue(AmbienceLevels.of(clear, windStrength = 5f).wind <= 1f)
+    }
 }

@@ -25,7 +25,12 @@ import br.com.faru.boitata.core.FastNoise
 import br.com.faru.boitata.core.Perspective
 import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.core.clock.rememberSceneQuality
+import androidx.compose.runtime.mutableStateMapOf
 import br.com.faru.boitata.core.depth.DepthItem
+import br.com.faru.boitata.core.draw.sway
+import br.com.faru.boitata.core.wind.Wind
+import br.com.faru.boitata.core.wind.WindResponse
+import br.com.faru.boitata.core.wind.rememberSceneWind
 import br.com.faru.boitata.core.depth.DepthStage
 import br.com.faru.boitata.core.sky.SkyModel
 import br.com.faru.boitata.core.sky.SkyWeather
@@ -58,23 +63,26 @@ fun DepthScene(
         val now = seconds()
         SideEffect { script(stage, now) }
     }
-    Box(modifier.onSizeChanged { size = it }.let { if (stage != null) it.depthDrag(stage) else it }) {
-        Spacer(Modifier.fillMaxSize().drawBehind { if (stage != null) drawDepth(art, stage, seconds(), hour, quality()) })
+    val sceneWind = rememberSceneWind()
+    // Which things the wind moves: the ones that can be moved by it, until you tap them off (or tap a stiff thing on).
+    val reacts = remember { mutableStateMapOf<String, Boolean>() }
+    Box(modifier.onSizeChanged { size = it }.let { if (stage != null) it.depthDrag(stage, onTap = { item -> reacts[item.id] = !(reacts[item.id] ?: (Props.first { p -> p.id == item.id }.wind.kind != WindResponse.Kind.Rigid)) }) else it }) {
+        Spacer(Modifier.fillMaxSize().drawBehind { if (stage != null) drawDepth(art, stage, seconds(), hour, quality(), sceneWind.wind, reacts) })
     }
 }
 
 /** The things on the ground, with the size each has at the reference depth (as a share of the height) and where it starts (as shares of the ground). */
-private class Prop(val id: String, val sprite: String, val heightShare: Float, val x: Float, val y: Float)
+private class Prop(val id: String, val sprite: String, val heightShare: Float, val x: Float, val y: Float, val wind: WindResponse = WindResponse.Rigid)
 
 private val Props = listOf(
-    Prop("araucaria", "araucaria", 0.50f, 0.17f, 0.30f),
-    Prop("palm", "palm", 0.46f, 0.84f, 0.22f),
+    Prop("araucaria", "araucaria", 0.50f, 0.17f, 0.30f, WindResponse.Pine),
+    Prop("palm", "palm", 0.46f, 0.84f, 0.22f, WindResponse.Palm),
     Prop("log", "bromeliad_log", 0.12f, 0.52f, 0.08f),
     Prop("figure", "figure", 0.34f, 0.46f, 0.58f),
     Prop("lantern", "lantern", 0.42f, 0.30f, 0.80f),
     Prop("stool", "stool", 0.17f, 0.76f, 0.66f),
     Prop("crate", "crate", 0.14f, 0.62f, 0.92f),
-    Prop("plant", "plant", 0.22f, 0.92f, 0.90f),
+    Prop("plant", "plant", 0.22f, 0.92f, 0.90f, WindResponse.Plant),
 )
 
 private fun buildStage(art: Sprites, size: IntSize): DepthStage {
@@ -92,7 +100,7 @@ private fun buildStage(art: Sprites, size: IntSize): DepthStage {
 
 private fun DepthStage.item(id: String): DepthItem = items.first { it.id == id }
 
-fun DrawScope.drawDepth(art: Sprites, stage: DepthStage, t: Float, hour: Float, quality: Quality = Quality.High) {
+fun DrawScope.drawDepth(art: Sprites, stage: DepthStage, t: Float, hour: Float, quality: Quality = Quality.High, wind: Wind = Wind.Calm, reacts: Map<String, Boolean> = emptyMap()) {
     val w = size.width; val h = size.height
     val v = cover()
     val sc = v.scale
@@ -127,10 +135,14 @@ fun DrawScope.drawDepth(art: Sprites, stage: DepthStage, t: Float, hour: Float, 
         val near = (1f - hypot(item.feetX - lamp.x, item.feetY - height * 0.5f - lamp.y) / light.reach).coerceIn(0f, 1f) * light.strength
         // Light falls off quickly: close to the lantern a thing is warm and bright, a few steps away it is nearly as dark as the wood.
         val colour = if (item === lantern) lerp(dark, lit, 0.55f) else lerp(dark, lit, (0.2f + 0.8f * near * near).coerceAtMost(1f))
-        drawArt(image, Offset(item.feetX - image.width * k / 2f, item.feetY - height - lifted), k, colour)
+        // Trees, palms and plants lean in the wind; a stiff thing does not, unless you tapped it on. The shadow keeps to the ground.
+        val prop = Props.first { it.id == item.id }
+        val response = if (reacts[item.id] ?: (prop.wind.kind != WindResponse.Kind.Rigid)) (if (prop.wind.kind == WindResponse.Kind.Rigid) WindResponse.Pine else prop.wind) else WindResponse.Rigid
+        val bend = response.bend(wind, t, item.feetX / w, phase = item.id.length * 0.21f)
+        sway(item.feetX, item.feetY - lifted, bend, maxLean = 0.12f) { drawArt(image, Offset(item.feetX - image.width * k / 2f, item.feetY - height - lifted), k, colour) }
         // Depth shows in the air too: a thing far back is taken a little by the haze.
         val back = stage.depthOf(item)
-        if (back > 0.5f) drawArt(image, Offset(item.feetX - image.width * k / 2f, item.feetY - height - lifted), k, Color(0xFF1B2C38).copy(alpha = 0.4f * (back - 0.5f) * 2f))
+        if (back > 0.5f) sway(item.feetX, item.feetY - lifted, bend, maxLean = 0.12f) { drawArt(image, Offset(item.feetX - image.width * k / 2f, item.feetY - height - lifted), k, Color(0xFF1B2C38).copy(alpha = 0.4f * (back - 0.5f) * 2f)) }
     }
     // The lantern's flame, and rings of carved arcs for its glow.
     drawCircle(Brush.radialGradient(0f to Color(0xFFFFF1C2), 0.3f to Color(0xAAFFC46B), 1f to Color.Transparent, center = lamp, radius = lanternHeight * 0.16f), radius = lanternHeight * 0.16f, center = lamp, blendMode = BlendMode.Plus)

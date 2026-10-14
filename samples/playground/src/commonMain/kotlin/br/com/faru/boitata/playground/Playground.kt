@@ -36,6 +36,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import br.com.faru.boitata.core.clock.BoitataScene
 import br.com.faru.boitata.core.clock.rememberSceneSeconds
+import br.com.faru.boitata.core.sky.MoonPhase
+import br.com.faru.boitata.core.wind.Wind
 
 /** The demos, in the order of the tabs. */
 enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Fire("Fire") }
@@ -46,9 +48,13 @@ fun PlaygroundApp() {
     MaterialTheme(colorScheme = darkColorScheme(background = Color(0xFF0B0D10), surface = Color(0xFF14181D), primary = Color(0xFFF2A83B))) {
         var demo by remember { mutableStateOf(Demo.Forest) }
         var sound by remember { mutableStateOf(false) }
+        // The wind and the moon are the whole playground's: set them once and every scene that has wind or a moon follows.
+        var wind by remember { mutableStateOf(Wind.Breeze) }
+        var moon by remember { mutableStateOf(MoonPhase.Full) }
+        var southern by remember { mutableStateOf(true) }
         val sink = remember { createAudioSink() }
         DisposableEffect(sink) { onDispose { sink.release() } }
-        BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B0D10))) {
+        BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B0D10)), wind = wind) {
         val seconds = rememberSceneSeconds()
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -56,13 +62,15 @@ fun PlaygroundApp() {
                 // The browser keeps sound locked until a tap: turning it on is that tap.
                 FilterChip(selected = sound, onClick = { sound = !sound; if (sound) sink.unlock() }, label = { Text(if (sound) "Sound on" else "Sound off") })
             }
+            WindControls(wind) { wind = it }
+            MoonControls(moon, southern, onPhase = { moon = it }, onHemisphere = { southern = it })
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 ProvideSprites { sprites ->
                 CompositionLocalProvider(LocalSprites provides sprites) {
                 when (demo) {
-                    Demo.Forest -> ForestDemo(seconds, sink, sound)
-                    Demo.Weather -> WeatherDemo(seconds, sink, sound)
-                    Demo.Window -> WindowDemo(seconds)
+                    Demo.Forest -> ForestDemo(seconds, sink, sound, moon, southern)
+                    Demo.Weather -> WeatherDemo(seconds, sink, sound, moon, southern)
+                    Demo.Window -> WindowDemo(seconds, moon, southern)
                     Demo.Shadows -> ShadowDemo(seconds)
                     Demo.Depth -> DepthDemo(seconds)
                     Demo.Fire -> FireDemo(seconds, sink, sound)
@@ -72,6 +80,34 @@ fun PlaygroundApp() {
             }
         }
         }
+    }
+}
+
+/** The wind for the whole playground: a few named winds, and sliders for the strength, the direction and how gusty it is. */
+@Composable
+private fun WindControls(wind: Wind, onChange: (Wind) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Wind", color = Color(0xFFB7BEC8))
+            for ((name, preset) in listOf("Calm" to Wind.Calm, "Breeze" to Wind.Breeze, "Windy" to Wind.Windy, "Gale" to Wind.Gale)) {
+                FilterChip(selected = wind.speed == preset.speed && wind.gustiness == preset.gustiness, onClick = { onChange(preset.copy(direction = if (wind.direction == 0f) 1f else wind.direction)) }, label = { Text(name) })
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) { Text("Speed ${(wind.speed * 100).toInt()}%", color = Color(0xFFB7BEC8)); Slider(wind.speed, { onChange(wind.copy(speed = it)) }, valueRange = 0f..1f) }
+            Column(Modifier.weight(1f)) { Text(if (wind.direction < -0.05f) "Blowing left" else if (wind.direction > 0.05f) "Blowing right" else "No direction", color = Color(0xFFB7BEC8)); Slider(wind.direction, { onChange(wind.copy(direction = it)) }, valueRange = -1f..1f) }
+            Column(Modifier.weight(1f)) { Text("Gusts ${(wind.gustiness * 100).toInt()}%", color = Color(0xFFB7BEC8)); Slider(wind.gustiness, { onChange(wind.copy(gustiness = it)) }, valueRange = 0f..1f) }
+        }
+    }
+}
+
+/** Which moon, and from which hemisphere: it sets which side is lit. */
+@Composable
+private fun MoonControls(phase: MoonPhase, southern: Boolean, onPhase: (MoonPhase) -> Unit, onHemisphere: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text("Moon", color = Color(0xFFB7BEC8))
+        for (p in MoonPhase.All) FilterChip(selected = p === phase, onClick = { onPhase(p) }, label = { Text(p.label) })
+        FilterChip(selected = southern, onClick = { onHemisphere(!southern) }, label = { Text(if (southern) "Southern sky" else "Northern sky") })
     }
 }
 
@@ -89,11 +125,11 @@ private fun Labelled(label: String, value: Float, range: ClosedFloatingPointRang
 }
 
 @Composable
-private fun ForestDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
+private fun ForestDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, moon: MoonPhase, southern: Boolean) {
     var rain by remember { mutableFloatStateOf(0f) }
     var fog by remember { mutableFloatStateOf(0.35f) }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { ForestScene(seconds, rain = rain, fog = fog) }
+        Box(Modifier.weight(1f)) { ForestScene(seconds, rain = rain, fog = fog, moon = moon, southern = southern) }
         // The serpent is a fire: its crackle is always there; the rain follows the slider, the mist muffles.
         BoitataAudio(sink, weather = SkyWeather(cloud = 0.2f + 0.4f * rain, precipitation = rain, fog = fog * 0.5f), fire = 0.7f, enabled = sound)
         Controls { Labelled("Rain", rain, 0f..1f) { rain = it }; Labelled("Mist", fog, 0f..1f) { fog = it } }
@@ -101,12 +137,12 @@ private fun ForestDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
 }
 
 @Composable
-private fun WeatherDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
+private fun WeatherDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, moon: MoonPhase, southern: Boolean) {
     var hour by remember { mutableFloatStateOf(14f) }
     var kind by remember { mutableStateOf(WeatherKind.Rain) }
     val storm = remember { StormModel(seed = 17L, intensity = 1f) }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { WeatherScene(seconds, hour, kind, stormModel = storm) }
+        Box(Modifier.weight(1f)) { WeatherScene(seconds, hour, kind, stormModel = storm, moon = moon, southern = southern) }
         // The thunder comes from the same storm as the lightning drawn above, so each flash is followed by its sound, distance over the speed of sound later.
         BoitataAudio(sink, storm = if (kind == WeatherKind.Storm) storm else null, weather = kind.skyWeather(), enabled = sound)
         Controls {
@@ -119,11 +155,11 @@ private fun WeatherDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
 }
 
 @Composable
-private fun WindowDemo(seconds: () -> Float) {
+private fun WindowDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
     var hour by remember { mutableFloatStateOf(16.5f) }
     var cloud by remember { mutableFloatStateOf(0f) }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { WindowScene(seconds, hour, cloud) }
+        Box(Modifier.weight(1f)) { WindowScene(seconds, hour, cloud, moon = moon, southern = southern) }
         Controls { Labelled("Hour", hour, 0f..24f) { hour = it }; Labelled("Cloud", cloud, 0f..1f) { cloud = it } }
     }
 }
@@ -139,7 +175,7 @@ private fun ShadowDemo(seconds: () -> Float) {
                     light = Offset((change.position.x / size.width).coerceIn(0.02f, 0.98f), (change.position.y / size.height).coerceIn(0.05f, 0.95f))
                 }
             },
-        ) { ShadowScene({ light }, reach) }
+        ) { ShadowScene({ light }, reach, seconds = seconds) }
         Controls { Text("Drag the light", color = Color(0xFFB7BEC8)); Labelled("Reach", reach, 0.3f..1.4f) { reach = it } }
     }
 }
@@ -148,7 +184,7 @@ private fun ShadowDemo(seconds: () -> Float) {
 private fun DepthDemo(seconds: () -> Float) {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { DepthScene(seconds) }
-        Controls { Text("Drag anything. Up sends it back, small and tucked behind what is nearer; down brings it forward, bigger. The lantern is the light.", color = Color(0xFFB7BEC8)) }
+        Controls { Text("Drag anything. Up sends it back, small and tucked behind what is nearer; down brings it forward, bigger. The lantern is the light. Tap a thing to switch whether the wind moves it (palms, plants and the pine do by default).", color = Color(0xFFB7BEC8)) }
     }
 }
 

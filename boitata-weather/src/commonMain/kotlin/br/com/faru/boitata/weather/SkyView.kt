@@ -31,6 +31,9 @@ import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.core.clock.rememberSceneQuality
 import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.draw.drawImageSmooth
+import br.com.faru.boitata.core.sky.MoonShape
+import br.com.faru.boitata.core.wind.WindResponse
+import br.com.faru.boitata.core.wind.rememberSceneWind
 import br.com.faru.boitata.core.sky.SkyModel
 import br.com.faru.boitata.core.sky.SkyState
 import kotlin.math.PI
@@ -97,13 +100,16 @@ fun SkyWindow(
     horizon: Float = SkyModel.HORIZON_Y,
     quality: (() -> Quality)? = null,
     art: SkyArt? = null,
+    /** Which hemisphere the viewer is in: it decides which side of the moon is lit (a waxing moon is lit on its right from the north, on its left from the south). */
+    southernHemisphere: Boolean = false,
 ) {
     val time = seconds ?: rememberSceneSeconds()
     val level = quality ?: rememberSceneQuality()
+    val sceneWind = rememberSceneWind()
     Box(modifier) {
         Spacer(
             Modifier.fillMaxSize().drawBehind {
-                drawSky(sky(), time(), parallax(), clouds, horizon, level(), art)
+                drawSky(sky(), time(), parallax(), clouds, horizon, level(), art, southernHemisphere, sceneWind.travelled)
                 // Lightning: the sky flares and the bolt stands behind the roofs.
                 storm?.let { st ->
                     drawFlash(st.flash() * 0.9f)
@@ -163,7 +169,7 @@ private fun DrawScope.drawLayer(image: ImageBitmap, depth: Float, shift: Offset,
     )
 }
 
-private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, clouds: ImageBitmap?, horizon: Float, quality: Quality, art: SkyArt?) {
+private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, clouds: ImageBitmap?, horizon: Float, quality: Quality, art: SkyArt?, southern: Boolean, travelled: Float) {
     val w = size.width; val h = size.height
     val horizonY = h * horizon
     val arc = horizon / SkyModel.HORIZON_Y
@@ -207,22 +213,20 @@ private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, c
         val r = w * 0.035f
         val a = (1f - hide * 0.9f).coerceIn(0f, 1f) * (1f - sky.daylight * 1.2f).coerceIn(0f, 1f)
         drawCircle(Brush.radialGradient(0f to Color(0xFFB4C4DA).copy(alpha = 0.22f * a), 1f to Color.Transparent, center = c, radius = r * 6f), r * 6f, c)
-        val disc = Path().apply { addOval(androidx.compose.ui.geometry.Rect(c, r)) }
-        val lit = if (sky.moonPhase >= 0.97f) disc else Path().apply {
-            val cut = Path().apply { addOval(androidx.compose.ui.geometry.Rect(Offset(c.x - (1f - sky.moonPhase) * 2f * r, c.y), r * 1.02f)) }
-            op(disc, cut, PathOperation.Difference)
-        }
+        // The lit part has a real terminator (see MoonShape), on the side the phase and the hemisphere say; the dark part shows faintly, as it does in the sky.
+        val lit = MoonShape.litPath(c.x, c.y, r, sky.moonPhase, MoonShape.litOnRight(sky.moonWaxing, southern))
+        drawCircle(Color(0xFFDDE5F0).copy(alpha = 0.1f * a), r, c)
         val moonArt = art?.moon
         if (moonArt == null) drawPath(lit, Color(0xFFDDE5F0).copy(alpha = a))
         // The picture shows only where the moon is lit, so its phase still works.
         else clipPath(lit) { drawImageSmooth(moonArt, c.x - r * 1.1f, c.y - r * 1.1f, (r * 2.2f).toInt(), (r * 2.2f).toInt(), colorFilter = ColorFilter.tint(Color(0xFFDDE5F0).copy(alpha = a), BlendMode.SrcIn), quality = quality) }
     }
 
-    drawClouds(sky, seconds, shift, clouds, horizonY, quality)
+    drawClouds(sky, seconds, shift, clouds, horizonY, quality, travelled)
 }
 
 /** Clouds painted as clusters of soft puffs drifting with the wind, or, with a picture, that strip scrolled across; lit from the sun's side. */
-private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, strip: ImageBitmap?, horizonY: Float, quality: Quality) {
+private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, strip: ImageBitmap?, horizonY: Float, quality: Quality, travelled: Float) {
     val cover = sky.weather.cloud
     if (cover < 0.04f) return
     val w = size.width
@@ -233,7 +237,10 @@ private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, st
     val wind = 0.004f + 0.012f * (sky.weather.storm + sky.weather.precipitation * 0.5f)
     if (strip != null) {
         val sw = w * 2f; val sh = sw * strip.height / strip.width
-        val offset = -((seconds * wind * w) % sw)
+        // The weather's own slow drift to the left, plus wherever the wind has carried the clouds (the high ones and the low ones average out on a single strip).
+        val gain = (WindResponse.HighCloud.driftGain + WindResponse.LowCloud.driftGain) / 2f
+        val raw = -(seconds * wind * w) + travelled * gain * CLOUD_CARRY * w
+        val offset = ((raw % sw) + sw) % sw - sw
         // Drifts a fraction of a pixel per frame: drawImageSmooth places it with a float translation (see drawLayer).
         val filter = ColorFilter.tint(body.copy(alpha = 0.55f), BlendMode.Modulate)
         for (k in 0..1) drawImageSmooth(strip, offset + k * sw + shift, horizonY * 0.08f, sw.toInt(), sh.toInt(), alpha = (cover * 1.1f).coerceIn(0f, 1f), colorFilter = filter, quality = quality)
@@ -243,8 +250,12 @@ private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, st
     val count = quality.scaled((3 + cover * 11).toInt())
     repeat(count) { i ->
         val speed = wind * (0.6f + noise.at(i, 0))
-        val x = (((noise.at(i, 1) + seconds * speed) % 1.3f) - 0.15f) * w + shift * (0.5f + noise.at(i, 2))
         val y = horizonY * (0.1f + 0.75f * noise.at(i, 3) * (1f - 0.3f * cover) + 0.05f)
+        // High clouds are carried faster than low ones.
+        val altitude = (y / horizonY).coerceIn(0f, 1f)
+        val gain = WindResponse.HighCloud.driftGain + (WindResponse.LowCloud.driftGain - WindResponse.HighCloud.driftGain) * altitude
+        val u = noise.at(i, 1) + seconds * speed + travelled * gain * CLOUD_CARRY
+        val x = (((u % 1.3f) + 1.3f) % 1.3f - 0.15f) * w + shift * (0.5f + noise.at(i, 2))
         val scale = w * (0.07f + 0.09f * noise.at(i, 4)) * (0.8f + cover * 0.5f)
         val puffs = 5 + (noise.at(i, 5) * 4).toInt()
         for (p in 0 until puffs) {
@@ -271,3 +282,6 @@ public fun DrawScope.drawAtlasStar(atlas: StarAtlas, index: Int, at: Offset, pix
         srcOffset = androidx.compose.ui.unit.IntOffset(cx, cy), srcSize = androidx.compose.ui.unit.IntSize(atlas.cell, atlas.cell),
     )
 }
+
+/** How far clouds move (as a share of the screen) for one unit of the air's travelled distance, before their own gain. */
+private const val CLOUD_CARRY = 0.012f

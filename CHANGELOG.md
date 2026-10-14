@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- Wind: `Wind` (speed, direction, gustiness, gust period, turbulence, travel time; `Calm`, `Breeze`, `Windy`, `Gale`) and `WindResponse` (Free, Anchored or Rigid, with `weight`, `surface`, `stiffness` and a plain `influence`; presets for rain, snow, leaves, embers, dust, fog, clouds, grass, plants, palms, pines, trunks and flames). `BoitataScene(wind = ...)` gives it to everything: rain slants, snow is carried, fog and clouds drift by the distance the air has travelled (so a change of wind never makes them jump), flames lean, embers and sparks streak, window dust blows, and the wind sound swells with the gusts. `sway(...)` draws anything leaning about its foot.
+- Breaking: `Rain` and `Snow` no longer take a `wind: Float`; they take `wind: Wind?` and a `response`, and read the scene's wind by default.
+- The moon: `MoonPhase` (the eight named phases), `SkyModel.at(hour, weather, MoonPhase)`, `MoonShape.litPath` (a real terminator, tested by counting lit pixels), and `SkyWindow(southernHemisphere = ...)`, which mirrors the lit side.
+- `depthDrag` takes an `onTap`.
 - `SkyArt` and `StarAtlas`: give `SkyWindow(art = ...)` your own pictures for the sun, the moon (its phase still shapes it) and the stars, drawn as solid shapes with the detail cut out; each is tinted by the sky. The playground uses the woodcut sun, moon and stars from the pen file in every scene.
 - Depth: `DepthStage` and `DepthItem` (things on a ground that can be moved about: scale from `Perspective`, draw order, hit test, kept on the ground, a lift while held), `Modifier.depthDrag` in `boitata-scene`, and `Depth` (a single 0..1 depth turned into a size, a fade and a layer slot).
 - `drawFlameTrail` takes `scales`, `visibility` and a `range`, so a flame body can pass through depth and be drawn a piece at a time between layers; the glow thins as the body grows so it does not burn out.

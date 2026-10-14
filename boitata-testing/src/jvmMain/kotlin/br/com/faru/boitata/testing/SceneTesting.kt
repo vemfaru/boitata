@@ -69,3 +69,32 @@ public fun measureScene(
     val sorted = millis.sorted()
     return SceneStats(frames, millis.average(), sorted[(frames * 0.95).toInt().coerceAtMost(frames - 1)], identical, longest, at)
 }
+
+/** One drawn frame, readable by pixel. */
+public class Still(public val width: Int, public val height: Int, private val bytes: ByteArray) {
+    /** How opaque the pixel at ([x], [y]) is, 0..255. */
+    public fun alpha(x: Int, y: Int): Int = bytes[(y * width + x) * 4 + 3].toInt() and 0xFF
+
+    /** The mean x of the opaque pixels in rows [fromRow] until [toRow], or null if there are none. */
+    public fun meanX(fromRow: Int = 0, toRow: Int = height, threshold: Int = 40): Double? {
+        var sum = 0.0; var n = 0
+        for (y in fromRow until toRow) for (x in 0 until width) if (alpha(x, y) > threshold) { sum += x; n++ }
+        return if (n == 0) null else sum / n
+    }
+
+    /** How many pixels are opaque. */
+    public fun count(threshold: Int = 40): Int = (0 until height).sumOf { y -> (0 until width).count { x -> alpha(x, y) > threshold } }
+}
+
+/** Draws [content] once at [seconds] on a clock that stands there, and returns the picture. */
+public fun renderStill(width: Int = 400, height: Int = 300, seconds: Float = 5f, content: @Composable () -> Unit): Still {
+    var t by mutableFloatStateOf(seconds)
+    val scene = ImageComposeScene(width = width, height = height, density = Density(1f)) { WithSceneClock(FixedSceneClock({ t })) { content() } }
+    repeat(3) { scene.render(it * 16_666_667L) }
+    Snapshot.sendApplyNotifications()
+    scene.render(4 * 16_666_667L)
+    val image = scene.render(5 * 16_666_667L)
+    val bytes = Bitmap.makeFromImage(image).readPixels() ?: ByteArray(width * height * 4)
+    scene.close()
+    return Still(width, height, bytes)
+}

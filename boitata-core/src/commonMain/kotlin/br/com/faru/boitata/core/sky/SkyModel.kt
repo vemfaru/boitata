@@ -43,6 +43,8 @@ data class SkyState(
     val moon: SkyPoint,
     /** The moon's lit part, 0 new to 1 full, and which side is lit (+1 right, -1 left). */
     val moonPhase: Float,
+    /** Whether the moon is growing (waxing) or shrinking: with the hemisphere, it says which side is lit. */
+    val moonWaxing: Boolean = true,
     /** How bright the day is: 0 at night, 1 in full day, ramping through dawn and dusk. */
     val daylight: Float,
     /** How much the sky is lit by twilight colour: strongest with the sun on the horizon. */
@@ -113,7 +115,10 @@ object SkyModel {
     const val HORIZON_Y = 0.34f
     const val ART_HORIZON_Y = 0.6f
 
-    fun at(hour: Float, weather: SkyWeather = SkyWeather.Clear, moonPhase: Float = 0.85f): SkyState {
+    /** The sky at [hour] with the moon at one of the named [phase]s. */
+    fun at(hour: Float, weather: SkyWeather, phase: MoonPhase): SkyState = at(hour, weather, phase.fraction, phase.waxing)
+
+    fun at(hour: Float, weather: SkyWeather = SkyWeather.Clear, moonPhase: Float = 0.85f, moonWaxing: Boolean = true): SkyState {
         val h = wrap(hour)
         val daylight = daylight(h)
         val elevation = sunElevation(h)
@@ -145,7 +150,7 @@ object SkyModel {
         val windows = (1f - daylight * 1.3f).coerceIn(0f, 1f) * (0.55f + 0.45f * (weather.cloud + weather.precipitation).coerceAtMost(1f)).coerceAtMost(1f)
 
         return SkyState(
-            hour = h, sunElevation = elevation, sun = sun, moon = moon, moonPhase = moonPhase,
+            hour = h, sunElevation = elevation, sun = sun, moon = moon, moonPhase = moonPhase, moonWaxing = moonWaxing,
             daylight = daylight * (0.35f + 0.65f * clear), twilight = twilight, stars = stars,
             zenith = zenith, horizon = horizon, lightColor = lightColor, lightStrength = strength,
             lightFrom = if (fromSun) sun else moon, viewVeil = veil, windowsLit = windows, weather = weather,

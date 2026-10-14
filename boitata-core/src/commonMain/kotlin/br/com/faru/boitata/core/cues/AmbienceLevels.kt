@@ -17,10 +17,13 @@ public class AmbienceLevels(
     public val fire: Float = 0f,
 ) {
     public companion object {
-        /** The levels for [weather], with a [fire] of 0..1 if one burns in the scene. */
-        public fun of(weather: SkyWeather, fire: Float = 0f): AmbienceLevels = AmbienceLevels(
+        /**
+         * The levels for [weather], with a [fire] of 0..1 if one burns in the scene, and the [windStrength] of the scene's wind right now (0..1.5; gusts make it swell and fall).
+         * The wind bed is the louder of what the weather asks for and what the wind is doing.
+         */
+        public fun of(weather: SkyWeather, fire: Float = 0f, windStrength: Float = 0f): AmbienceLevels = AmbienceLevels(
             rain = (weather.precipitation * (0.55f + 0.45f * weather.storm)).coerceIn(0f, 1f),
-            wind = (0.12f + 0.45f * weather.storm + 0.2f * weather.precipitation + 0.1f * weather.cloud).coerceIn(0f, 1f),
+            wind = maxOf(0.12f + 0.45f * weather.storm + 0.2f * weather.precipitation + 0.1f * weather.cloud, windStrength * 0.95f).coerceIn(0f, 1f),
             muffle = (0.7f * weather.fog + 0.2f * weather.cloud).coerceIn(0f, 1f),
             fire = fire.coerceIn(0f, 1f),
         )

@@ -35,6 +35,52 @@ fun MinimalFire() {
 
 ![The Boitatá's fire](docs/media/fire-boitata.gif)
 
+### Wind that moves everything it should
+
+![A gale over the forest: rain slants, clouds race, trees bend and the serpent's sparks blow](docs/media/weather-storm.gif)
+
+Give a scene a wind and everything in it reacts, each in its own way. `BoitataScene(wind = Wind(speed = 0.6f, direction = -1f, gustiness = 0.5f))`: a speed, a direction (-1 blows left, 1 right),
+how gusty it is, how often gusts come, and a turbulence. A gust crosses the scene, so the near side moves before the far side. The named winds are `Calm`, `Breeze`, `Windy` and `Gale`.
+
+What a thing does with it is its `WindResponse`, and there are three kinds:
+
+| Kind | Moves how | You choose | Examples |
+|---|---|---|---|
+| **Free** | always drifts with the wind | `weight` (feather to stone), `surface` (needle to sheet) | rain, snow, leaves, embers, dust, fog, clouds |
+| **Anchored** | leans and sways about its foot | `stiffness` (limp to post) | palms, pines, grass, plants, flames |
+| **Rigid** | does not move | | a crate, a rock |
+
+A heavy or stiff thing is also slow: it feels a gust a moment late and smoothed out, and a light one jerks with it. `influence` is a plain multiplier on any of them (0 ignores the wind).
+Presets cover the usual things: `Raindrop`, `Snowflake`, `Leaf`, `Ember`, `Dust`, `Fog`, `LowCloud`, `HighCloud`, `Grass`, `Plant`, `Palm`, `Pine`, `Trunk`, `Flame`.
+Rain slants, snow is carried as it falls, fog and clouds drift (high clouds faster than low ones), flames lean and their embers and sparks streak downwind, the dust in a sunbeam blows, and the wind bed
+of the sound swells with the gusts. The wind is plain arithmetic on time, so it stays scrubbable, recordable and testable.
+
+```kotlin
+@Composable
+fun MinimalWind() {
+    val seconds = rememberSceneSeconds()
+    val sceneWind = rememberSceneWind()
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B1220)), wind = Wind(speed = 0.6f, direction = -1f, gustiness = 0.5f)) {
+        Rain(intensity = 0.7f)
+        Canvas(Modifier.fillMaxSize()) {
+            // A palm is anchored but flexible: the wind bends it, a stiffer thing less, and a rigid one not at all.
+            val bend = WindResponse.Palm.bend(sceneWind.wind, seconds(), place = 0.5f)
+            sway(feetX = size.width / 2f, feetY = size.height, bend = bend) {
+                drawRect(Color(0xFF2F5D3A), Offset(size.width / 2f - 6f, size.height - 220f), Size(12f, 220f))
+            }
+        }
+    }
+}
+```
+
+### Pick the moon
+
+![The moon through its eight phases, lit on the side the southern sky shows](docs/media/moon-phases.gif)
+
+`SkyModel.at(hour, weather, MoonPhase.WaxingCrescent)` takes one of the eight named phases (`New`, `WaxingCrescent`, `FirstQuarter`, `WaxingGibbous`, `Full`, and the waning ones), or any lit fraction you like.
+The lit part is drawn with a real terminator, so a crescent, a quarter and a gibbous moon each have their true shape, and the dark part shows faintly. `SkyWindow(southernHemisphere = true)` mirrors the lit side,
+because from the south a waxing moon is lit on its left. The full moon lights the night more than a thin one.
+
 ### Depth: things that go back and forward
 
 ![The serpent swims back to the horizon behind the trees, between them, and close in front of everything](docs/media/boitata.gif)

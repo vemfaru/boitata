@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import br.com.faru.boitata.core.wind.rememberSceneWind
 import androidx.compose.runtime.snapshotFlow
 import br.com.faru.boitata.core.clock.LocalSceneClock
 import br.com.faru.boitata.core.clock.rememberSceneClock
@@ -45,8 +47,11 @@ public fun BoitataAudio(
     DisposableEffect(scheduler) { onDispose { scheduler.release() } }
 
     LaunchedEffect(scheduler, storm, enabled) { scheduler.setStorm(if (enabled) storm else null) }
-    LaunchedEffect(scheduler, weather, fire, enabled) {
-        scheduler.setLevels(if (enabled) AmbienceLevels.of(weather, fire) else AmbienceLevels(0f, 0f, 0f, 0f))
+    val sceneWind = rememberSceneWind()
+    val currentWeather = rememberUpdatedState(weather)
+    val currentFire = rememberUpdatedState(fire)
+    LaunchedEffect(scheduler, enabled) {
+        if (!enabled) scheduler.setLevels(AmbienceLevels(0f, 0f, 0f, 0f))
     }
     // The device sleeps with the app.
     LaunchedEffect(sink, clock) {
@@ -59,6 +64,8 @@ public fun BoitataAudio(
         snapshotFlow { if (clock.reducedMotion && config.keepThunderUnderReducedMotion) clock.realSeconds() else clock.seconds() }
             .conflate()
             .collect { now ->
+                // The wind bed swells and falls with the gusts, so it is set every frame from the scene's wind (and the weather, and the fire).
+                scheduler.setLevels(AmbienceLevels.of(currentWeather.value, currentFire.value, sceneWind.at(now, 0.5f).strength))
                 scheduler.advance(now)
                 for (cue in scheduler.cuesToRender(now)) scheduler.provide(cue, withContext(Dispatchers.Default) { scheduler.render(cue) })
             }

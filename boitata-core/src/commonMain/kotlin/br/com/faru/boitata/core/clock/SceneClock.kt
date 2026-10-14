@@ -149,17 +149,19 @@ private const val MAX_STEP = 0.1f
 
 /**
  * The home of a scene. Everything inside shares one clock, one quality budget and one pause and reduced-motion decision:
- * `Rain`, `Snow`, `Fog`, `Fire`, `SkyWindow`, `WindowLight`, `rememberStorm` all read them from here.
+ * `Rain`, `Snow`, `Fog`, `Fire`, `SkyWindow`, `WindowLight`, `rememberStorm` all read them from here, and the [wind] too: it blows rain and snow, drifts fog and clouds, leans flames and
+ * sways whatever draws itself with `WindResponse`.
  */
 @Composable
 public fun BoitataScene(
     modifier: Modifier = Modifier,
     config: SceneConfig = SceneConfig(),
+    wind: br.com.faru.boitata.core.wind.Wind = br.com.faru.boitata.core.wind.Wind.Calm,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val clock = rememberSceneClock(config)
     CompositionLocalProvider(LocalSceneClock provides clock) {
-        Box(modifier) { content() }
+        br.com.faru.boitata.core.wind.WithSceneWind(wind) { Box(modifier) { content() } }
     }
 }
 

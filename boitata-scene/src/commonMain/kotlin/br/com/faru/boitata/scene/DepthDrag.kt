@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import br.com.faru.boitata.core.depth.DepthItem
@@ -17,13 +18,16 @@ import kotlinx.coroutines.launch
  * brings it forward and bigger) and let go to set it down. Where things overlap, the nearest is the one picked.
  *
  * The positions are state read in the draw phase, so a drag redraws and recomposes nothing. Apply it to the same box the stage is drawn in, so the pointer and the picture share pixels.
- * [onGrab] and [onRelease] tell you which item was picked up and put down (to play a sound, say).
+ * [onGrab] and [onRelease] tell you which item was picked up and put down (to play a sound, say); [onTap] tells you which one was tapped without being moved.
  */
 public fun Modifier.depthDrag(
     stage: DepthStage,
     onGrab: (DepthItem) -> Unit = {},
     onRelease: (DepthItem) -> Unit = {},
+    onTap: (DepthItem) -> Unit = {},
 ): Modifier = pointerInput(stage) {
+    detectTapGestures(onTap = { at -> stage.hit(at.x, at.y)?.let(onTap) })
+}.pointerInput(stage) {
     coroutineScope {
         var grabbed: DepthItem? = null
         val lifting = HashMap<DepthItem, Job>()

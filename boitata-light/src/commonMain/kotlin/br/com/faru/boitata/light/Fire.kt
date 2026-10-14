@@ -19,6 +19,9 @@ import br.com.faru.boitata.core.clock.rememberSceneQuality
 import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.fx.bump
 import br.com.faru.boitata.core.fx.cycle
+import br.com.faru.boitata.core.wind.Wind
+import br.com.faru.boitata.core.wind.WindResponse
+import br.com.faru.boitata.core.wind.rememberSceneWind
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -48,12 +51,21 @@ public fun Fire(
     seed: Long = 11L,
     seconds: (() -> Float)? = null,
     quality: (() -> Quality)? = null,
+    wind: Wind? = null,
+    flame: WindResponse = WindResponse.Flame,
+    embers: WindResponse = WindResponse.Ember,
 ) {
     val time = seconds ?: rememberSceneSeconds()
     val level = quality ?: rememberSceneQuality()
+    val sceneWind = rememberSceneWind()
     Spacer(
         modifier.drawBehind {
-            drawFlame(size.width * 0.5f, size.height, size.width * 0.8f, size.height * 0.9f, time(), intensity, palette, seed, level())
+            val t = time(); val blowing = wind ?: sceneWind.wind
+            // The flame leans and the embers streak downwind; a stronger gust bends it more.
+            drawFlame(
+                size.width * 0.5f, size.height, size.width * 0.8f, size.height * 0.9f, t, intensity, palette, seed, level(),
+                lean = flame.bend(blowing, t, 0.5f, phase = seed * 0.37f) * 0.45f, emberDrift = embers.drift(blowing, t, 0.5f),
+            )
         },
     )
 }
@@ -63,6 +75,10 @@ public fun Fire(
 public fun DrawScope.drawFlame(
     baseX: Float, baseY: Float, width: Float, height: Float,
     seconds: Float, intensity: Float = 1f, palette: FlamePalette = FlamePalette.Campfire, seed: Long = 11L, quality: Quality = Quality.High,
+    /** How far the flame leans, as a share of its height, signed (positive to the right). */
+    lean: Float = 0f,
+    /** How far the embers are blown, as a share of how high they rise, signed. */
+    emberDrift: Float = 0f,
 ) {
     val noise = FastNoise(seed)
     val k = intensity.coerceIn(0f, 1f)
@@ -86,23 +102,26 @@ public fun DrawScope.drawFlame(
             val half = width / tongues * (0.95f * scale + 0.15f)
             path.reset()
             path.moveTo(fx - half, baseY)
-            path.quadraticTo(fx - half * 0.9f + sway * 0.4f, baseY - tall * 0.55f, fx + sway, baseY - tall)
-            path.quadraticTo(fx + half * 0.9f + sway * 0.4f, baseY - tall * 0.55f, fx + half, baseY)
+            // The lean moves the tip most and the middle of the tongue half as much, so the flame bends instead of tipping over.
+            val tip = lean * tall * 0.9f * scale
+            path.quadraticTo(fx - half * 0.9f + sway * 0.4f + tip * 0.35f, baseY - tall * 0.55f, fx + sway + tip, baseY - tall)
+            path.quadraticTo(fx + half * 0.9f + sway * 0.4f + tip * 0.35f, baseY - tall * 0.55f, fx + half, baseY)
             path.close()
             drawPath(path, color.copy(alpha = 0.55f), blendMode = BlendMode.Plus)
         }
     }
-    drawEmbers(baseX, baseY - height * 0.25f, width, height * 1.6f, seconds, k, palette.ember, seed + 1, quality)
+    drawEmbers(baseX, baseY - height * 0.25f, width, height * 1.6f, seconds, k, palette.ember, seed + 1, quality, emberDrift)
 }
 
 /** Embers lifting off a fire: [count] scales with [intensity]; each rises over about two seconds, drifting, and fades. */
 @AdvancedBoitataApi
-public fun DrawScope.drawEmbers(x: Float, y: Float, spread: Float, rise: Float, seconds: Float, intensity: Float, color: Color, seed: Long = 12L, quality: Quality = Quality.High) {
+public fun DrawScope.drawEmbers(x: Float, y: Float, spread: Float, rise: Float, seconds: Float, intensity: Float, color: Color, seed: Long = 12L, quality: Quality = Quality.High, drift: Float = 0f) {
     val noise = FastNoise(seed)
     val count = quality.scaled((22 * intensity.coerceIn(0f, 1f)).toInt())
     for (i in 0 until count) {
         val life = cycle(seconds, 1.6f + 1.2f * noise.at(i, 0), noise.at(i, 1))
-        val px = x + (noise.at(i, 2) - 0.5f) * spread * 0.6f + sin(seconds * 1.7f + i) * spread * 0.06f * life + (life * life) * spread * 0.25f * (noise.at(i, 3) - 0.3f)
+        // The higher an ember has risen the more the wind has had it.
+        val px = x + (noise.at(i, 2) - 0.5f) * spread * 0.6f + sin(seconds * 1.7f + i) * spread * 0.06f * life + (life * life) * spread * 0.25f * (noise.at(i, 3) - 0.3f) + drift * life * life * rise * 0.9f
         val py = y - life * rise * (0.5f + 0.5f * noise.at(i, 4))
         val a = bump(life) * 0.9f
         drawCircle(color.copy(alpha = a), radius = (1.2f + 1.6f * noise.at(i, 5)) * (1f - 0.5f * life), center = Offset(px, py), blendMode = BlendMode.Plus)
@@ -121,6 +140,8 @@ public fun DrawScope.drawFlameTrail(
     points: FloatArray, count: Int, width: Float, seconds: Float,
     palette: FlamePalette = FlamePalette.Boitata, seed: Long = 21L, quality: Quality = Quality.High,
     scales: FloatArray? = null, visibility: FloatArray? = null, range: IntRange = 0 until count,
+    /** How far sparks shed from the body are blown, as a share of the body width, signed. */
+    sparkDrift: Float = 0f,
 ) {
     if (count < 2) return
     val first = range.first.coerceAtLeast(0); val last = range.last.coerceAtMost(count - 1)
@@ -155,7 +176,7 @@ public fun DrawScope.drawFlameTrail(
         val life = cycle(seconds, 1.1f + noise.at(i, 7), noise.at(i, 8))
         drawCircle(
             palette.ember.copy(alpha = bump(life) * 0.8f * (visibility?.get(at) ?: 1f)), radius = (1.2f + noise.at(i, 9) * 1.6f) * (scales?.get(at) ?: 1f),
-            center = Offset(points[at * 2] + (noise.at(i, 10) - 0.5f) * width * (scales?.get(at) ?: 1f), points[at * 2 + 1] - life * width * 2.2f * (scales?.get(at) ?: 1f)), blendMode = BlendMode.Plus,
+            center = Offset(points[at * 2] + (noise.at(i, 10) - 0.5f) * width * (scales?.get(at) ?: 1f) + sparkDrift * life * width * (scales?.get(at) ?: 1f), points[at * 2 + 1] - life * width * 2.2f * (scales?.get(at) ?: 1f)), blendMode = BlendMode.Plus,
         )
     }
 }

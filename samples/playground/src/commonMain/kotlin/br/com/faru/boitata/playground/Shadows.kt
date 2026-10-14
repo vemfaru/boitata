@@ -14,28 +14,33 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.draw.sway
 import br.com.faru.boitata.core.clock.rememberSceneQuality
+import br.com.faru.boitata.core.wind.WindResponse
+import br.com.faru.boitata.core.wind.rememberSceneWind
 import br.com.faru.boitata.light.LightSource
 import br.com.faru.boitata.light.drawCastShadow
 import kotlin.math.hypot
 
 /** A bare floor with a few carved things on it and one light you can move: each throws a shadow of its own shape away from the light, longer when the light is near. */
 @Composable
-fun ShadowScene(light: () -> Offset, reach: Float, modifier: Modifier = Modifier.fillMaxSize()) {
+fun ShadowScene(light: () -> Offset, reach: Float, modifier: Modifier = Modifier.fillMaxSize(), seconds: () -> Float = { 0f }) {
     val art = LocalSprites.current ?: return
     val quality = rememberSceneQuality()
-    Spacer(modifier.drawBehind { drawShadows(art, light(), reach, quality()) })
+    val sceneWind = rememberSceneWind()
+    Spacer(modifier.drawBehind { drawShadows(art, light(), reach, quality(), WindResponse.Pine.bend(sceneWind.wind, seconds(), 0.2f) ) })
 }
 
 /** A prop stood on the ground at ([feetX], [feetY]), [height] pixels tall: its shadow first, then the prop, warm where the light reaches it. */
-fun DrawScope.drawProp(image: ImageBitmap, feetX: Float, feetY: Float, height: Float, light: LightSource?, dark: Color, lit: Color, quality: Quality = Quality.High) {
+fun DrawScope.drawProp(image: ImageBitmap, feetX: Float, feetY: Float, height: Float, light: LightSource?, dark: Color, lit: Color, quality: Quality = Quality.High, bend: Float = 0f) {
     val k = height / image.height
     drawCastShadow(light, feetX, feetY, height, 0.7f, quality) { c -> drawArt(image, Offset(-image.width * k / 2f, -height), k, c) }
     val near = if (light == null) 0f else (1f - hypot(feetX - light.x, feetY - light.y) / light.reach).coerceIn(0f, 1f) * light.strength
-    drawArt(image, Offset(feetX - image.width * k / 2f, feetY - height), k, lerp(dark, lit, near * 0.85f))
+    // The shadow stays put; the thing itself leans about its foot if the wind moves it.
+    sway(feetX, feetY, bend) { drawArt(image, Offset(feetX - image.width * k / 2f, feetY - height), k, lerp(dark, lit, near * 0.85f)) }
 }
 
-fun DrawScope.drawShadows(art: Sprites, lightFraction: Offset, reach: Float, quality: Quality = Quality.High) {
+fun DrawScope.drawShadows(art: Sprites, lightFraction: Offset, reach: Float, quality: Quality = Quality.High, treeBend: Float = 0f) {
     val w = size.width; val h = size.height
     val lp = Offset(lightFraction.x * w, lightFraction.y * h)
     val source = LightSource(lp.x, lp.y, Color(0xFFFFD08A), 0.95f, w * reach, groundX = lp.x, groundY = lp.y + h * 0.04f)
@@ -43,7 +48,7 @@ fun DrawScope.drawShadows(art: Sprites, lightFraction: Offset, reach: Float, qua
     drawRect(Brush.radialGradient(0f to Color(0xFF4A3F31), 0.55f to Color(0xFF241F18), 1f to Color(0xFF0A0C10), center = lp, radius = source.reach), size = size)
     for (k in 1..4) drawCircle(Color(0xFFF2A83B).copy(alpha = 0.3f / k), radius = h * 0.07f * k, center = lp, style = Stroke(2f))
     val dark = Color(0xFF14110F); val lit = Color(0xFFC79B5E)
-    drawProp(art.prop("araucaria"), w * 0.2f, h * 0.8f, h * 0.5f, source, dark, lit, quality)
+    drawProp(art.prop("araucaria"), w * 0.2f, h * 0.8f, h * 0.5f, source, dark, lit, quality, treeBend)
     drawProp(art.prop("crate"), w * 0.45f, h * 0.88f, h * 0.2f, source, dark, lit, quality)
     drawProp(art.prop("figure"), w * 0.7f, h * 0.8f, h * 0.38f, source, dark, lit, quality)
     drawProp(art.prop("lantern"), w * 0.88f, h * 0.9f, h * 0.45f, source, dark, lit, quality)

@@ -15,6 +15,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.FastNoise
 import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.wind.Wind
+import br.com.faru.boitata.core.wind.WindResponse
+import br.com.faru.boitata.core.wind.rememberSceneWind
 import br.com.faru.boitata.core.clock.rememberSceneQuality
 import br.com.faru.boitata.light.FlamePalette
 import br.com.faru.boitata.light.drawCastShadow
@@ -31,7 +34,8 @@ enum class FireKind(val label: String, val palette: FlamePalette) { Campfire("Ca
 fun FireScene(seconds: () -> Float, intensity: Float, kind: FireKind, modifier: Modifier = Modifier.fillMaxSize()) {
     val art = LocalSprites.current ?: return
     val quality = rememberSceneQuality()
-    Spacer(modifier.drawBehind { drawFireScene(art, seconds(), intensity, kind, quality()) })
+    val sceneWind = rememberSceneWind()
+    Spacer(modifier.drawBehind { drawFireScene(art, seconds(), intensity, kind, quality(), sceneWind.wind) })
 }
 
 /** The seven stones of `fire_stones`, as boxes in its pixels. */
@@ -40,7 +44,7 @@ private val Stones = listOf(
     Crop(581, 151, 132, 85), Crop(728, 123, 132, 113), Crop(873, 139, 134, 97),
 )
 
-fun DrawScope.drawFireScene(art: Sprites, t: Float, intensity: Float, kind: FireKind, quality: Quality = Quality.High) {
+fun DrawScope.drawFireScene(art: Sprites, t: Float, intensity: Float, kind: FireKind, quality: Quality = Quality.High, wind: Wind = Wind.Calm) {
     val w = size.width; val h = size.height
     val base = Offset(w * 0.5f, h * 0.8f)
     drawRect(Color(0xFF06080C), size = size)
@@ -63,5 +67,9 @@ fun DrawScope.drawFireScene(art: Sprites, t: Float, intensity: Float, kind: Fire
     }
     val lk = w * 0.18f / art.logs.width
     drawArt(art.logs, Offset(base.x - art.logs.width * lk / 2f, base.y - art.logs.height * lk * 0.92f), lk, lerp(Color(0xFF14110F), kind.palette.outer, 0.35f * intensity))
-    drawFlame(base.x, base.y - h * 0.02f, w * 0.16f, h * 0.45f, t, intensity, kind.palette, quality = quality)
+    // The flame leans and the embers streak downwind; the light leans a little with it.
+    drawFlame(
+        base.x, base.y - h * 0.02f, w * 0.16f, h * 0.45f, t, intensity, kind.palette, quality = quality,
+        lean = WindResponse.Flame.bend(wind, t, 0.5f) * 0.45f, emberDrift = WindResponse.Ember.drift(wind, t, 0.5f).coerceIn(-3f, 3f),
+    )
 }

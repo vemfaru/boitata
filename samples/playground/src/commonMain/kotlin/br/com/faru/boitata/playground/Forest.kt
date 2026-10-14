@@ -18,8 +18,14 @@ import br.com.faru.boitata.core.FastNoise
 import androidx.compose.runtime.remember
 import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.core.depth.Depth
+import br.com.faru.boitata.core.draw.sway
+import br.com.faru.boitata.core.wind.SceneWind
+import br.com.faru.boitata.core.wind.Wind
+import br.com.faru.boitata.core.wind.WindResponse
+import br.com.faru.boitata.core.wind.rememberSceneWind
 import br.com.faru.boitata.core.depth.DepthSlot
 import br.com.faru.boitata.core.clock.rememberSceneQuality
+import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.sky.SkyModel
 import br.com.faru.boitata.core.sky.SkyWeather
 import br.com.faru.boitata.light.FlamePalette
@@ -44,12 +50,21 @@ fun ForestScene(
     rain: Float = 0f,
     fog: Float = 0.35f,
     hour: Float = 23.5f,
+    moon: MoonPhase = MoonPhase.Full,
+    southern: Boolean = true,
 ) {
     val art = LocalSprites.current ?: return
     val quality = rememberSceneQuality()
     val track = remember { SerpentTrack() }
-    Spacer(modifier.drawBehind { drawForest(art, seconds(), rain, fog, hour, quality(), track) })
+    val sceneWind = rememberSceneWind()
+    Spacer(modifier.drawBehind { drawForest(art, seconds(), rain, fog, hour, quality(), track, moon, southern, sceneWind) })
 }
+
+/** How each tree of `layer_mid` answers the wind, in the order of [MidTrees]: araucária, buriti, araucária, sumaúma (huge and stiff), araucária, embaúba, buriti, araucária. */
+private val TreeWind = listOf(
+    WindResponse.Pine, WindResponse.Palm, WindResponse.Pine, WindResponse.Trunk,
+    WindResponse.Pine, WindResponse.Palm, WindResponse.Palm, WindResponse.Pine,
+)
 
 /** Where each tree of `layer_mid` stands, in the art's own pixels; its feet are at the bottom centre of the box. */
 private val MidTrees = listOf(
@@ -57,11 +72,12 @@ private val MidTrees = listOf(
     Crop(1034, 391, 241, 393), Crop(1309, 448, 137, 320), Crop(1490, 512, 204, 292), Crop(1706, 473, 193, 317),
 )
 
-fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: Float, quality: Quality = Quality.High, track: SerpentTrack = SerpentTrack()) {
+fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: Float, quality: Quality = Quality.High, track: SerpentTrack = SerpentTrack(), moon: MoonPhase = MoonPhase.Full, southern: Boolean = true, sceneWind: SceneWind? = null) {
+    val wind = sceneWind?.wind ?: Wind.Calm
     val w = size.width; val h = size.height
     val v = cover()
     val sc = v.scale
-    val state = SkyModel.at(hour, SkyWeather(cloud = 0.2f + 0.4f * rain, precipitation = rain))
+    val state = SkyModel.at(hour, SkyWeather(cloud = 0.2f + 0.4f * rain, precipitation = rain), moon)
     val day = state.daylight
     val horizon = v.py(1080f * ART_HORIZON)
 
@@ -76,7 +92,7 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
     if (state.moon.up) {
         val m = Offset(state.moon.x * w, state.moon.y * horizon)
         for (k in 1..3) drawCircle(Color(0xFFA9B8E8).copy(alpha = 0.22f / k), radius = h * (0.03f + 0.022f * k), center = m, style = Stroke(1.5f))
-        drawMoonArt(art, m, h * 0.034f, Color(0xFFE9EEF8))
+        drawMoonArt(art, m, h * 0.034f, Color(0xFFE9EEF8), moon, southern)
     }
 
     fun tint(night: Long, dayColor: Long) = lerp(Color(night), Color(dayColor), day)
@@ -93,7 +109,8 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
     )
 
     // Behind the mid trees: the part of the body that is far away.
-    track.draw(Depth.slot(0.9f), this, h, t, quality)
+    val sparks = WindResponse.Ember.drift(wind, t, 0.5f).coerceIn(-3f, 3f) * 0.6f
+    track.draw(Depth.slot(0.9f), this, h, t, quality, sparks)
     track.drawHeadIfIn(DepthSlot.Behind, art, this, h)
 
     for (tr in MidTrees) {
@@ -101,7 +118,11 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
         val near = (1f - hypot(feetX - head.x, feetY - h * 0.1f - head.y) / light.reach).coerceIn(0f, 1f) * light.strength
         drawCastShadow(light, feetX, feetY, tr.h * sc, 0.6f, quality) { c -> drawArt(art.mid, Offset(-tr.w / 2f * sc, -tr.h * sc), sc, c, tr) }
         val base = tint(0xFF08130F, 0xFF33463C)
-        drawArt(art.mid, Offset(v.px(tr.x.toFloat()), v.py(tr.y.toFloat())), sc, lerp(base, Color(0xFF8A4B1F), (near * 0.6f).coerceIn(0f, 0.65f)), tr)
+        // Each kind of tree answers the wind in its own way (a palm sways, a trunk hardly), and each is a little out of step with the next.
+        val bend = TreeWind[MidTrees.indexOf(tr)].bend(wind, t, (feetX / w).coerceIn(0f, 1f), phase = MidTrees.indexOf(tr) * 0.173f)
+        sway(feetX, feetY, bend, maxLean = 0.1f) {
+            drawArt(art.mid, Offset(v.px(tr.x.toFloat()), v.py(tr.y.toFloat())), sc, lerp(base, Color(0xFF8A4B1F), (near * 0.6f).coerceIn(0f, 0.65f)), tr)
+        }
     }
 
     // A glow on the ground under the serpent, and rings of carved arcs around its head.
@@ -110,19 +131,22 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
     drawCircle(Brush.radialGradient(0f to Color(0x44FFA63C), 1f to Color.Transparent, center = glow, radius = glowRadius), radius = glowRadius, center = glow, blendMode = BlendMode.Plus)
 
     // Between the mid trees and the near foliage.
-    track.draw(Depth.slot(0.4f), this, h, t, quality)
+    track.draw(Depth.slot(0.4f), this, h, t, quality, sparks)
     track.drawHeadIfIn(DepthSlot.Between, art, this, h)
 
     val nearTint = tint(0xFF040A08, 0xFF16201A)
-    drawArt(art.near, Offset(v.x, v.y), sc, lerp(nearTint, Color(0xFF5A3216), (0.25f * light.strength).coerceIn(0f, 0.3f)))
+    // The foliage that frames the picture leans a little too.
+    sway(w / 2f, v.y + 1080f * sc, WindResponse.Plant.bend(wind, t, 0.5f, 0.5f), maxLean = 0.03f) {
+        drawArt(art.near, Offset(v.x, v.y), sc, lerp(nearTint, Color(0xFF5A3216), (0.25f * light.strength).coerceIn(0f, 0.3f)))
+    }
 
     // In front of everything: close to the viewer, large, with the foliage behind it.
-    track.draw(Depth.slot(0.05f), this, h, t, quality)
+    track.draw(Depth.slot(0.05f), this, h, t, quality, sparks)
     track.drawHeadIfIn(DepthSlot.InFront, art, this, h)
     for (k in 1..3) drawCircle(Color(0xFFF2A83B).copy(alpha = 0.35f / k * (1f - day) * Depth.visibility(z0)), radius = h * 0.09f * k * Depth.scale(z0), center = head, style = Stroke(2f))
 
-    if (fog > 0f) drawFog(t, fog, Color(0xFF8DA2B5), quality = quality)
-    if (rain > 0f) drawRain(t, rain, 0.3f, Color(0xFFB7C8DC), quality = quality)
+    if (fog > 0f) drawFog(t, fog, Color(0xFF8DA2B5), quality = quality, carried = (sceneWind?.travelled ?: 0f) * WindResponse.Fog.driftGain)
+    if (rain > 0f) drawRain(t, rain, wind, WindResponse.Raindrop, Color(0xFFB7C8DC), quality = quality)
 }
 
 /**
@@ -160,7 +184,7 @@ class SerpentTrack(val count: Int = 72) {
     }
 
     /** Draws the runs of the body that are in the same slot as [which] (a representative depth in it). */
-    fun draw(which: DepthSlot, scope: DrawScope, h: Float, t: Float, quality: Quality) {
+    fun draw(which: DepthSlot, scope: DrawScope, h: Float, t: Float, quality: Quality, sparkDrift: Float = 0f) {
         var i = 0
         while (i < count) {
             val s = slot[i]
@@ -168,7 +192,7 @@ class SerpentTrack(val count: Int = 72) {
             while (j + 1 < count && slot[j + 1] == s) j++
             if (s == which) with(scope) {
                 // One point more at the end of the run, so the pieces join where the body crosses from one layer to the next.
-                drawFlameTrail(pts, count, baseWidth, t, FlamePalette.Boitata, quality = quality, scales = scale, visibility = visibility, range = i..minOf(j + 1, count - 1))
+                drawFlameTrail(pts, count, baseWidth, t, FlamePalette.Boitata, quality = quality, scales = scale, visibility = visibility, range = i..minOf(j + 1, count - 1), sparkDrift = sparkDrift)
             }
             i = j + 1
         }

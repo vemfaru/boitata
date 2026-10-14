@@ -15,7 +15,11 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.wind.Wind
+import br.com.faru.boitata.core.wind.WindResponse
+import br.com.faru.boitata.core.wind.rememberSceneWind
 import br.com.faru.boitata.core.clock.rememberSceneQuality
+import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.sky.SkyModel
 import br.com.faru.boitata.core.sky.SkyWeather
 import br.com.faru.boitata.light.LightSource
@@ -26,10 +30,11 @@ import br.com.faru.boitata.light.drawWindowLight
  * golden when the sun is low, short and pale at noon, bluish and faint under the moon, and the furniture throws its shadow away from the window.
  */
 @Composable
-fun WindowScene(seconds: () -> Float, hour: Float, cloud: Float, modifier: Modifier = Modifier.fillMaxSize()) {
+fun WindowScene(seconds: () -> Float, hour: Float, cloud: Float, modifier: Modifier = Modifier.fillMaxSize(), moon: MoonPhase = MoonPhase.Full, southern: Boolean = true) {
     val art = LocalSprites.current ?: return
     val quality = rememberSceneQuality()
-    Spacer(modifier.drawBehind { drawRoom(art, seconds(), hour, cloud, quality()) })
+    val sceneWind = rememberSceneWind()
+    Spacer(modifier.drawBehind { drawRoom(art, seconds(), hour, cloud, quality(), moon, southern, sceneWind.wind) })
 }
 
 /** Fills [area] with [image] repeated, each repeat [tile] pixels wide, painted [tint]. */
@@ -46,9 +51,9 @@ private fun DrawScope.drawTiled(image: ImageBitmap, area: Rect, tile: Float, tin
     }
 }
 
-fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float, quality: Quality = Quality.High) {
+fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float, quality: Quality = Quality.High, moon: MoonPhase = MoonPhase.Full, southern: Boolean = true, wind: Wind = Wind.Calm) {
     val w = size.width; val h = size.height
-    val s = SkyModel.at(hour, SkyWeather(cloud = cloud))
+    val s = SkyModel.at(hour, SkyWeather(cloud = cloud), moon)
     val day = 0.2f + 0.8f * s.daylight
     val floorY = h * 0.62f
     // Wall and floor: a lighter plaster behind, the carved ink tile over it, both by the hour.
@@ -68,17 +73,18 @@ fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float, qualit
             val body = Offset(pane.left + s.lightFrom.x * pane.width, pane.top + s.lightFrom.y * pane.height)
             // The sun by day, the moon when it is the moon that shines.
             if (s.daylight > 0.3f) drawSunArt(art, body, h * 0.022f, Color(0xFFFFF3C4).copy(alpha = 0.5f + 0.4f * s.lightStrength))
-            else drawMoonArt(art, body, h * 0.026f, Color(0xFFDDE5F0).copy(alpha = 0.6f + 0.4f * s.lightStrength))
+            else drawMoonArt(art, body, h * 0.026f, Color(0xFFDDE5F0).copy(alpha = 0.6f + 0.4f * s.lightStrength), moon, southern)
         }
     }
     drawArt(art.window, win.topLeft, wh / art.window.height, lerp(Color(0xFF0B0907), Color(0xFF2A1F15), day))
     // The light it lets in, lying on the floor in panes divided by the bars.
     val lean = ((0.5f - s.lightFrom.x) * 2.2f + 0.9f).coerceIn(-1f, 1.4f)
-    drawWindowLight(pane, floorY + h * 0.03f, h * 0.3f, lean, s.lightColor, s.lightStrength, s.sunElevation.coerceIn(0f, 1f), w * 0.5f, 2 to 3, t, quality)
+    drawWindowLight(pane, floorY + h * 0.03f, h * 0.3f, lean, s.lightColor, s.lightStrength, s.sunElevation.coerceIn(0f, 1f), w * 0.5f, 2 to 3, t, quality, WindResponse.Dust.drift(wind, t, 0.2f).coerceIn(-3f, 3f))
     // Furniture and its shadows, thrown away from the window.
     val lamp = LightSource(win.center.x, win.center.y, s.lightColor, s.lightStrength, w * 1.1f, groundX = win.center.x, groundY = floorY + h * 0.05f)
     val dark = lerp(Color(0xFF0B0907), Color(0xFF2A1F15), day); val lit = lerp(Color(0xFF5B4A3A), Color(0xFFE2C48A), s.lightStrength)
-    drawProp(art.prop("plant"), w * 0.56f, h * 0.84f, h * 0.36f, lamp, dark, lit, quality)
+    // A draught through the window: the plant by it leans.
+    drawProp(art.prop("plant"), w * 0.56f, h * 0.84f, h * 0.36f, lamp, dark, lit, quality, WindResponse.Plant.bend(wind, t, 0.56f, 0.3f))
     drawProp(art.prop("stool"), w * 0.76f, h * 0.86f, h * 0.2f, lamp, dark, lit, quality)
     drawProp(art.prop("floor_lamp"), w * 0.9f, h * 0.88f, h * 0.42f, lamp, dark, lit, quality)
     drawRect(Color(0xFF02040A).copy(alpha = (1f - s.daylight) * 0.3f), size = size)
