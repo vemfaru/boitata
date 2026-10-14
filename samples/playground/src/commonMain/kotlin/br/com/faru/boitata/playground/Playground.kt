@@ -40,7 +40,7 @@ import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
 
 /** The demos, in the order of the tabs. */
-enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Burn("Burn"), Fire("Fire") }
+enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Burn("Burn"), Fire("Fire") }
 
 /** The whole playground: pick a demo, play with its controls. The same scenes are what the README's GIFs are rendered from. */
 @Composable
@@ -74,6 +74,7 @@ fun PlaygroundApp() {
                     Demo.Shadows -> ShadowDemo(seconds)
                     Demo.Depth -> DepthDemo(seconds)
                     Demo.Lights -> LightsDemo(seconds, moon, southern)
+                    Demo.Stage -> LightStageDemo(seconds)
                     Demo.Burn -> BurnDemo(seconds, sink, sound)
                     Demo.Fire -> FireDemo(seconds, sink, sound)
                 }
@@ -213,6 +214,22 @@ private fun LightsDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean)
             }
             Labelled("Hour", hour, 0f..24f) { hour = it }
             Text("Each light throws its own shadow, its own way: the sun and moon (far away) in parallel, long at dawn; the fire, candle and lamp (near) fanning out from them; the lantern only inside its cone. Drag the fire, the candle, the lantern post or Lampião (he carries the lamp) and watch every shadow swing. The animals wander on their own and cannot burn.", color = Color(0xFFB7BEC8))
+        }
+    }
+}
+
+@Composable
+private fun LightStageDemo(seconds: () -> Float) {
+    var on by remember { mutableStateOf(StageLamp.entries.toSet()) }
+    var height by remember { mutableFloatStateOf(0.65f) }
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) { LightStageScene(seconds, on = on, heightScale = height) }
+        Controls {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (l in StageLamp.entries) FilterChip(selected = l in on, onClick = { on = if (l in on) on - l else on + l }, label = { Text(l.label, color = l.color) })
+            }
+            Labelled("Lamp height", height, 0.4f..2f) { height = it }
+            Text("Four lamps light the stage from four places at once. Drag a lamp (a glowing orb) and its shadows swing while the others stay; drag a person across and their shadows turn as they pass between the lamps. Lower the lamps for long shadows.", color = Color(0xFFB7BEC8))
         }
     }
 }

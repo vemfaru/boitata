@@ -18,13 +18,13 @@ import kotlin.math.sin
  * Every shadow a thing throws in a [LightRig], each from its own light in its own direction, as dark as that light's share of all the light there. [silhouette] draws the thing standing with its feet
  * at (0, 0) and up negative, in the colour it is given (as for [drawCastShadow]). [height] is how tall it is drawn, in pixels, which sets how long the shadows are.
  *
- * Quality caps how many lights cast (High 3, Medium 2, Low 1: the strongest first) and how many passes soften each edge.
+ * Quality caps how many lights cast (High 4, Medium 2, Low 1: the strongest first) and how many passes soften each edge.
  */
 public fun DrawScope.drawCastShadows(
     rig: LightRig, feetX: Float, feetY: Float, height: Float, seconds: Float, maxAlpha: Float = 0.6f,
     quality: Quality = Quality.High, into: ShadowCasts = DefaultCasts, silhouette: DrawScope.(Color) -> Unit,
 ) {
-    val n = rig.shadows(feetX, feetY, height, seconds, maxAlpha, when (quality) { Quality.High -> 3; Quality.Medium -> 2; Quality.Low -> 1 }, into)
+    val n = rig.shadows(feetX, feetY, height, seconds, maxAlpha, when (quality) { Quality.High -> 4; Quality.Medium -> 2; Quality.Low -> 1 }, into)
     for (i in 0 until n) {
         val cast = into.casts[i]
         if (cast.alpha <= 0.01f) continue
@@ -99,6 +99,6 @@ private fun DrawScope.pool(x: Float, y: Float, reach: Float, color: Color, alpha
 }
 
 private fun DrawScope.bulb(x: Float, y: Float, color: Color, strength: Float, radius: Float) {
-    val r = radius.coerceAtLeast(6f)
+    val r = radius.coerceIn(6f, 34f)
     drawCircle(Brush.radialGradient(0f to Color(0xFFFFF4D6).copy(alpha = strength.coerceIn(0f, 1f)), 0.25f to color.copy(alpha = 0.5f * strength), 1f to Color.Transparent, center = Offset(x, y), radius = r), radius = r, center = Offset(x, y), blendMode = BlendMode.Plus)
 }
