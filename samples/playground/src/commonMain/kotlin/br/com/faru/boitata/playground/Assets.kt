@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import br.com.faru.boitata.light.PaneArt
 import br.com.faru.boitata.light.VesselArt
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
@@ -49,6 +50,10 @@ class Sprites(
     val vessels: Map<String, VesselArt> = emptyMap(),
     /** The bench's own pictures (table parts, things to stand on it), by name without the bench_ prefix. */
     val bench: Map<String, ImageBitmap> = emptyMap(),
+    /** The weather on glass: frost ferns, beads, veil, sill snow. */
+    val paneArt: PaneArt? = null,
+    /** The room's dressing (curtains, rod, rug, shelf, lamp, stove), by name without the room_ prefix. */
+    val room: Map<String, ImageBitmap> = emptyMap(),
 ) {
     fun prop(name: String): ImageBitmap = props.getValue(name)
 
@@ -82,6 +87,7 @@ private val vesselBodies = mapOf(
     "tumbler" to Rect(29f, 60f, 391f, 552f), "bottle" to Rect(5f, 245f, 326f, 846f), "jug" to Rect(28f, 156f, 394f, 662f),
     "kerosene" to Rect(29f, 60f, 371f, 551f), "mug" to Rect(30f, 62f, 560f, 496f),
 )
+private val roomNames = listOf("curtain_left", "curtain_right", "curtain_rod", "tieback", "shutters_closed", "shutters_open", "rug", "stove", "shelf", "hanging_lamp")
 private val benchNames = listOf("table_top", "table_apron", "table_leg", "table_end", "clay_pot", "kettle", "rapadura", "spoon", "sugar_cube", "tin_cup")
 
 private val propNames = listOf(
@@ -130,6 +136,11 @@ suspend fun loadSprites(): Sprites = Sprites(
         else VesselArt(bitmap("vessel_${name}_front"), body, back = bitmap("vessel_${name}_back"), shine = bitmap("vessel_${name}_shine"))
     },
     bench = benchNames.associateWith { bitmap("bench_$it") },
+    paneArt = PaneArt(
+        ferns = (1..4).map { bitmap("glass_ice_fern_$it") }, beads = (1..3).map { bitmap("glass_bead_$it") },
+        veil = bitmap("glass_frost_veil"), sillSnow = bitmap("glass_sill_snow"),
+    ),
+    room = roomNames.associateWith { bitmap("room_$it") },
     wind = WindArt(
         gusts = listOf("wind_gust_1", "wind_gust_2", "wind_gust_3").map { bitmap(it) },
         leaves = listOf("leaf_broad", "leaf_embauba", "leaf_dry", "leaf_grimpa").map { bitmap(it) },

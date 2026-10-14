@@ -147,16 +147,33 @@ fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float, qualit
         if (glass.haze > 0.01f) drawRect(Color(0xFFEFE8DA).copy(alpha = (0.45f * glass.haze).coerceAtMost(0.6f)), pane.topLeft, pane.size)
         if (glass.tint != Color.White) drawRect(glass.tint.copy(alpha = 0.32f), pane.topLeft, pane.size)
         if (glass.haze > 0.01f) drawDirt(pane, glass.haze)
-        if (weather != null) drawPaneWeather(weather, pane, t, quality)
+        if (weather != null) drawPaneWeather(weather, pane, t, quality, art = art.paneArt)
     }
     if (where != null) { where[0] = pane.left; where[1] = pane.top; where[2] = pane.width; where[3] = pane.height }
     drawArt(art.window, win.topLeft, wh / art.window.height, lerp(Color(0xFF0B0907), Color(0xFF2A1F15), day))
-    if (weather != null) drawSillSnow(Rect(win.left - ww * 0.02f, win.bottom - wh * 0.045f, win.right + ww * 0.02f, win.bottom), weather.sill, t)
+    if (weather != null) drawSillSnow(Rect(win.left - ww * 0.02f, win.bottom - wh * 0.045f, win.right + ww * 0.02f, win.bottom), weather.sill, t, art.paneArt)
     // Shut, the panes are glass: a pale sheen and two streaks of reflection (gone when it is open).
     if (draught < 0.99f) clipRect(pane.left, pane.top, pane.right, pane.bottom) {
         val shut = 1f - draught
         drawRect(Color.White.copy(alpha = 0.07f * shut), pane.topLeft, pane.size)
         for (k in 0..1) drawLine(Color.White.copy(alpha = (0.16f - 0.07f * k) * shut), Offset(pane.left + pane.width * (0.25f + 0.3f * k), pane.top), Offset(pane.left + pane.width * (0.05f + 0.3f * k), pane.bottom), pane.width * (0.05f - 0.02f * k))
+    }
+    // The curtains and their rod frame the window.
+    run {
+        val fabric = lerp(Color(0xFF1B1210), Color(0xFF6A3B2B), day)
+        val rod = art.room.getValue("curtain_rod"); val cl = art.room.getValue("curtain_left"); val cr = art.room.getValue("curtain_right")
+        val rodW = ww * 1.5f; val rodX = win.center.x - rodW / 2f; val rodY = win.top - wh * 0.08f
+        val ch = (win.bottom - rodY) * 0.95f; val cw = ch * cl.width / cl.height
+        drawArt(cl, Offset(win.left - cw * 0.85f, rodY + rod.height * rodW / rod.width * 0.6f), ch / cl.height, fabric)
+        drawArt(cr, Offset(win.right - cw * 0.15f, rodY + rod.height * rodW / rod.width * 0.6f), ch / cr.height, fabric)
+        drawArt(rod, Offset(rodX, rodY), rodW / rod.width, lerp(Color(0xFF0B0907), Color(0xFF4A3826), day))
+    }
+    // A shelf on the wall at the right and a lamp hanging from the ceiling.
+    run {
+        val shelf = art.room.getValue("shelf"); val sw = w * 0.2f
+        drawArt(shelf, Offset(w * 0.68f, h * 0.2f), sw / shelf.width, lerp(Color(0xFF0B0907), Color(0xFF2A1F15), day))
+        val lampImg = art.room.getValue("hanging_lamp"); val lh = h * 0.3f
+        drawArt(lampImg, Offset(w * 0.45f, 0f), lh / lampImg.height, lerp(Color(0xFF0B0907), Color(0xFF3A2A1C), day))
     }
     // The light it lets in, lying on the floor in panes divided by the bars.
     val lean = ((0.5f - s.lightFrom.x) * 2.2f + 0.9f).coerceIn(-1f, 1.4f)
@@ -174,6 +191,8 @@ fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float, qualit
     // Furniture and its shadows, thrown away from the window.
     val lamp = LightSource(win.center.x, win.center.y, s.lightColor, s.lightStrength, w * 1.1f, groundX = win.center.x, groundY = floorY + h * 0.05f)
     val dark = lerp(Color(0xFF0B0907), Color(0xFF2A1F15), day); val lit = lerp(Color(0xFF5B4A3A), Color(0xFFE2C48A), s.lightStrength)
+    val rug = art.room.getValue("rug"); val rugW = w * 0.45f
+    drawArt(rug, Offset(w * 0.3f, h * 0.9f), rugW / rug.width, lerp(Color(0xFF0B0907), Color(0xFF6A3B2B), day), alpha = 0.9f)
     // A draught through the window: the plant by it leans.
     drawProp(art.prop("plant"), w * 0.56f, h * 0.84f, h * 0.36f, lamp, dark, lit, quality, WindResponse.Plant.bend(wind, t, 0.56f, 0.3f) * draught)
     drawProp(art.prop("stool"), w * 0.76f, h * 0.86f, h * 0.2f, lamp, dark, lit, quality)

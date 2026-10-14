@@ -30,7 +30,7 @@ val Clips: List<Clip> = listOf(
     Clip("window-dirty", 8f, Wind.Breeze) { t -> WindowScene(t, hour = 7f + 11f * (t() / 8f).coerceIn(0f, 1f), cloud = 0f, glass = WindowGlass.Dirty.optics) },
     Clip("window-frost", 14f, Wind.Calm, stateful = true) { t ->
         val pane = remember { PaneWeather() }; val climate = remember { SurfaceClimate().also { WindowWeather.Frost.applyTo(it) } }
-        WindowScene(t, hour = 8f, cloud = 0.3f, windowOpen = false, pane = pane, climate = climate, weatherSpeed = 4f)
+        WindowScene(t, hour = 18.2f, cloud = 0.3f, windowOpen = false, pane = pane, climate = climate, weatherSpeed = 6f)
     },
     Clip("window-rain", 14f, Wind.Windy, stateful = true) { t ->
         val pane = remember { PaneWeather() }; val climate = remember { SurfaceClimate().also { WindowWeather.Fog.applyTo(it); it.rain = 0.9f; it.wind = 0.4f } }
