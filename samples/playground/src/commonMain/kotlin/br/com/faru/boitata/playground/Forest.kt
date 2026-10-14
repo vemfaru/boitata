@@ -30,6 +30,7 @@ import br.com.faru.boitata.core.sky.SkyModel
 import br.com.faru.boitata.core.sky.SkyWeather
 import br.com.faru.boitata.light.FlamePalette
 import br.com.faru.boitata.light.drawCastShadow
+import br.com.faru.boitata.light.drawFlame
 import br.com.faru.boitata.light.drawFlameTrail
 import br.com.faru.boitata.light.fireLight
 import br.com.faru.boitata.weather.drawFog
@@ -37,6 +38,7 @@ import br.com.faru.boitata.weather.drawRain
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.hypot
+import kotlin.math.cos
 import kotlin.math.sin
 
 /**
@@ -111,7 +113,7 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
     // Behind the mid trees: the part of the body that is far away.
     val sparks = WindResponse.Ember.drift(wind, t, 0.5f).coerceIn(-3f, 3f) * 0.6f
     track.draw(Depth.slot(0.9f), this, h, t, quality, sparks)
-    track.drawHeadIfIn(DepthSlot.Behind, art, this, h)
+    track.drawHeadIfIn(DepthSlot.Behind, art, this, h, t, quality)
 
     for (tr in MidTrees) {
         val feetX = v.px(tr.x + tr.w / 2f); val feetY = v.py((tr.y + tr.h).toFloat())
@@ -132,7 +134,7 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
 
     // Between the mid trees and the near foliage.
     track.draw(Depth.slot(0.4f), this, h, t, quality, sparks)
-    track.drawHeadIfIn(DepthSlot.Between, art, this, h)
+    track.drawHeadIfIn(DepthSlot.Between, art, this, h, t, quality)
 
     val nearTint = tint(0xFF040A08, 0xFF16201A)
     // The foliage that frames the picture leans a little too.
@@ -142,7 +144,7 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
 
     // In front of everything: close to the viewer, large, with the foliage behind it.
     track.draw(Depth.slot(0.05f), this, h, t, quality, sparks)
-    track.drawHeadIfIn(DepthSlot.InFront, art, this, h)
+    track.drawHeadIfIn(DepthSlot.InFront, art, this, h, t, quality)
     for (k in 1..3) drawCircle(Color(0xFFF2A83B).copy(alpha = 0.35f / k * (1f - day) * Depth.visibility(z0)), radius = h * 0.09f * k * Depth.scale(z0), center = head, style = Stroke(2f))
 
     if (fog > 0f) drawFog(t, fog, Color(0xFF8DA2B5), quality = quality, carried = (sceneWind?.travelled ?: 0f) * WindResponse.Fog.driftGain)
@@ -199,14 +201,14 @@ class SerpentTrack(val count: Int = 72) {
     }
 
     /** The head, once, in the slot it is in. */
-    fun drawHeadIfIn(which: DepthSlot, art: Sprites, scope: DrawScope, h: Float) {
+    fun drawHeadIfIn(which: DepthSlot, art: Sprites, scope: DrawScope, h: Float, seconds: Float, quality: Quality) {
         if (slot[0] != which) return
-        with(scope) { drawSerpentHead(art, pts, baseWidth * scale[0], visibility[0]) }
+        with(scope) { drawSerpentHead(art, pts, baseWidth * scale[0], visibility[0], seconds, quality) }
     }
 }
 
 /** The head sprite on the front of the flame, turned the way the serpent is going, its eyes lit from behind through the sockets cut in it. */
-private fun DrawScope.drawSerpentHead(art: Sprites, pts: FloatArray, width: Float, visibility: Float = 1f) {
+private fun DrawScope.drawSerpentHead(art: Sprites, pts: FloatArray, width: Float, visibility: Float = 1f, seconds: Float = 0f, quality: Quality = Quality.High) {
     val head = Offset(pts[0], pts[1])
     val angle = (atan2((pts[1] - pts[3]).toDouble(), (pts[0] - pts[2]).toDouble()) * 180.0 / PI).toFloat()
     val k = 2f * width / 80f * 0.6f
@@ -223,4 +225,18 @@ private fun DrawScope.drawSerpentHead(art: Sprites, pts: FloatArray, width: Floa
         drawArt(art.head, Offset((250f - 255f) * k * rim - 0.5f * (rim - 1f) * 226f * k, (184f - 256f) * k * rim - 0.5f * (rim - 1f) * 156f * k), k * rim, Color(0xFFC2410C).copy(alpha = visibility), headCrop)
         drawArt(art.head, Offset((250f - 255f) * k, (184f - 256f) * k), k, Color(0xFF14110F), headCrop)
     }
+    // The head is fire too, and it never burns down: flames rise from its back and brow, bigger at the crown, drawn over the carved head. They are the same flame as the body's, and stay upright whichever way it turns.
+    val rad = angle * PI.toFloat() / 180f
+    val cosA = cos(rad); val sinA = sin(rad)
+    for ((i, f) in HEAD_FLAMES.withIndex()) {
+        val lx = f[0] * k; val ly = f[1] * k
+        val bx = head.x + lx * cosA - ly * sinA; val by = head.y + lx * sinA + ly * cosA
+        drawFlame(bx, by, width * f[2], width * f[3], seconds + i * 0.37f, intensity = visibility, palette = FlamePalette.Boitata, seed = 30L + i, quality = quality, lean = -0.1f * cosA)
+    }
 }
+
+/** Where flames rise on the head, in the head sprite's own pixels from its centre (x forward, y down): x, y, width and height as shares of the body's width. Crown at the back, brow in the middle. */
+private val HEAD_FLAMES = arrayOf(
+    floatArrayOf(10f, -58f, 1.1f, 2.1f), floatArrayOf(60f, -66f, 0.9f, 1.8f), floatArrayOf(115f, -60f, 0.8f, 1.4f),
+    floatArrayOf(10f, 62f, 0.9f, 1.5f), floatArrayOf(170f, -40f, 0.6f, 1.0f),
+)
