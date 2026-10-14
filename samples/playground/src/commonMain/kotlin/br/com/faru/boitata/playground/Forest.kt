@@ -238,7 +238,7 @@ private fun DrawScope.drawSerpentHead(art: Sprites, pts: FloatArray, width: Floa
         drawArt(art.head, Offset((250f - 255f) * k * rim - 0.5f * (rim - 1f) * 226f * k, (184f - 256f) * k * rim - 0.5f * (rim - 1f) * 156f * k), k * rim, Color(0xFFC2410C).copy(alpha = visibility), headCrop)
         drawArt(art.head, Offset((250f - 255f) * k, (184f - 256f) * k), k, Color(0xFF14110F), headCrop)
     }
-    // The head is fire too, and it never burns down: flames all over it, bigger at the crown and smaller toward the snout, drawn over the carved head, the same flame as the body's.
+    // The head is fire too, and it never burns down: one line of flames along its crown like a mohawk, tallest at the back and smaller toward the snout, drawn over the carved head, the same flame as the body's.
     // They answer the air like any flame: the scene's wind leans them (as it leans a campfire), and so does the head's own motion, the way a torch carried at a run streams behind it:
     // the faster it goes the flatter and longer they stream against the way it moves, and moving up squashes them while diving stretches them. [speedX], [speedY] are the head's speed in "fast" units.
     val rad = angle * PI.toFloat() / 180f
@@ -257,14 +257,8 @@ private fun DrawScope.drawSerpentHead(art: Sprites, pts: FloatArray, width: Floa
     }
 }
 
-/** Where flames rise on the head, in the head sprite's own pixels from its centre (x forward, y down): x, y, width and height as shares of the body's width. Crown at the back, brow in the middle. */
+/** Where flames rise on the head, in the head sprite's own pixels from its centre (x forward, y down): x, y, width and height as shares of the body's width. One line along the top of the head, like a mohawk, tallest at the back of the neck and shrinking to the nose. */
 private val HEAD_FLAMES = arrayOf(
-    // The crown and back, tallest.
-    floatArrayOf(5f, -50f, 1.1f, 2.1f), floatArrayOf(5f, 0f, 1.0f, 1.8f), floatArrayOf(5f, 55f, 0.9f, 1.5f),
-    // Along the brow.
-    floatArrayOf(55f, -66f, 0.9f, 1.8f), floatArrayOf(105f, -62f, 0.8f, 1.5f), floatArrayOf(150f, -52f, 0.7f, 1.2f),
-    // Along the jaw.
-    floatArrayOf(50f, 68f, 0.8f, 1.3f), floatArrayOf(105f, 62f, 0.7f, 1.1f), floatArrayOf(150f, 50f, 0.6f, 0.9f),
-    // The snout.
-    floatArrayOf(200f, -30f, 0.5f, 0.8f), floatArrayOf(205f, 20f, 0.5f, 0.7f),
+    floatArrayOf(5f, -52f, 1.1f, 2.4f), floatArrayOf(40f, -62f, 1.0f, 2.2f), floatArrayOf(75f, -66f, 0.95f, 2.0f), floatArrayOf(110f, -63f, 0.85f, 1.7f),
+    floatArrayOf(145f, -55f, 0.75f, 1.4f), floatArrayOf(178f, -44f, 0.65f, 1.1f), floatArrayOf(205f, -30f, 0.55f, 0.8f),
 )

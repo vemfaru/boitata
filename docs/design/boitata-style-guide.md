@@ -224,8 +224,12 @@ Same visual weight each; no fills except flame.
 
 ## 12. Respect
 
-The Boitatá belongs to the Indigenous peoples of Brazil first. Credit it as **Tupi-Guarani** folklore. **No feather headdresses, war paint, stock "native" imagery or human figures in costume.**
-If a person is needed for scale, draw a plain unmarked silhouette. The serpent is a guardian, never a monster to be slain.
+The Boitatá belongs to the Indigenous peoples of Brazil first. Credit it as **Tupi-Guarani** folklore. **No feather headdresses, war paint or stock "native" imagery**, and no one dressed up as
+any of it. The serpent is a guardian, never a monster to be slain.
+
+People are welcome when they come from the tradition the woodcut itself comes from: the **cordel** of Northeastern Brazil. **Lampião**, **Maria Bonita** and the **caçador** (a sertão hunter)
+are drawn as cordel woodcuts, with respect: real people of the sertão, their hats, belts and sandals right, never a caricature, never a joke. The same goes for the animals (onça-pintada,
+tamanduá-bandeira, capivara, lobo-guará, jacaré, tatu, arara, tucano): drawn as themselves, in side profile, not as cartoons. Nobody hunts the serpent, and no animal is shown hurt.
 
 ---
 
@@ -242,7 +246,7 @@ If a person is needed for scale, draw a plain unmarked silhouette. The serpent i
 | 7 | **Time of day set**: dawn, morning, noon, dusk, night | 1920 × 1080 | the same forest, five hours; only the spot colour, sky bands and shadow length change |
 | 8 | **Weather set**: clear, cloudy, rain, storm, snow, fog, wind | 1920 × 1080 | the same forest at one hour |
 | 9 | Scene layers (sky, far trees, mid trees, near foliage), transparent | 1920 × 1080 each | section 7 |
-| 10 | Props, 10 single silhouettes with feet at the bottom centre | 512² each | araucária, palm, sumaúma, fern, bromeliad on log, stone ring, lantern, window with bars, plain figure, crate |
+| 10 | Props, single silhouettes with feet at the bottom centre | 512² each | araucária, palm, sumaúma, fern, bromeliad on log, stone ring, lantern, window with bars, crate; Lampião, Maria Bonita, a caçador and Lampião's lamp; onça-pintada, tamanduá-bandeira, capivara, lobo-guará, jacaré, tatu, arara, tucano |
 | 11 | The serpent, hero art, transparent | 1920 × 1080 | S-curve through the frame |
 | 12 | Icon set (12) | 128² | section 10 |
 | 13 | Blog cover | 1600 × 900 | the serpent logo + a typewriter silhouette lit by it |
@@ -273,7 +277,7 @@ Paste **Prompt 0** once at the start of each session; then use the others one by
 
 **9. Layers (4 transparent files).** `Draw the forest scene as four separate transparent layers, 1920x1080 each: far tree line in mist (up to 14% H, fewer lines); mid trees (7 to 9 standalone araucárias, buriti palms and one sumaúma, bases at 66-76% H, 28-42% H tall, feet clearly at the bottom); near foliage (embaúba leaves, ferns, vines, a huge trunk at the far left, centre 60% empty); sky (bands of the night spot colour, carved stars, moon).`
 
-**10. Props.** `A sheet of 10 single silhouettes in woodcut style, each in its own 512x512 frame with feet at the bottom centre and 10% padding: araucária, buriti palm, sumaúma trunk with buttress roots, fern clump, bromeliad on a log, ring of 7 stones, oil lantern on a post, four-pane window with bars, a plain unmarked human silhouette, a wooden crate.`
+**10. Props.** `A sheet of 9 single silhouettes in woodcut style, each in its own 512x512 frame with feet at the bottom centre and 10% padding: araucária, buriti palm, sumaúma trunk with buttress roots, fern clump, bromeliad on a log, ring of 7 stones, oil lantern on a post, four-pane window with bars, a wooden crate.` Then the people, the lamp and the animals, as Brazilian cordel woodcuts in one flat Ink with white gouge cuts: `Lampião the cangaceiro, Maria Bonita and a sertão caçador with a shotgun on his shoulder, frontal, each with one empty closed fist hanging clear of the body to hold a lamp; a hurricane kerosene lamp (a lampião) whose glass is a clear window; and in side profile facing right an onça-pintada, a tamanduá-bandeira, a capivara, a lobo-guará, a jacaré, a tatu, and an arara and a tucano each perched on a branch stump.` The full prompts, the export and the anchors are in [playground-assets-prompts.md](playground-assets-prompts.md), group 6.
 
 **11. Hero serpent.** `1920x1080, transparent: the Boitatá alone in a long S-curve with at least two bends, body thickness 4.5% of the height, flame in two nested tones, wedge head raised, two round lantern eyes as the brightest points, a flame tip tail, four crest tongues, Amber-and-Ember rings of carved arcs for its glow, tiny diamond embers drifting off it.`
 

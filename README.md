@@ -188,6 +188,8 @@ fun MinimalDepth() {
 }
 ```
 
+The playground's **Depth** tab is this with woodcut people and animals: Lampião carries a lampião, the kerosene lamp his nickname comes from, and its flame is the scene's light.
+
 ### Shadows that swing round as the light moves
 
 ![A light moving round four things, each throwing its shadow away from it](docs/media/shadows.gif)
