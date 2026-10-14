@@ -50,7 +50,7 @@ fun DrawScope.drawShadows(art: Sprites, lightFraction: Offset, reach: Float, qua
     val dark = Color(0xFF14110F); val lit = Color(0xFFC79B5E)
     drawProp(art.prop("araucaria"), w * 0.2f, h * 0.8f, h * 0.5f, source, dark, lit, quality, treeBend)
     drawProp(art.prop("crate"), w * 0.45f, h * 0.88f, h * 0.2f, source, dark, lit, quality)
-    drawProp(art.prop("figure"), w * 0.7f, h * 0.8f, h * 0.38f, source, dark, lit, quality)
+    drawProp(art.prop("lampiao"), w * 0.7f, h * 0.8f, h * 0.38f, source, dark, lit, quality)
     drawProp(art.prop("lantern"), w * 0.88f, h * 0.9f, h * 0.45f, source, dark, lit, quality)
     drawCircle(Brush.radialGradient(0f to Color(0xFFFFF1C2), 0.25f to Color(0x88FFD08A), 1f to Color.Transparent, center = lp, radius = h * 0.09f), radius = h * 0.09f, center = lp, blendMode = BlendMode.Plus)
 }

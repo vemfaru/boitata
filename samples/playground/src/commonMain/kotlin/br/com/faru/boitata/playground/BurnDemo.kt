@@ -99,7 +99,7 @@ private val BurnProps = listOf(
     sprite("araucaria", 0.5f, 0.11f, 0.42f, Material.Pine, WindResponse.Pine),
     sprite("palm", 0.46f, 0.80f, 0.26f, Material.Palm, WindResponse.Palm),
     sprite("lantern", 0.4f, 0.56f, 0.48f, Material.Metal),
-    sprite("figure", 0.32f, 0.42f, 0.30f, Material.None),
+    sprite("lampiao", 0.32f, 0.42f, 0.30f, Material.None),
     BurnProp("candle", CandleArt, 0.13f, 0.34f, 0.90f, Material.Wax, tone = Color(0xFFEADFC4), lit = "candle.wick", parts = listOf(
         PartSpec("wax", Material.Wax, PartRegion(0f, 0.12f, 1f, 1f)),
         PartSpec("wick", Material.Wick, PartRegion(0.44f, 0f, 0.56f, 0.12f), fedBy = "wax"),

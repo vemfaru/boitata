@@ -25,7 +25,7 @@ val Clips: List<Clip> = listOf(
     Clip("shadows", 8f, Wind.Breeze) { t -> ShadowScene({ Offset(0.5f + 0.38f * cos(t() * 0.8f), 0.45f + 0.25f * sin(t() * 0.8f)) }, 0.8f, seconds = t) },
     Clip("moon-phases", 8f) { t -> WeatherScene(t, hour = 23f, kind = WeatherKind.Clear, moon = MoonPhase.All[t().toInt().coerceIn(0, 7)]) },
     Clip("burn", 10f, Wind(speed = 0.55f, direction = 1f, gustiness = 0.4f), stateful = true) { t -> BurnScene(t, timeScale = 3f) },
-    Clip("depth", 8f, Wind.Windy) { t -> DepthScene(t, script = ::scriptedDrag) },
+    Clip("depth", 8f, Wind.Windy, stateful = true) { t -> DepthScene(t, script = ::scriptedDrag) },
     Clip("fire-campfire", 5f, Wind.Windy) { t -> FireScene(t, 0.9f, FireKind.Campfire) },
     Clip("fire-boitata", 5f, Wind.Breeze) { t -> FireScene(t, 0.9f, FireKind.Boitata) },
 )

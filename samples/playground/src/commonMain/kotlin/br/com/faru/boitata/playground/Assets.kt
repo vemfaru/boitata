@@ -42,8 +42,33 @@ class Sprites(
 }
 
 private val propNames = listOf(
-    "araucaria", "palm", "sumauma", "fern", "bromeliad_log", "lantern", "floor_lamp", "stool", "plant", "crate", "figure", "pot",
+    "araucaria", "palm", "sumauma", "fern", "bromeliad_log", "lantern", "floor_lamp", "stool", "plant", "crate", "pot",
+    // The cordel people, the lamp Lampião carries, and the animals of the woods and the sertão (side on, facing right).
+    "lampiao", "maria_bonita", "cacador", "lampiao_lamp",
+    "onca", "tamandua", "capivara", "lobo_guara", "jacare", "tatu", "arara", "tucano",
 )
+
+/**
+ * Where each person's free hand is: the closed fist that grips a lamp's handle, as shares of their sprite (x from the left, y from the top).
+ * Turn it into pixels with the sprite's drawn width and height, and hang [Lamp] from it.
+ */
+val HandAnchors: Map<String, Offset> = mapOf(
+    "lampiao" to Offset(0.048f, 0.668f),
+    "maria_bonita" to Offset(0.949f, 0.625f),
+    "cacador" to Offset(0.046f, 0.581f),
+)
+
+/** The lampião, the hand-held kerosene lamp (prop "lampiao_lamp"), as shares of its sprite: it hangs by [handle] and its light comes from [flame]. */
+object Lamp {
+    /** The top of the handle, where the fist holds it. */
+    val handle = Offset(0.5f, 0f)
+
+    /** The flame behind the glass. */
+    val flame = Offset(0.5f, 0.58f)
+
+    /** How tall it is drawn against whoever carries it. */
+    const val OF_HOLDER = 0.22f
+}
 
 private suspend fun bitmap(name: String): ImageBitmap = Res.readBytes("drawable/$name.png").decodeToImageBitmap()
 

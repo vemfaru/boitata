@@ -257,8 +257,8 @@ private fun DrawScope.drawSerpentHead(art: Sprites, pts: FloatArray, width: Floa
     }
 }
 
-/** Where flames rise on the head, in the head sprite's own pixels from its centre (x forward, y down): x, y, width and height as shares of the body's width. One line along the top of the head, like a mohawk, tallest at the back of the neck and shrinking to the nose. */
+/** Where flames rise on the head, in the head sprite's own pixels from its centre (x forward, y down): x, y, width and height as shares of the body's width. One line down the middle of the head, between the eyes, like a mohawk (the head is seen from above), tallest at the back of the neck and shrinking to the nose. */
 private val HEAD_FLAMES = arrayOf(
-    floatArrayOf(5f, -52f, 1.1f, 2.4f), floatArrayOf(40f, -62f, 1.0f, 2.2f), floatArrayOf(75f, -66f, 0.95f, 2.0f), floatArrayOf(110f, -63f, 0.85f, 1.7f),
-    floatArrayOf(145f, -55f, 0.75f, 1.4f), floatArrayOf(178f, -44f, 0.65f, 1.1f), floatArrayOf(205f, -30f, 0.55f, 0.8f),
+    floatArrayOf(5f, 0f, 1.1f, 2.4f), floatArrayOf(40f, 0f, 1.0f, 2.2f), floatArrayOf(75f, 0f, 0.95f, 2.0f), floatArrayOf(110f, 0f, 0.85f, 1.7f),
+    floatArrayOf(145f, 0f, 0.75f, 1.4f), floatArrayOf(178f, 0f, 0.65f, 1.1f), floatArrayOf(205f, 0f, 0.55f, 0.8f),
 )

@@ -185,7 +185,7 @@ private fun ShadowDemo(seconds: () -> Float) {
 private fun DepthDemo(seconds: () -> Float) {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { DepthScene(seconds) }
-        Controls { Text("Drag anything. Up sends it back, small and tucked behind what is nearer; down brings it forward, bigger. The lantern is the light. Tap a thing to switch whether the wind moves it (palms, plants and the pine do by default).", color = Color(0xFFB7BEC8)) }
+        Controls { Text("Drag anything. Up sends it back, small and tucked behind what is nearer; down brings it forward, bigger. Lampião's lamp is the light: carry him about and every shadow swings. Tap a thing to switch whether the wind moves it (palms, plants and the pine do by default).", color = Color(0xFFB7BEC8)) }
     }
 }
 
