@@ -172,9 +172,16 @@ private fun WeatherDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, m
 private fun WindowDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
     var hour by remember { mutableFloatStateOf(16.5f) }
     var cloud by remember { mutableFloatStateOf(0f) }
+    var open by remember { mutableStateOf(true) }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { WindowScene(seconds, hour, cloud, moon = moon, southern = southern) }
-        Controls { Labelled("Hour", hour, 0f..24f) { hour = it }; Labelled("Cloud", cloud, 0f..1f) { cloud = it } }
+        Box(Modifier.weight(1f)) { WindowScene(seconds, hour, cloud, moon = moon, southern = southern, windowOpen = open) }
+        Controls {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                FilterChip(selected = open, onClick = { open = !open }, label = { Text(if (open) "Window open" else "Window shut") })
+                Text("Wind reaches the plant only through the window: shut it and the plant, and the dust in the light, go still.", color = Color(0xFFB7BEC8))
+            }
+            Labelled("Hour", hour, 0f..24f) { hour = it }; Labelled("Cloud", cloud, 0f..1f) { cloud = it }
+        }
     }
 }
 
