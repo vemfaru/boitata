@@ -44,8 +44,7 @@ fun DrawScope.drawFireScene(art: Sprites, t: Float, intensity: Float, kind: Fire
     val w = size.width; val h = size.height
     val base = Offset(w * 0.5f, h * 0.8f)
     drawRect(Color(0xFF06080C), size = size)
-    val stars = FastNoise(4L)
-    for (i in 0 until 70) drawCircle(Color(0xFFF1E6D0).copy(alpha = 0.25f + 0.4f * stars.at(i, 2)), 1f + 1.4f * stars.at(i, 3), Offset(stars.at(i, 0) * w, stars.at(i, 1) * h * 0.5f))
+    drawNightStars(art, t, h * 0.62f, 1f, count = 70, seed = 4L)
     drawRect(Color(0xFF0B0E10), Offset(0f, h * 0.55f), Size(w, h * 0.45f))
     val light = fireLight(base.x, base.y - h * 0.12f, t, reach = w * 0.6f * (0.5f + 0.5f * intensity), strength = 0.5f + 0.5f * intensity, color = kind.palette.mid, groundX = base.x, groundY = base.y)
     drawCircle(Brush.radialGradient(0f to kind.palette.mid.copy(alpha = 0.3f * intensity), 1f to Color.Transparent, center = base, radius = light.reach), radius = light.reach, center = base, blendMode = BlendMode.Plus)

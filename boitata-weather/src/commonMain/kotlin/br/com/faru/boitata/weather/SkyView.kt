@@ -21,9 +21,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import br.com.faru.boitata.core.AdvancedBoitataApi
 import br.com.faru.boitata.core.FastNoise
 import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.core.clock.rememberSceneQuality
@@ -43,6 +45,30 @@ import kotlin.math.sin
 public fun rememberSkySeconds(frozen: Boolean = false): () -> Float {
     val seconds = rememberSceneSeconds()
     return if (frozen) ({ 0f }) else seconds
+}
+
+/**
+ * Pictures for the sky's bodies, if you have drawn them. Each is tinted by the sky (a pale disc for the moon, a warm one for the sun, white stars), so draw them as a solid shape with
+ * the detail cut out: the sky shows through the cuts. Any may be null, and the sky paints that body itself.
+ */
+public class SkyArt(
+    public val sun: ImageBitmap? = null,
+    public val moon: ImageBitmap? = null,
+    public val stars: StarAtlas? = null,
+)
+
+/**
+ * Stars as one picture of equal [cell]-pixel squares, [columns] to a row, each star centred in its cell. The stars come in a few sizes, [perSize] of each in turn, and [sizes] says how
+ * many pixels across the star itself is in each size (the rest of its cell is empty). The sky picks one at random for each star and scales it.
+ */
+public class StarAtlas(
+    public val image: ImageBitmap,
+    public val cell: Int = 80,
+    public val columns: Int = 6,
+    public val sizes: IntArray = intArrayOf(48, 64, 80),
+    public val perSize: Int = 4,
+) {
+    public val count: Int get() = sizes.size * perSize
 }
 
 /** One layer of the view: a picture the size of the view, how near it is (0 far to 1 near: how far it shifts with [parallax]) and how much of the sky's veil it takes. */
@@ -70,13 +96,14 @@ fun SkyWindow(
     storm: StormView? = null,
     horizon: Float = SkyModel.HORIZON_Y,
     quality: (() -> Quality)? = null,
+    art: SkyArt? = null,
 ) {
     val time = seconds ?: rememberSceneSeconds()
     val level = quality ?: rememberSceneQuality()
     Box(modifier) {
         Spacer(
             Modifier.fillMaxSize().drawBehind {
-                drawSky(sky(), time(), parallax(), clouds, horizon, level())
+                drawSky(sky(), time(), parallax(), clouds, horizon, level(), art)
                 // Lightning: the sky flares and the bolt stands behind the roofs.
                 storm?.let { st ->
                     drawFlash(st.flash() * 0.9f)
@@ -136,7 +163,7 @@ private fun DrawScope.drawLayer(image: ImageBitmap, depth: Float, shift: Offset,
     )
 }
 
-private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, clouds: ImageBitmap?, horizon: Float, quality: Quality) {
+private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, clouds: ImageBitmap?, horizon: Float, quality: Quality, art: SkyArt?) {
     val w = size.width; val h = size.height
     val horizonY = h * horizon
     val arc = horizon / SkyModel.HORIZON_Y
@@ -155,7 +182,10 @@ private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, c
             val low = (1f - (y / horizonY)).coerceIn(0f, 1f).let { 0.35f + 0.65f * it }
             val twinkle = 0.65f + 0.35f * sin(seconds * (0.8f + noise.at(i, 2) * 2.4f) + noise.at(i, 3) * 6.28f)
             val size = (0.8f + noise.at(i, 4) * 1.6f) * w / 650f
-            drawCircle(Color.White.copy(alpha = (sky.stars * low * twinkle * (0.5f + 0.5f * noise.at(i, 5))).coerceIn(0f, 1f)), size, Offset(x, y))
+            val alpha = (sky.stars * low * twinkle * (0.5f + 0.5f * noise.at(i, 5))).coerceIn(0f, 1f)
+            val atlas = art?.stars
+            if (atlas == null) drawCircle(Color.White.copy(alpha = alpha), size, Offset(x, y))
+            else drawAtlasStar(atlas, (noise.at(i, 6) * atlas.count).toInt().coerceAtMost(atlas.count - 1), Offset(x, y), size * 4.2f, alpha, quality)
         }
     }
 
@@ -166,7 +196,10 @@ private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, c
         val r = w * 0.045f
         val a = (1f - hide * 0.92f).coerceIn(0f, 1f) * (0.4f + 0.6f * sky.daylight.coerceAtLeast(sky.twilight))
         drawCircle(Brush.radialGradient(0f to sky.lightColor.copy(alpha = 0.55f * a), 1f to Color.Transparent, center = c, radius = r * 7f), r * 7f, c)
-        drawCircle(lerp(sky.lightColor, Color.White, 0.5f).copy(alpha = a), r, c)
+        val sunTint = lerp(sky.lightColor, Color.White, 0.5f).copy(alpha = a)
+        val sunArt = art?.sun
+        if (sunArt == null) drawCircle(sunTint, r, c)
+        else drawImageSmooth(sunArt, c.x - r * 1.25f, c.y - r * 1.25f, (r * 2.5f).toInt(), (r * 2.5f).toInt(), colorFilter = ColorFilter.tint(sunTint, BlendMode.SrcIn), quality = quality)
     }
     // The moon: its lit part is the disc less a circle slid across it; a halo in the dark.
     if (sky.moon.up && sky.daylight < 0.85f) {
@@ -179,7 +212,10 @@ private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, c
             val cut = Path().apply { addOval(androidx.compose.ui.geometry.Rect(Offset(c.x - (1f - sky.moonPhase) * 2f * r, c.y), r * 1.02f)) }
             op(disc, cut, PathOperation.Difference)
         }
-        drawPath(lit, Color(0xFFDDE5F0).copy(alpha = a))
+        val moonArt = art?.moon
+        if (moonArt == null) drawPath(lit, Color(0xFFDDE5F0).copy(alpha = a))
+        // The picture shows only where the moon is lit, so its phase still works.
+        else clipPath(lit) { drawImageSmooth(moonArt, c.x - r * 1.1f, c.y - r * 1.1f, (r * 2.2f).toInt(), (r * 2.2f).toInt(), colorFilter = ColorFilter.tint(Color(0xFFDDE5F0).copy(alpha = a), BlendMode.SrcIn), quality = quality) }
     }
 
     drawClouds(sky, seconds, shift, clouds, horizonY, quality)
@@ -221,4 +257,17 @@ private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, st
             drawCircle(Brush.radialGradient(0f to colour.copy(alpha = 0.75f * cover.coerceAtLeast(0.35f)), 0.7f to colour.copy(alpha = 0.35f * cover), 1f to Color.Transparent, center = c, radius = r), r, c)
         }
     }
+}
+
+/** One star of [atlas], [pixels] across, centred on [at], white at [alpha]: for scenes that paint their own sky. */
+@AdvancedBoitataApi
+public fun DrawScope.drawAtlasStar(atlas: StarAtlas, index: Int, at: Offset, pixels: Float, alpha: Float, quality: Quality) {
+    val size = atlas.sizes[(index / atlas.perSize).coerceAtMost(atlas.sizes.size - 1)]
+    val k = pixels / size                                   // the star is `size` pixels across inside its cell
+    val cx = (index % atlas.columns) * atlas.cell; val cy = (index / atlas.columns) * atlas.cell
+    val drawn = (atlas.cell * k).toInt().coerceAtLeast(1)
+    drawImageSmooth(
+        atlas.image, at.x - drawn / 2f, at.y - drawn / 2f, drawn, drawn, colorFilter = ColorFilter.tint(Color.White.copy(alpha = alpha), BlendMode.SrcIn), quality = quality,
+        srcOffset = androidx.compose.ui.unit.IntOffset(cx, cy), srcSize = androidx.compose.ui.unit.IntSize(atlas.cell, atlas.cell),
+    )
 }

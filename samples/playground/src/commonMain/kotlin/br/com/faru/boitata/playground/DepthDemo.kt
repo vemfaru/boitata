@@ -102,11 +102,7 @@ fun DrawScope.drawDepth(art: Sprites, stage: DepthStage, t: Float, hour: Float, 
     val bands = 5
     for (i in 0 until bands) drawRect(lerp(state.zenith, state.horizon, (i + 0.5f) / bands), Offset(0f, horizon * i / bands), Size(w, horizon / bands + 1f))
     drawRect(lerp(state.horizon, Color.Black, 0.25f), Offset(0f, horizon), Size(w, h - horizon))
-    val stars = FastNoise(2L)
-    for (i in 0 until 90) {
-        val a = state.stars * (0.35f + 0.65f * (0.5f + 0.5f * sin(t * (0.8f + stars.at(i, 2)) + i)))
-        drawCircle(Color(0xFFF1E6D0).copy(alpha = a * 0.8f), 1f + stars.at(i, 3) * 1.6f, Offset(stars.at(i, 0) * w, stars.at(i, 1) * horizon * 0.8f))
-    }
+    drawNightStars(art, t, horizon, state.stars)
     fun tint(night: Long, dayColor: Long) = lerp(Color(night), Color(dayColor), day)
     drawArt(art.far, Offset(v.x, v.y), sc, tint(0xFF0C1A22, 0xFF6F8794))
     drawArt(art.ground, Offset(v.x, v.y), sc, tint(0xFF0A110E, 0xFF2A3A30))

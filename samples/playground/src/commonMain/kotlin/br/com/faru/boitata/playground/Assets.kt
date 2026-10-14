@@ -14,7 +14,13 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import br.com.faru.boitata.core.FastNoise
+import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.playground.resources.Res
+import br.com.faru.boitata.weather.SkyArt
+import br.com.faru.boitata.weather.StarAtlas
+import br.com.faru.boitata.weather.drawAtlasStar
+import kotlin.math.sin
 import org.jetbrains.compose.resources.decodeToImageBitmap
 
 /**
@@ -26,6 +32,7 @@ class Sprites(
     val clouds: ImageBitmap,
     val head: ImageBitmap, val logs: ImageBitmap, val pit: ImageBitmap, val stones: ImageBitmap,
     val wall: ImageBitmap, val floor: ImageBitmap, val window: ImageBitmap,
+    val sun: ImageBitmap, val moon: ImageBitmap, val stars: ImageBitmap,
     val props: Map<String, ImageBitmap>,
 ) {
     fun prop(name: String): ImageBitmap = props.getValue(name)
@@ -42,6 +49,7 @@ suspend fun loadSprites(): Sprites = Sprites(
     clouds = bitmap("clouds_strip"),
     head = bitmap("serpent_head"), logs = bitmap("fire_logs"), pit = bitmap("fire_pit"), stones = bitmap("fire_stones"),
     wall = bitmap("room_wall"), floor = bitmap("room_floor"), window = bitmap("room_window"),
+    sun = bitmap("sky_sun"), moon = bitmap("sky_moon"), stars = bitmap("sky_stars"),
     props = propNames.associateWith { bitmap("prop_$it") },
 )
 
@@ -53,6 +61,31 @@ val LocalSprites = compositionLocalOf<Sprites?> { null }
 fun ProvideSprites(content: @Composable (Sprites) -> Unit) {
     val sprites by produceState<Sprites?>(null) { value = loadSprites() }
     sprites?.let { content(it) }
+}
+
+/** The sun, moon and stars you drew, as the library's sky wants them. */
+fun Sprites.skyArt(): SkyArt = SkyArt(sun = sun, moon = moon, stars = StarAtlas(stars))
+
+/** [count] twinkling stars from your star atlas over the top [maxY] pixels, at [level] 0..1 (a clear dark night is 1). They turn very slowly and each twinkles in its own time. */
+fun DrawScope.drawNightStars(art: Sprites, t: Float, maxY: Float, level: Float, count: Int = 90, seed: Long = 2L, color: Color = Color(0xFFF1E6D0)) {
+    if (level <= 0.01f) return
+    val atlas = StarAtlas(art.stars)
+    val noise = FastNoise(seed)
+    for (i in 0 until count) {
+        val alpha = (level * (0.35f + 0.65f * (0.5f + 0.5f * sin(t * (0.8f + noise.at(i, 2)) + i))) * 0.9f).coerceIn(0f, 1f)
+        val pixels = (4.5f + 6f * noise.at(i, 3)) * size.width / 720f
+        drawAtlasStar(atlas, (noise.at(i, 4) * atlas.count).toInt().coerceAtMost(atlas.count - 1), Offset(noise.at(i, 0) * size.width, noise.at(i, 1) * maxY * 0.8f), pixels, alpha, Quality.High)
+    }
+}
+
+/** Your moon disc centred on [center], [radius] pixels, in [color]; the cut-out detail shows the sky. */
+fun DrawScope.drawMoonArt(art: Sprites, center: Offset, radius: Float, color: Color) {
+    drawArt(art.moon, Offset(center.x - radius, center.y - radius), 2f * radius / art.moon.width, color)
+}
+
+/** Your sun disc with its rays centred on [center], the disc [radius] pixels (the rays reach out past it). */
+fun DrawScope.drawSunArt(art: Sprites, center: Offset, radius: Float, color: Color) {
+    drawArt(art.sun, Offset(center.x - radius * 1.25f, center.y - radius * 1.25f), 2.5f * radius / art.sun.width, color)
 }
 
 /** A rectangle of a picture, in its own pixels. */

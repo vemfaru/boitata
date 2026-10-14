@@ -64,7 +64,12 @@ fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float, qualit
     clipRect(pane.left, pane.top, pane.right, pane.bottom) {
         val bands = 5
         for (i in 0 until bands) drawRect(lerp(s.zenith, s.horizon, (i + 0.5f) / bands), Offset(pane.left, pane.top + pane.height * i / bands), Size(pane.width, pane.height / bands + 1f))
-        if (s.lightFrom.up) drawCircle(Color(0xFFFFF3C4).copy(alpha = (0.5f + 0.4f * s.lightStrength)), radius = h * 0.022f, center = Offset(pane.left + s.lightFrom.x * pane.width, pane.top + s.lightFrom.y * pane.height))
+        if (s.lightFrom.up) {
+            val body = Offset(pane.left + s.lightFrom.x * pane.width, pane.top + s.lightFrom.y * pane.height)
+            // The sun by day, the moon when it is the moon that shines.
+            if (s.daylight > 0.3f) drawSunArt(art, body, h * 0.022f, Color(0xFFFFF3C4).copy(alpha = 0.5f + 0.4f * s.lightStrength))
+            else drawMoonArt(art, body, h * 0.026f, Color(0xFFDDE5F0).copy(alpha = 0.6f + 0.4f * s.lightStrength))
+        }
     }
     drawArt(art.window, win.topLeft, wh / art.window.height, lerp(Color(0xFF0B0907), Color(0xFF2A1F15), day))
     // The light it lets in, lying on the floor in panes divided by the bars.

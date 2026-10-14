@@ -72,16 +72,11 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
         drawRect(lerp(state.zenith, state.horizon, (i + 0.5f) / bands), Offset(0f, y0), Size(w, y1 - y0 + 1f))
     }
     drawRect(lerp(state.horizon, Color.Black, 0.25f), Offset(0f, horizon), Size(w, h - horizon))
-    val stars = FastNoise(2L)
-    for (i in 0 until 90) {
-        val a = state.stars * (0.35f + 0.65f * (0.5f + 0.5f * sin(t * (0.8f + stars.at(i, 2)) + i)))
-        val c = Offset(stars.at(i, 0) * w, stars.at(i, 1) * horizon * 0.8f); val r = 1f + stars.at(i, 3) * 1.6f
-        drawCircle(Color(0xFFF1E6D0).copy(alpha = a * 0.8f), radius = r, center = c)
-    }
+    drawNightStars(art, t, horizon, state.stars)
     if (state.moon.up) {
         val m = Offset(state.moon.x * w, state.moon.y * horizon)
         for (k in 1..3) drawCircle(Color(0xFFA9B8E8).copy(alpha = 0.22f / k), radius = h * (0.03f + 0.022f * k), center = m, style = Stroke(1.5f))
-        drawCircle(Color(0xFFE9EEF8), radius = h * 0.028f, center = m)
+        drawMoonArt(art, m, h * 0.034f, Color(0xFFE9EEF8))
     }
 
     fun tint(night: Long, dayColor: Long) = lerp(Color(night), Color(dayColor), day)

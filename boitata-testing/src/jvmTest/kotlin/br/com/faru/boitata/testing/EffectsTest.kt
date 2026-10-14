@@ -19,7 +19,9 @@ import br.com.faru.boitata.light.FlamePalette
 import br.com.faru.boitata.weather.Fog
 import br.com.faru.boitata.weather.Rain
 import br.com.faru.boitata.weather.Snow
+import br.com.faru.boitata.weather.SkyArt
 import br.com.faru.boitata.weather.SkyWindow
+import br.com.faru.boitata.weather.StarAtlas
 import br.com.faru.boitata.weather.ViewLayer
 import kotlin.math.sin
 import kotlin.test.Test
@@ -78,6 +80,15 @@ class EffectsTest {
     }
 
     @Test
+    fun aSkyPaintedFromYourOwnArtStillTwinklesAndDriftsEveryFrame() {
+        val art = SkyArt(sun = disc(), moon = disc(), stars = StarAtlas(atlas(), cell = 16, columns = 4, sizes = intArrayOf(8, 12, 16), perSize = 4))
+        val stats = measureScene(frames = 180) {
+            SkyWindow(sky = { SkyModel.at(23f, SkyWeather.Clear) }, layers = layers(), parallax = { Offset.Zero }, art = art)
+        }
+        assertTrue(stats.longestStill <= 3, "the night sky sat still for ${stats.longestStill} frames in a row")
+    }
+
+    @Test
     fun lowerQualityCostsLessForTheHeavyEffects() {
         fun cost(q: Quality, content: @androidx.compose.runtime.Composable () -> Unit) = measureScene(width = 960, height = 540, frames = 60, quality = q, content = content).meanMillis
         val rainHigh = cost(Quality.High) { Rain(Modifier.fillMaxSize(), intensity = 1f) }
@@ -105,6 +116,12 @@ class EffectsTest {
             drawRect(Color(0xFF14110F), Offset(x, 324f - h), Size(w, 540f - (324f - h)))
             x += w + 2f; i++
         }
+    }
+
+    private fun disc(): ImageBitmap = bitmap(64, 64) { drawCircle(Color(0xFF14110F), 30f, Offset(32f, 32f)) }
+
+    private fun atlas(): ImageBitmap = bitmap(64, 48) {
+        for (i in 0 until 12) drawCircle(Color(0xFF14110F), 3f + (i / 4) * 1.5f, Offset((i % 4) * 16f + 8f, (i / 4) * 16f + 8f))
     }
 
     private fun strip(): ImageBitmap = bitmap(1024, 128) {

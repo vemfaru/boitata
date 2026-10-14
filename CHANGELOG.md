@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `SkyArt` and `StarAtlas`: give `SkyWindow(art = ...)` your own pictures for the sun, the moon (its phase still shapes it) and the stars, drawn as solid shapes with the detail cut out; each is tinted by the sky. The playground uses the woodcut sun, moon and stars from the pen file in every scene.
 - Depth: `DepthStage` and `DepthItem` (things on a ground that can be moved about: scale from `Perspective`, draw order, hit test, kept on the ground, a lift while held), `Modifier.depthDrag` in `boitata-scene`, and `Depth` (a single 0..1 depth turned into a size, a fade and a layer slot).
 - `drawFlameTrail` takes `scales`, `visibility` and a `range`, so a flame body can pass through depth and be drawn a piece at a time between layers; the glow thins as the body grows so it does not burn out.
 - Playground: a Depth tab (drag things about; the lantern is the light), and the serpent swims back to the horizon, between the trees and in front of the foliage.

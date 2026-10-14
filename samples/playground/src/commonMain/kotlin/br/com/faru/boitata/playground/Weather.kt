@@ -42,12 +42,13 @@ fun WeatherScene(
     val layers = remember(art) { listOf(ViewLayer(art.far, 0.2f), ViewLayer(art.mid, 0.5f), ViewLayer(art.ground, 0.7f), ViewLayer(art.near, 0.95f)) }
     val view = remember(stormModel) { StormView(flash = { stormModel.flash(seconds()) }, bolt = { stormModel.bolt(seconds()) }) }
     val weather = kind.skyWeather()
+    val skyArt = remember(art) { art.skyArt() }
     // The sky only changes when the hour or the weather does: work it out once, not on every frame (and once per layer).
     val skyState = remember(hour, weather) { SkyModel.at(hour, weather) }
     Box(modifier) {
         SkyWindow(
             sky = { skyState }, layers = layers, parallax = { Offset(kotlin.math.sin(seconds() * 0.4f) * 0.25f, 0f) },
-            seconds = seconds, clouds = art.clouds, storm = if (kind == WeatherKind.Storm) view else null, horizon = ART_HORIZON,
+            seconds = seconds, clouds = art.clouds, storm = if (kind == WeatherKind.Storm) view else null, horizon = ART_HORIZON, art = skyArt,
         )
         when (kind) {
             WeatherKind.Rain -> Rain(intensity = 0.7f, seconds = seconds)
