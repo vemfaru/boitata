@@ -112,28 +112,37 @@ public fun DrawScope.drawEmbers(x: Float, y: Float, spread: Float, rise: Float, 
 /**
  * Fire along a path, like a serpent made of flame. [points] are x,y pairs from the head to the tail ([count] of them); the body is a chain of
  * glowing blobs that thin out and cool from [head] to the tail, with a flicker running down it and embers shed from it.
+ *
+ * To send it through depth, give [scales] (a multiplier on the body's width at each point, 1 = as is) and [visibility] (how much of its light reaches the eye at each point, 0..1:
+ * the air takes the far part), and draw it in pieces with [range] (the points to draw; the shape along the body still counts from the whole), once for each layer slot it crosses.
  */
 @AdvancedBoitataApi
 public fun DrawScope.drawFlameTrail(
     points: FloatArray, count: Int, width: Float, seconds: Float,
     palette: FlamePalette = FlamePalette.Boitata, seed: Long = 21L, quality: Quality = Quality.High,
+    scales: FloatArray? = null, visibility: FloatArray? = null, range: IntRange = 0 until count,
 ) {
     if (count < 2) return
+    val first = range.first.coerceAtLeast(0); val last = range.last.coerceAtMost(count - 1)
+    if (first > last) return
     val noise = FastNoise(seed)
     // Tail first, so the hot head is drawn over the cooler body. Between every two points three more blobs run together into one ribbon.
     val steps = when (quality) { Quality.High -> 3; Quality.Medium -> 2; Quality.Low -> 1 }
-    for (n in count - 1 downTo 0) {
+    for (n in last downTo first) {
         for (k in steps - 1 downTo 0) {
             if (n == count - 1 && k > 0) continue
             val f = k / steps.toFloat()
             val nx = if (n + 1 < count) n + 1 else n
             val t = (n + f) / (count - 1f)                    // 0 at the head, 1 at the tail
             val flicker = 0.88f + 0.12f * sin(seconds * 9f - (n + f) * 0.7f + noise.at(n, 0) * 6.28f)
-            val r = width * (0.3f + 0.7f * (1f - t) * (1f - t * 0.5f)) * flicker
+            val sc = scales?.let { it[n] + (it[nx] - it[n]) * f } ?: 1f
+            val vis = visibility?.let { it[n] + (it[nx] - it[n]) * f } ?: 1f
+            val r = width * sc * (0.3f + 0.7f * (1f - t) * (1f - t * 0.5f)) * flicker
             val bx = points[n * 2] + (points[nx * 2] - points[n * 2]) * f
             val by = points[n * 2 + 1] + (points[nx * 2 + 1] - points[n * 2 + 1]) * f
             val c = Offset(bx + (noise.at(n, 1) - 0.5f) * width * 0.18f * t, by + (noise.at(n, 2) - 0.5f) * width * 0.18f * t)
-            val fade = 1f - t * t
+            // Up close the blobs are big and overlap a lot, and added together they would burn out to white: thin each one as the body grows.
+            val fade = (1f - t * t) * vis / kotlin.math.sqrt(sc.coerceAtLeast(1f))
             if (quality.softGlow) drawCircle(Brush.radialGradient(0f to palette.outer.copy(alpha = 0.3f * fade), 1f to Color.Transparent, center = c, radius = r * 2.2f), radius = r * 2.2f, center = c, blendMode = BlendMode.Plus)
             drawCircle(lerp(palette.mid, palette.outer, t).copy(alpha = 0.34f * fade), radius = r, center = c, blendMode = BlendMode.Plus)
             drawCircle(palette.core.copy(alpha = 0.12f * fade * (1f - t) * (1f - t)), radius = r * 0.5f, center = c, blendMode = BlendMode.Plus)
@@ -142,10 +151,11 @@ public fun DrawScope.drawFlameTrail(
     // Sparks shed along the body.
     for (i in 0 until quality.scaled(count.coerceAtMost(40))) {
         val at = ((noise.at(i, 6) * (count - 1)).toInt()).coerceIn(0, count - 1)
+        if (at < first || at > last) continue
         val life = cycle(seconds, 1.1f + noise.at(i, 7), noise.at(i, 8))
         drawCircle(
-            palette.ember.copy(alpha = bump(life) * 0.8f), radius = 1.2f + noise.at(i, 9) * 1.6f,
-            center = Offset(points[at * 2] + (noise.at(i, 10) - 0.5f) * width, points[at * 2 + 1] - life * width * 2.2f), blendMode = BlendMode.Plus,
+            palette.ember.copy(alpha = bump(life) * 0.8f * (visibility?.get(at) ?: 1f)), radius = (1.2f + noise.at(i, 9) * 1.6f) * (scales?.get(at) ?: 1f),
+            center = Offset(points[at * 2] + (noise.at(i, 10) - 0.5f) * width * (scales?.get(at) ?: 1f), points[at * 2 + 1] - life * width * 2.2f * (scales?.get(at) ?: 1f)), blendMode = BlendMode.Plus,
         )
     }
 }

@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Depth: `DepthStage` and `DepthItem` (things on a ground that can be moved about: scale from `Perspective`, draw order, hit test, kept on the ground, a lift while held), `Modifier.depthDrag` in `boitata-scene`, and `Depth` (a single 0..1 depth turned into a size, a fade and a layer slot).
+- `drawFlameTrail` takes `scales`, `visibility` and a `range`, so a flame body can pass through depth and be drawn a piece at a time between layers; the glow thins as the body grows so it does not burn out.
+- Playground: a Depth tab (drag things about; the lantern is the light), and the serpent swims back to the horizon, between the trees and in front of the foliage.
 - Sound (new modules `boitata-audio-synth` and `boitata-audio`): `StormCues` (thunder at `strike.at + thunderDelay`) and `AmbienceLevels` in core; a deterministic synth (`Thunder`, `Ambience.rain/wind/fire`); `AudioSink`, a sample-accurate `SoftwareMixer`, `SceneAudioScheduler` and `BoitataAudio { }`, which schedule sounds on the device's clock from the scene's time, cancel on weather changes and seeks, and pause with the app. Sinks: desktop (`SourceDataLine`) and web (Web Audio); Android and iOS are silent placeholders for now. `RecordingAudioSink` for tests.
 - The clock gains `realSeconds` and `inForeground` (thunder keeps going under reduced motion).
 - `BoitataScene` and `SceneClock`: one frame loop for a whole scene, shared by every effect, paused when the screen is not in the foreground and still under reduced motion (Android, iOS, web; force it with `SceneConfig`).

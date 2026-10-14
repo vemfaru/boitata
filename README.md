@@ -35,6 +35,41 @@ fun MinimalFire() {
 
 ![The Boitatá's fire](docs/media/fire-boitata.gif)
 
+### Depth: things that go back and forward
+
+![The serpent swims back to the horizon behind the trees, between them, and close in front of everything](docs/media/boitata.gif)
+
+The hero scene above gives the serpent a depth as well as a place: it swims out to the horizon behind the trees (small, thin and faded by the air), weaves between them, and swoops close in front of
+the foliage (big and bright). Every point of its body has its own depth, so its head can pass behind a tree while its tail is still in front of it. `Depth` turns a depth from 0 (near) to 1 (the horizon)
+into a size, a fade and a layer slot (`Behind`, `Between`, `InFront`), and `drawFlameTrail` takes a scale and a visibility for each point and draws a range of the body at a time.
+
+![Things dragged about a ground: back is small and tucked behind, forward is big and covers what is behind](docs/media/depth.gif)
+
+Things on a ground can be dragged about with `DepthStage` and `Modifier.depthDrag`: dragging up sends a thing back and smaller, dragging down brings it forward and bigger, the nearest one covers the others,
+a thing held is lifted a little, and it cannot leave the ground. The stage is plain arithmetic over positions (`Perspective` gives the scale), so drawing it is up to you.
+
+```kotlin
+@Composable
+fun MinimalDepth() {
+    val stage = remember {
+        val perspective = Perspective(frontEdgeY = 600f, backEdgeY = 300f, depth = 6f, eyeBack = 3f, eyeHeight = 2.5f, pitchDegrees = 28f, referenceY = 480f)
+        DepthStage(perspective, 20f, 300f, 780f, 600f).apply {
+            add(DepthItem("post", feetX = 250f, feetY = 480f, baseHeight = 120f, aspect = 0.2f))
+            add(DepthItem("crate", feetX = 520f, feetY = 560f, baseHeight = 60f, aspect = 1.1f))
+        }
+    }
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF14110D)).depthDrag(stage)) {
+        Canvas(Modifier.fillMaxSize()) {
+            // Farthest first, so what is nearer covers it. The positions are read here, in the draw block: dragging redraws and recomposes nothing.
+            for (item in stage.ordered()) {
+                val h = stage.height(item); val w = h * item.aspect
+                drawRect(Color(0xFFC79B5E), Offset(item.feetX - w / 2f, item.feetY - h), Size(w, h))
+            }
+        }
+    }
+}
+```
+
 ### Shadows that swing round as the light moves
 
 ![A light moving round four things, each throwing its shadow away from it](docs/media/shadows.gif)
@@ -114,8 +149,8 @@ The GIFs in this README are drawn offscreen by the same code, frame by frame, so
 
 | Module | What it gives | Depends on |
 |---|---|---|
-| `boitata-core` | `BoitataScene` and the scene clock (time, quality, reduced motion, pause), `drawImageSmooth`, and the pure maths: `Perspective`, `FastNoise`, `SkyModel`, `StormModel`, window-light geometry | Compose runtime |
-| `boitata-scene` | `SceneCamera`, `SceneViewport` (fits a world to any window), `Modifier.worldBounds` | core |
+| `boitata-core` | `BoitataScene` and the scene clock (time, quality, reduced motion, pause), `drawImageSmooth`, and the pure maths: `Perspective`, `DepthStage`, `Depth`, `FastNoise`, `SkyModel`, `StormModel`, window-light geometry | Compose runtime |
+| `boitata-scene` | `SceneCamera`, `SceneViewport` (fits a world to any window), `Modifier.worldBounds`, `Modifier.depthDrag` (drag things about a ground, with depth) | core |
 | `boitata-light` | `LightSource`, `LightShade`, `Fire`, `drawFlameTrail`, `CastShadow`, `CastSilhouette`, `WindowLight`, flicker | core, scene |
 | `boitata-weather` | `Rain`, `Snow`, `Fog`, `SkyWindow`, `rememberStorm` (lightning) | core |
 | `boitata-testing` | `measureScene`: draws a scene frame by frame and tells you its cost and whether it changed each frame (JVM, for tests) | core |

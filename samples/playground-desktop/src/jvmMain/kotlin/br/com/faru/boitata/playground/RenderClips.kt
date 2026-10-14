@@ -37,7 +37,10 @@ fun main(args: Array<String>) {
         val indices = if (preview) listOf(frames / 4, frames / 2, frames * 3 / 4) else (0 until frames).toList()
         for (i in indices) {
             t = i / FPS.toFloat()
-            val image = scene.render((i * 1_000_000_000L) / FPS)
+            // Compose learns of the new time asynchronously: render, let it settle, and keep the second picture (as boitata-testing does).
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+            scene.render((i * 1_000_000_000L) / FPS)
+            val image = scene.render((i * 1_000_000_000L) / FPS + 1)
             File(dir, "%04d.png".format(i)).writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
         }
         scene.close()

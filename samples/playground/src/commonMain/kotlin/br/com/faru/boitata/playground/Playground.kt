@@ -38,7 +38,7 @@ import br.com.faru.boitata.core.clock.BoitataScene
 import br.com.faru.boitata.core.clock.rememberSceneSeconds
 
 /** The demos, in the order of the tabs. */
-enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Fire("Fire") }
+enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Fire("Fire") }
 
 /** The whole playground: pick a demo, play with its controls. The same scenes are what the README's GIFs are rendered from. */
 @Composable
@@ -64,6 +64,7 @@ fun PlaygroundApp() {
                     Demo.Weather -> WeatherDemo(seconds, sink, sound)
                     Demo.Window -> WindowDemo(seconds)
                     Demo.Shadows -> ShadowDemo(seconds)
+                    Demo.Depth -> DepthDemo(seconds)
                     Demo.Fire -> FireDemo(seconds, sink, sound)
                 }
                 }
@@ -140,6 +141,14 @@ private fun ShadowDemo(seconds: () -> Float) {
             },
         ) { ShadowScene({ light }, reach) }
         Controls { Text("Drag the light", color = Color(0xFFB7BEC8)); Labelled("Reach", reach, 0.3f..1.4f) { reach = it } }
+    }
+}
+
+@Composable
+private fun DepthDemo(seconds: () -> Float) {
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) { DepthScene(seconds) }
+        Controls { Text("Drag anything. Up sends it back, small and tucked behind what is nearer; down brings it forward, bigger. The lantern is the light.", color = Color(0xFFB7BEC8)) }
     }
 }
 

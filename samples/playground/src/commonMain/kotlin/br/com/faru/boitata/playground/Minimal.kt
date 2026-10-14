@@ -3,7 +3,9 @@ package br.com.faru.boitata.playground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -11,7 +13,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import br.com.faru.boitata.core.Perspective
 import br.com.faru.boitata.core.clock.BoitataScene
+import br.com.faru.boitata.core.depth.DepthItem
+import br.com.faru.boitata.core.depth.DepthStage
 import br.com.faru.boitata.core.sky.SkyModel
 import br.com.faru.boitata.core.sky.SkyWeather
 import br.com.faru.boitata.light.CastShadow
@@ -19,6 +24,7 @@ import br.com.faru.boitata.light.Fire
 import br.com.faru.boitata.light.FlamePalette
 import br.com.faru.boitata.light.LightSource
 import br.com.faru.boitata.light.WindowLight
+import br.com.faru.boitata.scene.depthDrag
 import br.com.faru.boitata.weather.Rain
 
 // The snippets in the README, kept here so they are compiled with the rest.
@@ -60,5 +66,26 @@ fun MinimalWindowLight() {
             window = Rect(80f, 60f, 330f, 320f), floorY = 380f, depth = 160f, lean = 0.9f,
             color = sky.lightColor, strength = sky.lightStrength, elevation = sky.sunElevation,
         )
+    }
+}
+
+/** Two things on a ground you can drag: back makes them small, forward makes them big, and the nearer one covers the other. */
+@Composable
+fun MinimalDepth() {
+    val stage = remember {
+        val perspective = Perspective(frontEdgeY = 600f, backEdgeY = 300f, depth = 6f, eyeBack = 3f, eyeHeight = 2.5f, pitchDegrees = 28f, referenceY = 480f)
+        DepthStage(perspective, 20f, 300f, 780f, 600f).apply {
+            add(DepthItem("post", feetX = 250f, feetY = 480f, baseHeight = 120f, aspect = 0.2f))
+            add(DepthItem("crate", feetX = 520f, feetY = 560f, baseHeight = 60f, aspect = 1.1f))
+        }
+    }
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF14110D)).depthDrag(stage)) {
+        Canvas(Modifier.fillMaxSize()) {
+            // Farthest first, so what is nearer covers it. The positions are read here, in the draw block: dragging redraws and recomposes nothing.
+            for (item in stage.ordered()) {
+                val h = stage.height(item); val w = h * item.aspect
+                drawRect(Color(0xFFC79B5E), Offset(item.feetX - w / 2f, item.feetY - h), Size(w, h))
+            }
+        }
     }
 }

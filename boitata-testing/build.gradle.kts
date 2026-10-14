@@ -27,6 +27,7 @@ kotlin {
             implementation(project(":boitata-light"))
             implementation(project(":boitata-weather"))
             implementation(project(":boitata-scene"))
+            implementation(project(":boitata-core"))
         }
     }
 }

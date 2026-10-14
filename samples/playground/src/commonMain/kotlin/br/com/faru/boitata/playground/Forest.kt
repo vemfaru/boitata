@@ -15,7 +15,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.FastNoise
+import androidx.compose.runtime.remember
 import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.depth.Depth
+import br.com.faru.boitata.core.depth.DepthSlot
 import br.com.faru.boitata.core.clock.rememberSceneQuality
 import br.com.faru.boitata.core.sky.SkyModel
 import br.com.faru.boitata.core.sky.SkyWeather
@@ -44,7 +47,8 @@ fun ForestScene(
 ) {
     val art = LocalSprites.current ?: return
     val quality = rememberSceneQuality()
-    Spacer(modifier.drawBehind { drawForest(art, seconds(), rain, fog, hour, quality()) })
+    val track = remember { SerpentTrack() }
+    Spacer(modifier.drawBehind { drawForest(art, seconds(), rain, fog, hour, quality(), track) })
 }
 
 /** Where each tree of `layer_mid` stands, in the art's own pixels; its feet are at the bottom centre of the box. */
@@ -53,7 +57,7 @@ private val MidTrees = listOf(
     Crop(1034, 391, 241, 393), Crop(1309, 448, 137, 320), Crop(1490, 512, 204, 292), Crop(1706, 473, 193, 317),
 )
 
-fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: Float, quality: Quality = Quality.High) {
+fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: Float, quality: Quality = Quality.High, track: SerpentTrack = SerpentTrack()) {
     val w = size.width; val h = size.height
     val v = cover()
     val sc = v.scale
@@ -84,17 +88,18 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
     drawArt(art.far, Offset(v.x, v.y), sc, tint(0xFF0C1A22, 0xFF6F8794))
     drawArt(art.ground, Offset(v.x, v.y), sc, tint(0xFF070D0B, 0xFF26302A))
 
-    // The serpent: the head follows a slow loop, the body is where the head was a moment ago.
-    val count = 72
-    val pts = FloatArray(count * 2)
-    for (n in 0 until count) {
-        val tt = t * 1.5f - n * 0.07f
-        val weave = sin(n * 0.32f - t * 3.5f) * h * 0.045f * (0.3f + n / count.toFloat())
-        pts[n * 2] = w * (0.5f + 0.34f * sin(tt * 0.62f) + 0.04f * sin(tt * 1.9f))
-        pts[n * 2 + 1] = h * (0.5f + 0.08f * sin(tt * 1.1f + 1f)) + weave
-    }
-    val head = Offset(pts[0], pts[1])
-    val light = fireLight(head.x, head.y, t, reach = w * 0.55f, strength = 0.95f * (1f - day), groundX = head.x, groundY = v.py(1080f * 0.76f))
+    // The serpent swims through the wood in depth as well as across it: back to the horizon behind the trees, between the trees, then close in front of everything.
+    // Every point of its body has its own depth, so its size, its fade and the layers it passes behind are decided point by point.
+    val head = track.follow(t, w, h, horizon, quality)
+    val z0 = track.depth[0]
+    val light = fireLight(
+        head.x, head.y, t, reach = w * 0.55f * (0.65f + 0.35f * Depth.visibility(z0)), strength = (0.5f + 0.45f * Depth.visibility(z0)) * (1f - day),
+        groundX = head.x, groundY = track.groundY(z0, h, horizon),
+    )
+
+    // Behind the mid trees: the part of the body that is far away.
+    track.draw(Depth.slot(0.9f), this, h, t, quality)
+    track.drawHeadIfIn(DepthSlot.Behind, art, this, h)
 
     for (tr in MidTrees) {
         val feetX = v.px(tr.x + tr.w / 2f); val feetY = v.py((tr.y + tr.h).toFloat())
@@ -104,22 +109,85 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
         drawArt(art.mid, Offset(v.px(tr.x.toFloat()), v.py(tr.y.toFloat())), sc, lerp(base, Color(0xFF8A4B1F), (near * 0.6f).coerceIn(0f, 0.65f)), tr)
     }
 
-    // Rings of carved arcs around the serpent show its glow; a soft light on the ground below it.
-    val glow = Offset(head.x, v.py(1080f * 0.78f))
-    drawCircle(Brush.radialGradient(0f to Color(0x44FFA63C), 1f to Color.Transparent, center = glow, radius = w * 0.28f), radius = w * 0.28f, center = glow, blendMode = BlendMode.Plus)
-    for (k in 1..3) drawCircle(Color(0xFFF2A83B).copy(alpha = 0.35f / k * (1f - day)), radius = h * 0.09f * k, center = head, style = Stroke(2f))
-    drawFlameTrail(pts, count, h * 0.052f, t, FlamePalette.Boitata, quality = quality)
-    drawSerpentHead(art, pts, h * 0.052f)
+    // A glow on the ground under the serpent, and rings of carved arcs around its head.
+    val glow = Offset(head.x, track.groundY(z0, h, horizon))
+    val glowRadius = w * 0.28f * Depth.scale(z0).coerceIn(0.5f, 1.5f)
+    drawCircle(Brush.radialGradient(0f to Color(0x44FFA63C), 1f to Color.Transparent, center = glow, radius = glowRadius), radius = glowRadius, center = glow, blendMode = BlendMode.Plus)
+
+    // Between the mid trees and the near foliage.
+    track.draw(Depth.slot(0.4f), this, h, t, quality)
+    track.drawHeadIfIn(DepthSlot.Between, art, this, h)
 
     val nearTint = tint(0xFF040A08, 0xFF16201A)
     drawArt(art.near, Offset(v.x, v.y), sc, lerp(nearTint, Color(0xFF5A3216), (0.25f * light.strength).coerceIn(0f, 0.3f)))
+
+    // In front of everything: close to the viewer, large, with the foliage behind it.
+    track.draw(Depth.slot(0.05f), this, h, t, quality)
+    track.drawHeadIfIn(DepthSlot.InFront, art, this, h)
+    for (k in 1..3) drawCircle(Color(0xFFF2A83B).copy(alpha = 0.35f / k * (1f - day) * Depth.visibility(z0)), radius = h * 0.09f * k * Depth.scale(z0), center = head, style = Stroke(2f))
 
     if (fog > 0f) drawFog(t, fog, Color(0xFF8DA2B5), quality = quality)
     if (rain > 0f) drawRain(t, rain, 0.3f, Color(0xFFB7C8DC), quality = quality)
 }
 
+/**
+ * The serpent's body as numbers, one entry per point from the head to the tail, made once and reused every frame (nothing is allocated while it swims): where each point is,
+ * how deep (0 near, 1 at the horizon), how big and how faded for that depth, and which layer slot it is in.
+ */
+class SerpentTrack(val count: Int = 72) {
+    val pts = FloatArray(count * 2)
+    val depth = FloatArray(count)
+    val scale = FloatArray(count)
+    val visibility = FloatArray(count)
+    private val slot = Array(count) { DepthSlot.Between }
+    private var baseWidth = 0f
+
+    /** The ground line at depth [z]: the bottom of the picture up close, a little below the horizon far off. */
+    fun groundY(z: Float, h: Float, horizon: Float): Float = h * 0.97f + (horizon + h * 0.03f - h * 0.97f) * z
+
+    /** Moves the whole body to time [t] and returns the head. The head swings in depth; each point behind it is where the head was a moment earlier. */
+    fun follow(t: Float, w: Float, h: Float, horizon: Float, quality: Quality): Offset {
+        baseWidth = h * 0.042f
+        for (n in 0 until count) {
+            val tt = t * 1.5f - n * 0.07f
+            val z = Depth.swing(tt, period = 12f, phase = 0.25f)
+            val sc = Depth.scale(z).coerceAtMost(1.7f)
+            // Sideways it sweeps less when far away, as everything does toward the vanishing point.
+            val across = 0.34f * sin(tt * 0.62f) + 0.04f * sin(tt * 1.9f)
+            val x = w * (0.5f + across * (0.35f + 0.65f * (1f - z)))
+            val hover = h * 0.2f * sc
+            val weave = sin(n * 0.32f - t * 3.5f) * h * 0.04f * (0.3f + n / count.toFloat()) * sc
+            pts[n * 2] = x
+            pts[n * 2 + 1] = groundY(z, h, horizon) - hover + weave
+            depth[n] = z; scale[n] = sc; visibility[n] = Depth.visibility(z); slot[n] = Depth.slot(z)
+        }
+        return Offset(pts[0], pts[1])
+    }
+
+    /** Draws the runs of the body that are in the same slot as [which] (a representative depth in it). */
+    fun draw(which: DepthSlot, scope: DrawScope, h: Float, t: Float, quality: Quality) {
+        var i = 0
+        while (i < count) {
+            val s = slot[i]
+            var j = i
+            while (j + 1 < count && slot[j + 1] == s) j++
+            if (s == which) with(scope) {
+                // One point more at the end of the run, so the pieces join where the body crosses from one layer to the next.
+                drawFlameTrail(pts, count, baseWidth, t, FlamePalette.Boitata, quality = quality, scales = scale, visibility = visibility, range = i..minOf(j + 1, count - 1))
+            }
+            i = j + 1
+        }
+    }
+
+    /** The head, once, in the slot it is in. */
+    fun drawHeadIfIn(which: DepthSlot, art: Sprites, scope: DrawScope, h: Float) {
+        if (slot[0] != which) return
+        with(scope) { drawSerpentHead(art, pts, baseWidth * scale[0], visibility[0]) }
+    }
+}
+
 /** The head sprite on the front of the flame, turned the way the serpent is going, its eyes lit from behind through the sockets cut in it. */
-private fun DrawScope.drawSerpentHead(art: Sprites, pts: FloatArray, width: Float) {
+private fun DrawScope.drawSerpentHead(art: Sprites, pts: FloatArray, width: Float, visibility: Float = 1f) {
     val head = Offset(pts[0], pts[1])
     val angle = (atan2((pts[1] - pts[3]).toDouble(), (pts[0] - pts[2]).toDouble()) * 180.0 / PI).toFloat()
     val k = 2f * width / 80f * 0.6f
@@ -128,12 +196,12 @@ private fun DrawScope.drawSerpentHead(art: Sprites, pts: FloatArray, width: Floa
     withTransform({ translate(head.x, head.y); rotate(angle, Offset.Zero) }) {
         for (sy in floatArrayOf(219f, 291f)) {
             val e = Offset((347f - 255f) * k, (sy - 256f) * k)
-            drawCircle(Brush.radialGradient(0f to Color(0xCCFFF1C2), 1f to Color.Transparent, center = e, radius = 70f * k), radius = 70f * k, center = e, blendMode = BlendMode.Plus)
-            drawCircle(Color(0xFFFFF1C2), radius = 30f * k, center = e)
+            drawCircle(Brush.radialGradient(0f to Color(0xCCFFF1C2).copy(alpha = 0.8f * visibility), 1f to Color.Transparent, center = e, radius = 70f * k), radius = 70f * k, center = e, blendMode = BlendMode.Plus)
+            drawCircle(Color(0xFFFFF1C2).copy(alpha = visibility), radius = 30f * k, center = e)
         }
         // An Ember rim first, so the dark head stands out of the dark wood; then the carved head itself.
         val rim = 1.12f
-        drawArt(art.head, Offset((250f - 255f) * k * rim - 0.5f * (rim - 1f) * 226f * k, (184f - 256f) * k * rim - 0.5f * (rim - 1f) * 156f * k), k * rim, Color(0xFFC2410C), headCrop)
+        drawArt(art.head, Offset((250f - 255f) * k * rim - 0.5f * (rim - 1f) * 226f * k, (184f - 256f) * k * rim - 0.5f * (rim - 1f) * 156f * k), k * rim, Color(0xFFC2410C).copy(alpha = visibility), headCrop)
         drawArt(art.head, Offset((250f - 255f) * k, (184f - 256f) * k), k, Color(0xFF14110F), headCrop)
     }
 }
