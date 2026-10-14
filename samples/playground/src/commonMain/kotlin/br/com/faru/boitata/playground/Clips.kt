@@ -1,6 +1,7 @@
 package br.com.faru.boitata.playground
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
@@ -32,6 +33,7 @@ val Clips: List<Clip> = listOf(
     Clip("light-walls", 10f, Wind.Breeze, stateful = true) { t -> LightStageScene(t, walls = true, script = ::scriptedLamps) },
     Clip("shadow-theatre", 12f, Wind.Calm, stateful = true) { t -> ShadowTheatreScene(t, script = ::scriptedTheatre) },
     Clip("pond", 10f, Wind.Breeze, stateful = true) { t -> PondScene(t, hour = 21f) },
+    Clip("liquids", 10f, Wind.Calm, stateful = true) { t -> LiquidsScene(t, remember { LiquidBench() }, script = ::scriptedBench) },
     Clip("depth", 8f, Wind.Windy, stateful = true) { t -> DepthScene(t, script = ::scriptedDrag) },
     Clip("fire-campfire", 5f, Wind.Windy) { t -> FireScene(t, 0.9f, FireKind.Campfire) },
     Clip("fire-boitata", 5f, Wind.Breeze) { t -> FireScene(t, 0.9f, FireKind.Boitata) },

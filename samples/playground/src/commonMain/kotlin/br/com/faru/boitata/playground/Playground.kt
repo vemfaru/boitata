@@ -40,7 +40,7 @@ import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
 
 /** The demos, in the order of the tabs. */
-enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Pond("Pond"), Burn("Burn"), Fire("Fire") }
+enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Pond("Pond"), Liquids("Liquids"), Burn("Burn"), Fire("Fire") }
 
 /** The whole playground: pick a demo, play with its controls. The same scenes are what the README's GIFs are rendered from. */
 @Composable
@@ -77,6 +77,7 @@ fun PlaygroundApp() {
                     Demo.Stage -> LightStageDemo(seconds)
                     Demo.Theatre -> ShadowTheatreDemo(seconds)
                     Demo.Pond -> PondDemo(seconds, moon, southern)
+                    Demo.Liquids -> LiquidsDemo(seconds)
                     Demo.Burn -> BurnDemo(seconds, sink, sound)
                     Demo.Fire -> FireDemo(seconds, sink, sound)
                 }
@@ -273,6 +274,23 @@ private fun PondDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
         Controls {
             Labelled("Hour", hour, 0f..24f) { hour = it }
             Text("Water behaves as water: everything at the edge is mirrored in it (faint, rippling, fading with depth), the moon and the lamps leave glitter, and whatever wades in is partly under water, looking nearer the surface than it is. Drag the people into the pond; the caiman and the capybara wade through it themselves.", color = Color(0xFFB7BEC8))
+        }
+    }
+}
+
+@Composable
+private fun LiquidsDemo(seconds: () -> Float) {
+    val bench = remember { LiquidBench() }
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) { LiquidsScene(seconds, bench) }
+        Controls {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = false, onClick = { bench.pour() }, label = { Text("Pour") })
+                FilterChip(selected = false, onClick = { bench.drop() }, label = { Text("Drop in") })
+                FilterChip(selected = false, onClick = { bench.knock() }, label = { Text("Knock over") })
+                FilterChip(selected = false, onClick = { bench.refill() }, label = { Text("Refill all") })
+            }
+            Text("Tap a glass to pick it (and drop a ripple in). Drag it along the table and the liquid lags and sloshes. Pour more, knock it over, or drop something in. What is behind the glass shows through the liquid, magnified; the table mirrors it.", color = Color(0xFFB7BEC8))
         }
     }
 }
