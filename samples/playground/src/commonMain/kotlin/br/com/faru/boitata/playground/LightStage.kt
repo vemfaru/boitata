@@ -34,7 +34,10 @@ import br.com.faru.boitata.light.LightRig
 import br.com.faru.boitata.light.PointLight
 import br.com.faru.boitata.light.SpotLight
 import br.com.faru.boitata.light.drawCastShadows
+import br.com.faru.boitata.light.Wall
 import br.com.faru.boitata.light.drawLightBulbs
+import br.com.faru.boitata.light.drawWallLight
+import androidx.compose.ui.geometry.Size
 import br.com.faru.boitata.light.drawLightPools
 import br.com.faru.boitata.scene.depthDrag
 import kotlin.math.PI
@@ -61,7 +64,11 @@ private val StageProps = listOf(
     StageProp("stool", "stool", 0.17f, 0.50f, 0.82f),
 )
 
-private class StageSetup(val stage: DepthStage, val rig: LightRig, val lights: List<Light>)
+private class StageSetup(val stage: DepthStage, val rig: LightRig, val lights: List<Light>) {
+    /** The back wall of the room, and the front of the crate: the surfaces the shadows can climb. */
+    val backWall = Wall(0f, 0f, 0f, 0f)
+    var crateWall: Wall? = null
+}
 
 private fun DepthStage.item(id: String): DepthItem = items.first { it.id == id }
 
@@ -84,14 +91,17 @@ private fun buildStage(art: Sprites, size: IntSize): StageSetup {
             else -> PointLight(0f, 0f, 0f, l.color, 0.95f, w * 0.55f, size = 0.2f, flicker = 0.06f)
         })
     }
-    return StageSetup(stage, rig, lights)
+    val setup = StageSetup(stage, rig, lights)
+    setup.crateWall = Wall(0f, 0f, 0f, 0f, owner = stage.item("crate"))
+    return setup
 }
 
 /**
  * Four lamps lighting one stage from four places at once, each in its own colour, and every shadow reacting to every lamp: each thing throws a shadow away from each light that reaches it, longer
  * the lower and nearer the lamp, and as dark as that lamp's share of all the light there. Drag a lamp (the glowing orbs) and its shadows swing round while the others stay; drag a thing and its
  * shadows stretch and turn as it crosses between the lamps. Where two lamps overlap their colours mix on the things standing there. [heightScale] raises or lowers all the lamps (low lamps
- * throw long shadows). [on] says which lamps are lit. [script], if given, moves things by itself for a recording.
+ * throw long shadows). With [walls] the stage is a room: the back wall and the front of the crate are surfaces the shadows can land on, so a shadow thrown backward climbs the wall (bigger, the farther the wall
+ * is behind) instead of lying flat, and one thrown at the crate bends onto its face. [on] says which lamps are lit. [script], if given, moves things by itself for a recording.
  */
 @Composable
 fun LightStageScene(
@@ -99,6 +109,7 @@ fun LightStageScene(
     modifier: Modifier = Modifier.fillMaxSize(),
     on: Set<StageLamp> = StageLamp.entries.toSet(),
     heightScale: Float = 0.65f,
+    walls: Boolean = false,
     script: ((DepthStage, Float) -> Unit)? = null,
 ) {
     val art = LocalSprites.current ?: return
@@ -111,15 +122,29 @@ fun LightStageScene(
         SideEffect { script(setup.stage, now) }
     }
     Box(modifier.onSizeChanged { size = it }.let { if (setup != null) it.depthDrag(setup.stage) else it }) {
-        Spacer(Modifier.fillMaxSize().drawBehind { if (setup != null) drawLightStage(art, setup, seconds(), on, heightScale, quality(), sceneWind.wind) })
+        Spacer(Modifier.fillMaxSize().drawBehind { if (setup != null) drawLightStage(art, setup, seconds(), on, heightScale, quality(), sceneWind.wind, walls) })
     }
 }
 
-private fun DrawScope.drawLightStage(art: Sprites, s: StageSetup, t: Float, on: Set<StageLamp>, heightScale: Float, quality: Quality, wind: Wind) {
+private fun DrawScope.drawLightStage(art: Sprites, s: StageSetup, t: Float, on: Set<StageLamp>, heightScale: Float, quality: Quality, wind: Wind, walls: Boolean) {
     val w = size.width; val h = size.height
     val stage = s.stage; val rig = s.rig
-    drawWoodsBackdrop(art, t, 0f)
+    val floorY = stage.groundTop
+    if (walls) {
+        // A room: plaster wall behind, boards on the floor, and the wall and the front of the crate are what the shadows can climb.
+        drawRect(Color(0xFF0F1214), Offset.Zero, Size(w, h))
+        drawTiled(art.wall, androidx.compose.ui.geometry.Rect(0f, 0f, w, floorY), tile = w * 0.34f, tint = Color(0xFF3A3F44))
+        drawTiled(art.floor, androidx.compose.ui.geometry.Rect(0f, floorY, w, h), tile = w * 0.3f, tint = Color(0xFF211C17))
+    } else drawWoodsBackdrop(art, t, 0f)
     rig.ambient = 0.05f
+    rig.walls.clear()
+    if (walls) {
+        s.backWall.footY = floorY; s.backWall.left = 0f; s.backWall.right = w; s.backWall.height = floorY
+        rig.add(s.backWall)
+        val crate = stage.item("crate"); val ch = stage.height(crate); val cw = ch * crate.aspect
+        s.crateWall!!.apply { footY = crate.feetY; left = crate.feetX - cw / 2f; right = crate.feetX + cw / 2f; height = ch }
+        rig.add(s.crateWall!!)
+    }
     val person = h * 0.34f
     for ((i, l) in StageLamp.entries.withIndex()) {
         val orb = stage.item("lamp:${l.name}"); val light = s.lights[i]
@@ -133,6 +158,7 @@ private fun DrawScope.drawLightStage(art: Sprites, s: StageSetup, t: Float, on: 
             else -> Unit
         }
     }
+    if (walls) drawWallLight(rig, s.backWall, t)
     drawLightPools(rig, t, bulbs = false)
 
     val dark = Color(0xFF1A2420); val lit = Color(0xFFE6DCC4)
@@ -153,7 +179,7 @@ private fun DrawScope.drawLightStage(art: Sprites, s: StageSetup, t: Float, on: 
         val k = height / image.height
         val lifted = item.lift * height * 0.05f
         val silhouette: DrawScope.(Color) -> Unit = { c -> drawArt(image, Offset(-image.width * k / 2f, -height), k, c) }
-        drawCastShadows(rig, item.feetX, item.feetY, height, t, 0.95f * (1f - 0.25f * item.lift), quality, silhouette = silhouette)
+        drawCastShadows(rig, item.feetX, item.feetY, height, t, 0.95f * (1f - 0.25f * item.lift), quality, ignore = item, silhouette = silhouette)
         val colour = rig.shade(dark, lit, item.feetX, item.feetY - height * 0.3f, t)
         val bend = prop.wind.bend(wind, t, item.feetX / w, phase = item.id.length * 0.21f)
         sway(item.feetX, item.feetY - lifted, bend, maxLean = 0.1f) { drawArt(image, Offset(item.feetX - image.width * k / 2f, item.feetY - height - lifted), k, colour) }

@@ -113,4 +113,34 @@ class LightRigTest {
         assertTrue(abs(left - right) < 0.3f * (left + right), "balanced: $left and $right")
     }
 
+
+    private fun wallScene(withWall: Boolean, ignore: Any? = null, wallOwner: Any? = null) = run {
+        val rig = LightRig(ambient = 0.05f)
+        rig.add(Lights.lamp(200f, 280f, scale = 60f))
+        if (withWall) rig.add(br.com.faru.boitata.light.Wall(footY = 100f, left = 0f, right = 400f, height = 100f, owner = wallOwner))
+        renderStill(width = 400, height = 300) {
+            Spacer(Modifier.fillMaxSize().drawBehind {
+                drawCastShadows(rig, 200f, 200f, 60f, 0f, ignore = ignore) { c -> drawRect(c, Offset(-10f, -60f), Size(20f, 60f)) }
+            })
+        }
+    }
+
+    private fun massAbove(s: Still, y: Int) = (0 until y).sumOf { r -> (0 until s.width).count { x -> s.alpha(x, r) > 10 } }
+
+    @Test
+    fun aShadowClimbsTheWallBehindTheThing() {
+        val open = wallScene(withWall = false)
+        val walled = wallScene(withWall = true)
+        assertTrue(massAbove(walled, 100) > 150, "a shadow on the wall face above its foot: ${massAbove(walled, 100)}")
+        assertTrue(massAbove(walled, 90) > massAbove(open, 90) + 100, "the wall carries a bigger shadow up there: ${massAbove(walled, 90)} vs ${massAbove(open, 90)}")
+    }
+
+    @Test
+    fun theFloorShadowStopsAtTheWallFootAndTheWallsOwnerDoesNotShadowItself() {
+        val owner = Any()
+        val self = wallScene(withWall = true, ignore = owner, wallOwner = owner)
+        val open = wallScene(withWall = false)
+        // The thing is the wall (a crate): nothing lands on its own face, so what is on screen is the floor shadow as if there were no wall.
+        assertEquals(massAbove(open, 300), massAbove(self, 300), "no change for the wall's own owner")
+    }
 }

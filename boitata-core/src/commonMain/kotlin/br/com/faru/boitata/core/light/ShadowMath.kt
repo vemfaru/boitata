@@ -25,6 +25,9 @@ public object ShadowMath {
      */
     public const val FOOTPRINT: Float = 0.14f
 
+    /** How much bigger a shadow on a wall is allowed to be than the thing (a light almost level with the thing, a wall far behind it). */
+    public const val MAX_WALL_SCALE: Float = 3.2f
+
     /** The lowest a sun or moon is drawn: 8 degrees, so even a rising sun gives a long but finite shadow. */
     public const val MIN_ELEVATION: Float = 0.14f
 
@@ -52,6 +55,38 @@ public object ShadowMath {
         val above = lightHeight - 0.5f * objectHeight
         val k = if (above <= 0f) MAX_LENGTH else (distance / above).coerceIn(0.05f, MAX_LENGTH)
         into.set(dx * k, dy * k * GROUND_SQUASH + FOOTPRINT, spread(size, k))
+    }
+
+    /**
+     * The shadow of an upright thing standing at ([feetX], [feetY]) falling on a **wall**: a vertical surface that faces the viewer and stands on the ground along the screen line [wallFootY]
+     * (a back wall, or the face of a crate). The light is a point at ([lightX], [lightY]) on the ground, [lightHeight] above it.
+     *
+     * Where the light is nearer the viewer than the thing, its rays run on past the thing to the wall and the shadow lands there: the thing's outline, enlarged by how much farther the wall is
+     * from the light than the thing is ([WallCast.scale], 1 for a thing against the wall, 2 for a wall twice as far as the thing), standing on a floor of its own that is [WallCast.footLift] pixels
+     * above the wall's foot (negative: below the foot, so only its upper part shows). Returns false when there is no shadow on this wall: the thing is behind it, or the light is not in front of the thing.
+     */
+    public fun onWallFromPoint(lightX: Float, lightY: Float, lightHeight: Float, feetX: Float, feetY: Float, wallFootY: Float, size: Float, into: WallCast): Boolean {
+        val ly = lightY / GROUND_SQUASH; val py = feetY / GROUND_SQUASH; val wy = wallFootY / GROUND_SQUASH
+        if (py <= wy + 0.5f || ly <= py + 0.5f) return false
+        val t = (wy - ly) / (py - ly)                                   // how far along the ray from the light the wall is, in units of the way to the thing
+        if (t <= 1f) return false
+        val scale = t.coerceAtMost(MAX_WALL_SCALE)
+        into.set(lightX + scale * (feetX - lightX), lightHeight * (1f - scale), scale, size * (0.05f + 0.05f * scale))
+        return true
+    }
+
+    /**
+     * As [onWallFromPoint] for a light so far away its rays are parallel ([azimuth] the way shadows fall along the ground, [elevation] how high it is): the shadow is the same size as the thing,
+     * moved along the ray: sideways and down by how far the wall is from the thing. Only a light that shines toward the wall (shadows falling away from the viewer) puts shadows on it.
+     */
+    public fun onWallFromDirection(azimuth: Float, elevation: Float, feetX: Float, feetY: Float, wallFootY: Float, size: Float, into: WallCast): Boolean {
+        val dirY = sin(azimuth)
+        val py = feetY / GROUND_SQUASH; val wy = wallFootY / GROUND_SQUASH
+        if (py <= wy + 0.5f || dirY >= -0.05f) return false
+        val along = (wy - py) / dirY                                    // how far along the ground the ray runs before it reaches the wall
+        val e = elevation.coerceIn(MIN_ELEVATION, 1.5f)
+        into.set(feetX + along * cos(azimuth), -along * tan(e), 1f, size * 0.08f)
+        return true
     }
 
     /** The direction (radians on the ground) a light at ([lightX], [lightY]) throws shadows over a thing at ([feetX], [feetY]). */
@@ -83,4 +118,28 @@ public class ShadowCast {
 
     /** How far the tip of the shadow of a thing [height] tall is from its feet, in pixels. */
     public fun length(height: Float): Float = hypot(leanX, leanY) * height
+}
+
+/** A shadow on a wall, reused so nothing is allocated while a scene draws. Written by [ShadowMath.onWallFromPoint] and [ShadowMath.onWallFromDirection]. */
+public class WallCast {
+    /** Where the thing's centre line lands on the wall, in screen x. */
+    public var x: Float = 0f
+        private set
+
+    /** How high above the wall's foot the shadow's own foot lands, in pixels (negative: below it, so only the upper part of the shadow shows). */
+    public var footLift: Float = 0f
+        private set
+
+    /** How much the thing's outline is enlarged. */
+    public var scale: Float = 1f
+        private set
+
+    /** How soft the edge is, as a share of the thing's size. */
+    public var spread: Float = 0f
+        private set
+
+    /** How dark, 0 to 1, set by whoever combines several lights. */
+    public var alpha: Float = 0f
+
+    public fun set(x: Float, footLift: Float, scale: Float, spread: Float) { this.x = x; this.footLift = footLift; this.scale = scale; this.spread = spread }
 }

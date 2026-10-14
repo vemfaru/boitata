@@ -229,14 +229,16 @@ private fun LightsDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean)
 private fun LightStageDemo(seconds: () -> Float) {
     var on by remember { mutableStateOf(StageLamp.entries.toSet()) }
     var height by remember { mutableFloatStateOf(0.65f) }
+    var walls by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { LightStageScene(seconds, on = on, heightScale = height) }
+        Box(Modifier.weight(1f)) { LightStageScene(seconds, on = on, heightScale = height, walls = walls) }
         Controls {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (l in StageLamp.entries) FilterChip(selected = l in on, onClick = { on = if (l in on) on - l else on + l }, label = { Text(l.label, color = l.color) })
+                FilterChip(selected = walls, onClick = { walls = !walls }, label = { Text("Walls") })
             }
             Labelled("Lamp height", height, 0.4f..2f) { height = it }
-            Text("Four lamps light the stage from four places at once. Drag a lamp (a glowing orb) and its shadows swing while the others stay; drag a person across and their shadows turn as they pass between the lamps. Lower the lamps for long shadows.", color = Color(0xFFB7BEC8))
+            Text("Four lamps light the stage from four places at once. Drag a lamp (a glowing orb) and its shadows swing while the others stay; drag a person across and their shadows turn as they pass between the lamps. Lower the lamps for long shadows. Switch on Walls: shadows thrown backward climb the back wall (bigger the farther it is behind), and shadows thrown at the crate bend onto its face.", color = Color(0xFFB7BEC8))
         }
     }
 }

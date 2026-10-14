@@ -153,6 +153,22 @@ fun MinimalBurn() {
 
 The playground's **Burn** tab is this with the woods around it: drag things to the fire, turn the wind, make it rain, or switch to the Boitatá's fire.
 
+### Several lights, and shadows that follow the surface
+
+![Four lamps lighting one stage: every shadow reacts to every lamp](docs/media/light-stage.gif)
+
+A `LightRig` holds point, spot and directional lights (fire, candle, lamp, lantern, and the sun and moon from the hour). Each lights in its own colour and throws its own shadow in its own direction, as dark as its share of all the light there.
+Add a `Wall` and a shadow thrown toward it climbs it, bigger the farther the wall is behind the thing:
+
+![Shadows on the floor, the back wall and the face of a crate](docs/media/light-walls.gif)
+
+```kotlin
+rig.add(Lights.lamp(x, y)); rig.add(Lights.fire(x2, y2)); rig.add(Wall(footY = floorY, left = 0f, right = width, height = floorY))
+drawCastShadows(rig, feetX, feetY, height, seconds) { colour -> /* draw the thing in `colour`, feet at (0, 0) */ }
+```
+
+More in [docs/lighting.md](docs/lighting.md). The playground's **Lights** and **Light stage** tabs are this, with every lamp draggable.
+
 ### Depth: things that go back and forward
 
 ![The serpent swims back to the horizon behind the trees, between them, and close in front of everything](docs/media/boitata.gif)

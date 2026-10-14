@@ -76,4 +76,48 @@ class ShadowMathTest {
         val big = ShadowCast().also { ShadowMath.directional(0f, 0.5f, 0.9f, it) }
         assertTrue(big.spread > 3f * small.spread)
     }
+
+    private fun wall(lightX: Float, lightY: Float, lightH: Float, feetX: Float = 200f, feetY: Float = 300f, wallY: Float = 100f) =
+        WallCast().takeIf { ShadowMath.onWallFromPoint(lightX, lightY, lightH, feetX, feetY, wallY, 0.2f, it) }
+
+    @Test
+    fun aShadowLandsOnAWallBehindTheThingWhenTheLightIsInFrontOfIt() {
+        val cast = wall(lightX = 200f, lightY = 500f, lightH = 150f)!!
+        assertEquals(200f, cast.x, 1e-3f, "straight behind it when the light is straight in front")
+        assertTrue(cast.scale > 1.2f, "enlarged: ${cast.scale}")
+    }
+
+    @Test
+    fun theFartherTheWallTheBiggerTheShadowOnIt() {
+        val near = wall(lightX = 200f, lightY = 500f, lightH = 150f, wallY = 250f)!!
+        val far = wall(lightX = 200f, lightY = 500f, lightH = 150f, wallY = 50f)!!
+        assertTrue(far.scale > near.scale + 0.3f, "${far.scale} vs ${near.scale}")
+    }
+
+    @Test
+    fun aLightToTheRightMovesTheShadowOnTheWallToTheLeft() {
+        val cast = wall(lightX = 400f, lightY = 500f, lightH = 150f)!!
+        assertTrue(cast.x < 200f, "${cast.x}")
+    }
+
+    @Test
+    fun noShadowOnAWallFromALightBehindTheThingOrAThingBehindTheWall() {
+        assertTrue(wall(lightX = 200f, lightY = 200f, lightH = 150f) == null, "the light is behind the thing")
+        assertTrue(wall(lightX = 200f, lightY = 500f, lightH = 150f, feetY = 80f) == null, "the thing is behind the wall")
+    }
+
+    @Test
+    fun aHigherLightPutsTheShadowsFootLowerSoOnlyItsUpperPartShowsOnTheWall() {
+        val low = wall(lightX = 200f, lightY = 500f, lightH = 60f)!!
+        val high = wall(lightX = 200f, lightY = 500f, lightH = 300f)!!
+        assertTrue(high.footLift < low.footLift, "${high.footLift} vs ${low.footLift}")
+    }
+
+    @Test
+    fun theSunThrowsAShadowOnAWallOnlyWhenItShinesTowardTheWallAndItKeepsTheThingsSize() {
+        val cast = WallCast()
+        assertTrue(ShadowMath.onWallFromDirection((-PI / 2).toFloat(), 0.6f, 200f, 300f, 100f, 0.3f, cast))
+        assertEquals(1f, cast.scale)
+        assertTrue(!ShadowMath.onWallFromDirection((PI / 2).toFloat(), 0.6f, 200f, 300f, 100f, 0.3f, WallCast()), "shining toward the viewer: nothing on a wall behind")
+    }
 }

@@ -28,6 +28,7 @@ val Clips: List<Clip> = listOf(
     Clip("burn", 10f, Wind(speed = 0.55f, direction = 1f, gustiness = 0.4f), stateful = true) { t -> BurnScene(t, timeScale = 3f) },
     Clip("lights", 10f, Wind.Breeze, stateful = true) { t -> LightsScene(t, hour = 15f + 9f * (t() / 10f).coerceIn(0f, 1f)) },
     Clip("light-stage", 10f, Wind.Breeze, stateful = true) { t -> LightStageScene(t, script = ::scriptedLamps) },
+    Clip("light-walls", 10f, Wind.Breeze, stateful = true) { t -> LightStageScene(t, walls = true, script = ::scriptedLamps) },
     Clip("depth", 8f, Wind.Windy, stateful = true) { t -> DepthScene(t, script = ::scriptedDrag) },
     Clip("fire-campfire", 5f, Wind.Windy) { t -> FireScene(t, 0.9f, FireKind.Campfire) },
     Clip("fire-boitata", 5f, Wind.Breeze) { t -> FireScene(t, 0.9f, FireKind.Boitata) },

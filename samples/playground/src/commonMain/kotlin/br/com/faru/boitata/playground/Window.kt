@@ -44,7 +44,7 @@ fun WindowScene(seconds: () -> Float, hour: Float, cloud: Float, modifier: Modif
 }
 
 /** Fills [area] with [image] repeated, each repeat [tile] pixels wide, painted [tint]. */
-private fun DrawScope.drawTiled(image: ImageBitmap, area: Rect, tile: Float, tint: Color) {
+internal fun DrawScope.drawTiled(image: ImageBitmap, area: Rect, tile: Float, tint: Color) {
     val k = tile / image.width
     val th = image.height * k
     clipRect(area.left, area.top, area.right, area.bottom) {

@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.FastNoise
 import br.com.faru.boitata.core.light.ShadowCast
 import br.com.faru.boitata.core.light.ShadowMath
+import br.com.faru.boitata.core.light.WallCast
 import br.com.faru.boitata.core.sky.MoonPhase
 import kotlin.math.PI
 import kotlin.math.abs
@@ -41,6 +42,9 @@ public sealed class Light(
 
     /** Writes how this light casts the shadow of a thing at ([feetX], [feetY]) that is [objectHeight] tall into [into]. */
     public abstract fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast)
+
+    /** Writes how this light's shadow of a thing at ([feetX], [feetY]) lands on a wall standing along the screen line [wallFootY]; false if it does not reach that wall. */
+    public abstract fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean
 
     /** The flicker as a multiplier near 1, smooth, changing about twelve times a second: a pure function of time. */
     public fun flickerAt(seconds: Float): Float {
@@ -79,6 +83,8 @@ public class PointLight(
     }
 
     override fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast) = ShadowMath.point(x, y, height, feetX, feetY, objectHeight, size, into)
+
+    override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean = ShadowMath.onWallFromPoint(x, y, height, feetX, feetY, wallFootY, size, into)
 }
 
 /** A light that shines in a cone, like a lantern held up or a torch: lights and shadows only inside the cone, soft at its edge. */
@@ -110,6 +116,8 @@ public class SpotLight(
     }
 
     override fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast) = ShadowMath.point(x, y, height, feetX, feetY, objectHeight, size, into)
+
+    override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean = ShadowMath.onWallFromPoint(x, y, height, feetX, feetY, wallFootY, size, into)
 }
 
 /**
@@ -130,6 +138,8 @@ public class DirectionalLight(
     override fun contribution(feetX: Float, feetY: Float, seconds: Float): Float = if (enabled) strength.coerceIn(0f, 1f) else 0f
 
     override fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast) = ShadowMath.directional(azimuth, elevation, size, into)
+
+    override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean = ShadowMath.onWallFromDirection(azimuth, elevation, feetX, feetY, wallFootY, size, into)
 
     /** Puts this light where the sun is at [hour] (0 to 24): it rises on the left, crosses high at noon and sets on the right, orange at the edges and pale at noon, off at night. */
     public fun followSun(hour: Float) {
@@ -237,6 +247,13 @@ public class LightRig(
 ) {
     public val lights: MutableList<Light> = ArrayList()
 
+    /** The vertical surfaces that shadows can land on, besides the floor. */
+    public val walls: MutableList<Wall> = ArrayList()
+
+    public fun add(wall: Wall): Wall { walls += wall; return wall }
+
+    private val scratchWall = WallCast()
+
     public fun add(light: Light): Light { lights += light; return light }
 
     private val scratchCast = ShadowCast()
@@ -269,6 +286,36 @@ public class LightRig(
     }
 
     /**
+     * The shadows of a thing at ([feetX], [feetY]) on [wall], one per light that lights it and shines on the wall, the [max] strongest, in [into]; each one's alpha is [maxAlpha] times its light's share of
+     * all the light there. Returns how many it wrote (0 if the thing is behind the wall or no light is in front of it).
+     */
+    public fun wallShadows(feetX: Float, feetY: Float, wall: Wall, seconds: Float, maxAlpha: Float, max: Int, into: WallCasts): Int {
+        into.count = 0
+        var total = ambient
+        for (l in lights) total += l.contribution(feetX, feetY, seconds)
+        val limit = min(max, into.capacity)
+        var taken = 0
+        while (taken < limit) {
+            var best: Light? = null; var bestC = 0.02f
+            for (l in lights) {
+                val c = l.contribution(feetX, feetY, seconds)
+                if (c <= bestC) continue
+                var already = false
+                for (i in 0 until into.count) if (into.owner[i] === l) already = true
+                if (!already && l.castOnWall(feetX, feetY, wall.footY, scratchWall)) { best = l; bestC = c }
+            }
+            if (best == null) break
+            best.castOnWall(feetX, feetY, wall.footY, scratchWall)
+            val to = into.casts[into.count]
+            to.set(scratchWall.x, scratchWall.footLift, scratchWall.scale, scratchWall.spread); to.alpha = maxAlpha * (bestC / total).coerceIn(0f, 1f)
+            into.owner[into.count] = best
+            into.count++
+            taken++
+        }
+        return into.count
+    }
+
+    /**
      * The shadows of a thing at ([feetX], [feetY]) that is [objectHeight] tall, one per light that lights it, the [max] strongest, written to [into] with each one's [ShadowCast.alpha] set to
      * [maxAlpha] times its light's share of all the light there. Returns how many it wrote.
      */
@@ -292,6 +339,21 @@ public class LightRig(
         }
         return into.count
     }
+}
+
+/**
+ * A vertical surface that faces the viewer and stands on the ground along the screen line [footY], from [left] to [right] and [height] pixels tall: the back wall of a room, or the face of a crate.
+ * Shadows of things standing in front of it land on it in the shape the light gives them (see [ShadowMath.onWallFromPoint]), instead of lying flat on the floor.
+ * A thing that is itself the wall (a crate) names itself as [owner] so it does not shadow its own face. Plain data: move it by setting its fields.
+ */
+public class Wall(public var footY: Float, public var left: Float, public var right: Float, public var height: Float, public val owner: Any? = null)
+
+/** A few shadows on walls' worth of room, reused by [LightRig.wallShadows]. */
+public class WallCasts(public val capacity: Int = 4) {
+    internal val owner = arrayOfNulls<Light>(capacity)
+    public val casts: Array<WallCast> = Array(capacity) { WallCast() }
+    public var count: Int = 0
+        internal set
 }
 
 /** A few shadows' worth of room, reused by [LightRig.shadows]. */
