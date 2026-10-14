@@ -17,7 +17,7 @@ import br.com.faru.boitata.core.Perspective
 import br.com.faru.boitata.core.burn.BodyGeometry
 import br.com.faru.boitata.core.burn.FireBody
 import br.com.faru.boitata.core.burn.FireWorld
-import br.com.faru.boitata.core.burn.Fuel
+import br.com.faru.boitata.core.burn.Material
 import br.com.faru.boitata.core.burn.RunFireWorld
 import br.com.faru.boitata.core.clock.BoitataScene
 import br.com.faru.boitata.core.clock.rememberSceneSeconds
@@ -127,8 +127,8 @@ fun MinimalBurn() {
     val sceneWind = rememberSceneWind()
     val fire = remember {
         FireWorld().apply {
-            add(FireBody("campfire", Fuel.Campfire) { BodyGeometry(feetX = 150f, feetY = 300f, width = 80f, height = 120f) })
-            add(FireBody("crate", Fuel.Wood) { BodyGeometry(feetX = 290f, feetY = 300f, width = 70f, height = 70f) })
+            add(FireBody("campfire", Material.Campfire) { BodyGeometry(feetX = 150f, feetY = 300f, width = 80f, height = 120f) })
+            add(FireBody("crate", Material.Wood) { BodyGeometry(feetX = 290f, feetY = 300f, width = 70f, height = 70f) })
             ignite("campfire")
         }
     }
@@ -138,7 +138,7 @@ fun MinimalBurn() {
             for (body in fire.bodies) {
                 val g = body.geometry()
                 // `tint` warms the colour as it nears catching, and chars it as it burns; then the flames and smoke over it.
-                if (body.fuel.flammable && body.id != "campfire") drawRect(body.tint(Color(0xFFC79B5E)), Offset(g.feetX - g.width / 2f, g.feetY - g.height), Size(g.width, g.height))
+                if (body.material.flammable && body.id != "campfire") drawRect(body.tint(Color(0xFFC79B5E)), Offset(g.feetX - g.width / 2f, g.feetY - g.height), Size(g.width, g.height))
                 drawBurningBody(body, g, seconds(), sceneWind.wind)
             }
         }

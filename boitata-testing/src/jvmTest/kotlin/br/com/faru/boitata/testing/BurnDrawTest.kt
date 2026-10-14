@@ -9,7 +9,7 @@ import br.com.faru.boitata.core.burn.BodyGeometry
 import br.com.faru.boitata.core.burn.BurnStatus
 import br.com.faru.boitata.core.burn.FireBody
 import br.com.faru.boitata.core.burn.FireWorld
-import br.com.faru.boitata.core.burn.Fuel
+import br.com.faru.boitata.core.burn.Material
 import br.com.faru.boitata.core.wind.Wind
 import br.com.faru.boitata.light.drawBurningBody
 import br.com.faru.boitata.light.tint
@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 class BurnDrawTest {
     private fun crateWorld(): Pair<FireWorld, FireBody> {
         val world = FireWorld()
-        val crate = world.add(FireBody("crate", Fuel.Wood) { BodyGeometry(150f, 260f, 90f, 100f) })
+        val crate = world.add(FireBody("crate", Material.Wood) { BodyGeometry(150f, 260f, 90f, 100f) })
         return world to crate
     }
 

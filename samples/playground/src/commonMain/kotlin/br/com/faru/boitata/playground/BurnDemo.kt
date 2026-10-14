@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
@@ -29,7 +30,9 @@ import br.com.faru.boitata.core.burn.BurnStatus
 import br.com.faru.boitata.core.burn.FireBody
 import br.com.faru.boitata.core.burn.FireKind
 import br.com.faru.boitata.core.burn.FireWorld
-import br.com.faru.boitata.core.burn.Fuel
+import br.com.faru.boitata.core.burn.Material
+import br.com.faru.boitata.core.burn.PartRegion
+import br.com.faru.boitata.core.burn.PartSpec
 import br.com.faru.boitata.core.burn.RunFireWorld
 import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.core.clock.rememberSceneQuality
@@ -41,31 +44,77 @@ import br.com.faru.boitata.core.wind.Wind
 import br.com.faru.boitata.core.wind.WindResponse
 import br.com.faru.boitata.core.wind.rememberSceneWind
 import br.com.faru.boitata.light.LightSource
-import br.com.faru.boitata.light.drawBurningBody
+import br.com.faru.boitata.light.drawFireAffected
 import br.com.faru.boitata.light.drawCastShadow
 import br.com.faru.boitata.light.fireLight
-import br.com.faru.boitata.light.tint
 import br.com.faru.boitata.scene.depthDrag
 import br.com.faru.boitata.weather.Rain
 import kotlin.math.hypot
 
-/** A thing in the burn scene: what it is made of, how the wind moves it, and where it starts (as shares of the ground). */
-private class BurnProp(val id: String, val sprite: String?, val heightShare: Float, val x: Float, val y: Float, val fuel: Fuel, val wind: WindResponse = WindResponse.Rigid)
+/** What a thing looks like: one of the sprites from the art sheet, or a picture drawn in code (a stand-in until there is art). Both draw with the feet at (0, 0), up negative. */
+private sealed interface BurnArt {
+    class Sprite(val name: String?) : BurnArt
+    class Drawn(val aspect: Float, val draw: DrawScope.(colour: Color, height: Float) -> Unit) : BurnArt
+}
+
+/**
+ * A thing in the burn scene, as configuration: its picture, what it is made of ([material], or several [parts] laid over its picture), how the wind moves it, where it starts (as shares of the
+ * ground), the colour it leans toward ([tone]) and which of its bodies starts alight ([lit]). New things, with new art, are one more entry here.
+ */
+private class BurnProp(
+    val id: String, val art: BurnArt, val heightShare: Float, val x: Float, val y: Float, val material: Material,
+    val wind: WindResponse = WindResponse.Rigid, val parts: List<PartSpec> = emptyList(), val tone: Color? = null, val lit: String? = null,
+)
+
+private fun sprite(name: String?, heightShare: Float, x: Float, y: Float, material: Material, wind: WindResponse = WindResponse.Rigid) =
+    BurnProp(name ?: "campfire", BurnArt.Sprite(name), heightShare, x, y, material, wind)
+
+/** A candle: a slab of wax with a wick on top. Only the wick burns; the wax melts under it. */
+private val CandleArt = BurnArt.Drawn(0.3f) { c, h ->
+    val w = h * 0.3f
+    drawRect(c, Offset(-w / 2f, -h * 0.88f), androidx.compose.ui.geometry.Size(w, h * 0.88f))
+    drawRect(c, Offset(-w * 0.06f, -h), androidx.compose.ui.geometry.Size(w * 0.12f, h * 0.12f))
+}
+
+/** A sheet of paper standing up, with lines of writing. */
+private val PaperArt = BurnArt.Drawn(0.75f) { c, h ->
+    val w = h * 0.75f
+    drawRect(c, Offset(-w / 2f, -h), androidx.compose.ui.geometry.Size(w, h))
+    for (i in 1..5) drawLine(Color(0x55000000), Offset(-w * 0.38f, -h + h * 0.15f * i), Offset(w * 0.38f, -h + h * 0.15f * i), 1.5f)
+}
+
+/** A hanging cloth, longer than wide, with a folded hem. */
+private val ClothArt = BurnArt.Drawn(0.6f) { c, h ->
+    val w = h * 0.6f
+    drawRect(c, Offset(-w / 2f, -h), androidx.compose.ui.geometry.Size(w, h))
+    drawRect(Color(0x33000000), Offset(-w / 2f, -h * 0.16f), androidx.compose.ui.geometry.Size(w, h * 0.04f))
+}
 
 private val BurnProps = listOf(
-    BurnProp("campfire", null, 0.1f, 0.26f, 0.76f, Fuel.Campfire),
-    BurnProp("fern", "fern", 0.11f, 0.40f, 0.80f, Fuel.DryGrass, WindResponse.Grass),
-    BurnProp("crate", "crate", 0.15f, 0.54f, 0.78f, Fuel.Wood),
-    BurnProp("stool", "stool", 0.19f, 0.72f, 0.86f, Fuel.Wood),
-    BurnProp("plant", "plant", 0.24f, 0.90f, 0.72f, Fuel.Plant, WindResponse.Plant),
-    BurnProp("araucaria", "araucaria", 0.5f, 0.11f, 0.42f, Fuel.Pine, WindResponse.Pine),
-    BurnProp("palm", "palm", 0.46f, 0.80f, 0.26f, Fuel.Palm, WindResponse.Palm),
-    BurnProp("lantern", "lantern", 0.4f, 0.56f, 0.48f, Fuel.None),
-    BurnProp("figure", "figure", 0.32f, 0.42f, 0.30f, Fuel.None),
+    sprite(null, 0.1f, 0.26f, 0.76f, Material.Campfire),
+    sprite("fern", 0.11f, 0.40f, 0.80f, Material.DryGrass, WindResponse.Grass),
+    sprite("crate", 0.15f, 0.54f, 0.78f, Material.Wood),
+    sprite("stool", 0.19f, 0.72f, 0.86f, Material.Wood),
+    sprite("plant", 0.24f, 0.90f, 0.72f, Material.Plant, WindResponse.Plant),
+    sprite("araucaria", 0.5f, 0.11f, 0.42f, Material.Pine, WindResponse.Pine),
+    sprite("palm", 0.46f, 0.80f, 0.26f, Material.Palm, WindResponse.Palm),
+    sprite("lantern", 0.4f, 0.56f, 0.48f, Material.Metal),
+    sprite("figure", 0.32f, 0.42f, 0.30f, Material.None),
+    BurnProp("candle", CandleArt, 0.13f, 0.34f, 0.90f, Material.Wax, tone = Color(0xFFEADFC4), lit = "candle.wick", parts = listOf(
+        PartSpec("wax", Material.Wax, PartRegion(0f, 0.12f, 1f, 1f)),
+        PartSpec("wick", Material.Wick, PartRegion(0.44f, 0f, 0.56f, 0.12f), fedBy = "wax"),
+    )),
+    BurnProp("paper", PaperArt, 0.12f, 0.48f, 0.90f, Material.Paper, WindResponse.Grass, tone = Color(0xFFE8DDBF)),
+    BurnProp("cloth", ClothArt, 0.16f, 0.64f, 0.88f, Material.Cloth, WindResponse.Plant, tone = Color(0xFF9B4A3C)),
 )
 
 /** The stage the things stand on and the fire world that burns them, built together so each thing's flames follow it as it is dragged. */
-private class BurnSetup(val stage: DepthStage, val world: FireWorld)
+private class BurnSetup(val stage: DepthStage, val world: FireWorld, val parts: Map<String, List<FireBody>>)
+
+private fun BurnProp.aspect(art: Sprites): Float = when (val a = this.art) {
+    is BurnArt.Drawn -> a.aspect
+    is BurnArt.Sprite -> (if (a.name == null) art.logs else art.prop(a.name)).let { it.width.toFloat() / it.height }
+}
 
 private fun buildBurn(art: Sprites, size: IntSize): BurnSetup {
     val w = size.width.toFloat(); val h = size.height.toFloat()
@@ -73,14 +122,17 @@ private fun buildBurn(art: Sprites, size: IntSize): BurnSetup {
     val perspective = Perspective(frontEdgeY = bottom, backEdgeY = top, depth = 6f, eyeBack = 3f, eyeHeight = 2.5f, pitchDegrees = 28f, referenceY = bottom - 0.3f * (bottom - top))
     val stage = DepthStage(perspective, w * 0.03f, top, w * 0.97f, bottom)
     val world = FireWorld()
+    val others = HashMap<String, List<FireBody>>()
     for (p in BurnProps) {
-        val image = if (p.sprite == null) art.logs else art.prop(p.sprite)
-        val item = stage.add(DepthItem(p.id, w * p.x, top + (bottom - top) * p.y, h * p.heightShare, image.width.toFloat() / image.height))
+        val item = stage.add(DepthItem(p.id, w * p.x, top + (bottom - top) * p.y, h * p.heightShare, p.aspect(art)))
         val flameHeight = if (p.id == "campfire") 1.9f else 1f
-        world.add(FireBody(p.id, p.fuel) { BodyGeometry(item.feetX, item.feetY, stage.height(item) * item.aspect, stage.height(item) * flameHeight) })
+        val geometry = { BodyGeometry(item.feetX, item.feetY, stage.height(item) * item.aspect, stage.height(item) * flameHeight) }
+        if (p.parts.isEmpty()) world.add(FireBody(p.id, p.material, geometry = geometry))
+        else others[p.id] = world.addComposite(p.id, geometry, p.parts).drop(1)
+        p.lit?.let { world.ignite(it) }
     }
     world.ignite("campfire")
-    return BurnSetup(stage, world)
+    return BurnSetup(stage, world, others)
 }
 
 /**
@@ -137,18 +189,25 @@ private fun DrawScope.drawBurn(art: Sprites, setup: BurnSetup, t: Float, hour: F
     for (item in stage.ordered()) {
         val prop = BurnProps.first { it.id == item.id }
         val body = world.body(item.id)!!
-        val image = if (prop.sprite == null) art.logs else art.prop(prop.sprite)
         val height = stage.height(item)
-        val k = height / image.height
         val lifted = item.lift * height * 0.05f
-        if (item.id != "campfire") drawCastShadow(light, item.feetX, item.feetY, height, 0.7f * (1f - 0.25f * item.lift), quality) { c -> drawArt(image, Offset(-image.width * k / 2f, -height), k, c) }
+        val image = (prop.art as? BurnArt.Sprite)?.let { if (it.name == null) art.logs else art.prop(it.name) }
+        val k = if (image != null) height / image.height else 1f
+        // One picture for the shadow and the fire to work from, whatever the thing is: a sprite, or something drawn in code.
+        val silhouette: DrawScope.(Color) -> Unit = { c ->
+            when (val a = prop.art) {
+                is BurnArt.Sprite -> drawArt(image!!, Offset(-image.width * k / 2f, -height), k, c)
+                is BurnArt.Drawn -> a.draw(this, c, height)
+            }
+        }
+        if (item.id != "campfire") drawCastShadow(light, item.feetX, item.feetY, height, 0.7f * (1f - 0.25f * item.lift), quality) { c -> withTransform({ translate(0f, 0f) }) { silhouette(c) } }
         val near = (1f - hypot(item.feetX - lamp.x, item.feetY - height * 0.5f - lamp.y) / light.reach).coerceIn(0f, 1f) * light.strength
-        val base = lerp(dark, lit, (0.2f + 0.8f * near * near).coerceAtMost(1f))
-        // Fire has the last word on colour: warming, glowing, charred. A thing that has burnt out no longer sways: there is nothing left to bend.
-        val colour = body.tint(base)
+        val lighting = lerp(dark, lit, (0.2f + 0.8f * near * near).coerceAtMost(1f))
+        val base = prop.tone?.let { lerp(lighting, it, 0.55f) } ?: lighting
+        // Fire has the last word: the material says how it warms, burns, melts or glows, and a burnt thing no longer sways: there is nothing left to bend.
         val bend = if (body.status == BurnStatus.Spent) 0f else prop.wind.bend(wind, t, item.feetX / size.width, phase = item.id.length * 0.21f) * (1f - body.consumed)
-        sway(item.feetX, item.feetY - lifted, bend, maxLean = 0.12f) { drawArt(image, Offset(item.feetX - image.width * k / 2f, item.feetY - height - lifted), k, colour) }
-        drawBurningBody(body, BodyGeometry(item.feetX, item.feetY - lifted, height * item.aspect, height * (if (item.id == "campfire") 1.9f else 1f)), t, wind, quality)
+        val box = BodyGeometry(item.feetX, item.feetY - lifted, height * item.aspect, height)
+        sway(item.feetX, item.feetY - lifted, bend, maxLean = 0.12f) { drawFireAffected(body, box, t, wind, base, quality, parts = setup.parts[item.id].orEmpty(), silhouette = silhouette) }
     }
     // Rings of carved arcs show the fire's glow, as everywhere else.
     for (r in 1..3) drawCircle(Color(0xFFF2A83B).copy(alpha = 0.28f / r * glowAmount), radius = campHeight * 0.9f * r, center = lamp, style = Stroke(2f))

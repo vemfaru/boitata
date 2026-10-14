@@ -10,6 +10,7 @@ import br.com.faru.boitata.core.AdvancedBoitataApi
 import br.com.faru.boitata.core.FastNoise
 import br.com.faru.boitata.core.burn.BodyGeometry
 import br.com.faru.boitata.core.burn.BurnStatus
+import br.com.faru.boitata.core.burn.BurnStyle
 import br.com.faru.boitata.core.burn.FireBody
 import br.com.faru.boitata.core.burn.FireKind
 import br.com.faru.boitata.core.clock.Quality
@@ -21,14 +22,17 @@ import kotlin.math.roundToInt
 
 /**
  * What fire has done to a thing's colour: [base] when whole, warming toward an ember glow as it nears catching and while it burns, then charred to near black as it is consumed.
- * Draw the thing's picture with this colour (tint it) and then call [drawBurningBody] for the flames and smoke.
+ * Metal that is hot glows toward orange and fades back as it cools; a melting thing warms a little. Draw the thing's picture with this colour (tint it) and then call [drawBurningBody]
+ * for the flames and smoke, or let [drawFireAffected] do all of it, in the way the material's style says.
  */
 public fun FireBody.tint(base: Color): Color {
-    val glow = (nearIgnition * 0.3f + burn * 0.4f) * (1f - consumed)
-    val warmed = lerp(base, Color(0xFFC2410C), glow.coerceIn(0f, 0.6f))
+    if (material.style == BurnStyle.Glow) return lerp(base, HOT_METAL, (glow * 0.92f).coerceIn(0f, 0.92f))
+    val warming = nearIgnition * 0.3f + burn * 0.4f + (if (material.style == BurnStyle.Melt) (heat / 4f).coerceIn(0f, 0.25f) else 0f)
+    val warmed = lerp(base, Color(0xFFC2410C), (warming * (1f - consumed)).coerceIn(0f, 0.6f))
     return lerp(warmed, CHAR, (consumed * 0.94f).coerceIn(0f, 0.94f))
 }
 
+private val HOT_METAL = Color(0xFFFF6A1F)
 private val CHAR = Color(0xFF0A0807)
 
 /**

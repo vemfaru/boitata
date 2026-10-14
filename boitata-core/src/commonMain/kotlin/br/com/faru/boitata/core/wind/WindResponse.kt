@@ -92,6 +92,9 @@ public class WindResponse private constructor(
         public val Leaf: WindResponse = free(weight = 0.1f, surface = 1f)
         public val Ember: WindResponse = free(weight = 0.12f, surface = 0.45f)
         public val Dust: WindResponse = free(weight = 0.05f, surface = 0.6f)
+
+        /** The flakes of ash that lift off burning paper: lighter than anything, they travel the farthest. */
+        public val Ash: WindResponse = free(weight = 0.02f, surface = 1f)
         public val Fog: WindResponse = free(weight = 0.35f, surface = 0.7f)
         public val LowCloud: WindResponse = free(weight = 0.55f, surface = 0.8f)
         public val HighCloud: WindResponse = free(weight = 0.3f, surface = 0.9f)

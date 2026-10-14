@@ -86,7 +86,7 @@ because from the south a waxing moon is lit on its left. The full moon lights th
 ![A campfire in the wind: the dry fern catches, then the crate, and the stool upwind stays safe](docs/media/burn.gif)
 
 Fire is not only a picture: things can catch it. `FireWorld` is a small simulation (fire depends on what has already burnt, so it keeps state; it steps at a fixed rate, so the same wind, rain and seed always give
-the same fires). Each thing has a `Fuel`: how much heat it takes to catch (dry grass a little, wood more, pine resin most), how long it burns, how big its flames are, and whether it is a living plant.
+the same fires). Each thing has a `Material`: how much heat it takes to catch (paper a little, wood more, pine resin most), how long it burns, how big its flames are, whether it is a living plant, and **how it reacts to fire** (its `BurnStyle`).
 
 - **Heat builds slowly.** A flame warms what stands near it, less the farther it is, and a thing catches only when its heat reaches the fuel's ignition heat. So fire *creeps*: the thing warms, then smokes,
   then catches, then chars and burns out to ash that cannot burn again. Take it away from the flame and it cools.
@@ -98,6 +98,33 @@ the same fires). Each thing has a `Fuel`: how much heat it takes to catch (dry g
 
 `RunFireWorld` steps the world on the scene's clock; `FireBody.tint` warms and chars a thing's colour; `drawBurningBody` draws the flames (leaning and throwing embers with the wind), the glow and the smoke.
 
+#### What it does to a thing: materials
+
+`drawFireAffected` draws a thing the way its material says, from one drawing of the intact thing (the `silhouette`), with no extra art:
+
+| `BurnStyle` | Looks | Presets |
+|---|---|---|
+| `Char` | goes dark with glowing ember cracks | `Wood`, `Pine`, `Campfire`, `Wick` |
+| `AshAway` | a ragged burning edge eats it from the base up; grey ash flakes lift off and fly on the wind | `Paper`, `DryGrass` |
+| `Shrivel` | like AshAway but it curls smaller and leaves a charred stub | `Plant`, `Palm` |
+| `Smoulder` | a slow glowing edge, no flame, a heap of grey ash | `Cloth` |
+| `Melt` | sags, spreads, drips and settles into a puddle that stays | `Wax`, `Plastic` |
+| `Glow` | turns orange while hot and cools back; never burns | `Metal` |
+| `None` | nothing but soot | `Material.None` |
+
+Your own presets are one constructor: `Material("rubber", ignitionHeat = 1.4f, burnSeconds = 18f, intensity = 0.8f, style = BurnStyle.Melt, meltHeat = 1f)`.
+To replace a stage with your own art, pass `BurnStates(warming = ..., burning = ..., spent = ...)`; a stage left out is drawn by the library. The numbers behind it (`status`, `heat`, `burn`, `consumed`, `melt`, `glow`) are on the `FireBody`.
+
+**Things made of several materials** are configuration: a candle is wax that only melts and a wick that burns, fed by the wax.
+
+```kotlin
+world.addComposite("candle", { BodyGeometry(feetX = 200f, feetY = 300f, width = 40f, height = 130f) }, listOf(
+    PartSpec("wax", Material.Wax, PartRegion(0f, 0.12f, 1f, 1f)),
+    PartSpec("wick", Material.Wick, PartRegion(0.44f, 0f, 0.56f, 0.12f), fedBy = "wax"),
+))
+world.ignite("candle.wick")   // the wick burns, the wax sags under it; when the wax is gone the flame goes out
+```
+
 ```kotlin
 @Composable
 fun MinimalBurn() {
@@ -105,8 +132,8 @@ fun MinimalBurn() {
     val sceneWind = rememberSceneWind()
     val fire = remember {
         FireWorld().apply {
-            add(FireBody("campfire", Fuel.Campfire) { BodyGeometry(feetX = 150f, feetY = 300f, width = 80f, height = 120f) })
-            add(FireBody("crate", Fuel.Wood) { BodyGeometry(feetX = 290f, feetY = 300f, width = 70f, height = 70f) })
+            add(FireBody("campfire", Material.Campfire) { BodyGeometry(feetX = 150f, feetY = 300f, width = 80f, height = 120f) })
+            add(FireBody("crate", Material.Wood) { BodyGeometry(feetX = 290f, feetY = 300f, width = 70f, height = 70f) })
             ignite("campfire")
         }
     }
@@ -116,7 +143,7 @@ fun MinimalBurn() {
             for (body in fire.bodies) {
                 val g = body.geometry()
                 // `tint` warms the colour as it nears catching, and chars it as it burns; then the flames and smoke over it.
-                if (body.fuel.flammable && body.id != "campfire") drawRect(body.tint(Color(0xFFC79B5E)), Offset(g.feetX - g.width / 2f, g.feetY - g.height), Size(g.width, g.height))
+                if (body.material.flammable && body.id != "campfire") drawRect(body.tint(Color(0xFFC79B5E)), Offset(g.feetX - g.width / 2f, g.feetY - g.height), Size(g.width, g.height))
                 drawBurningBody(body, g, seconds(), sceneWind.wind)
             }
         }
@@ -240,7 +267,7 @@ The GIFs in this README are drawn offscreen by the same code, frame by frame, so
 
 | Module | What it gives | Depends on |
 |---|---|---|
-| `boitata-core` | `BoitataScene` and the scene clock (time, quality, reduced motion, pause), `drawImageSmooth`, and the pure maths: `Perspective`, `DepthStage`, `Depth`, `FireWorld` and `Fuel`, `Wind` and `WindResponse`, `FastNoise`, `SkyModel`, `StormModel`, window-light geometry | Compose runtime |
+| `boitata-core` | `BoitataScene` and the scene clock (time, quality, reduced motion, pause), `drawImageSmooth`, and the pure maths: `Perspective`, `DepthStage`, `Depth`, `FireWorld` and `Material`, `Wind` and `WindResponse`, `FastNoise`, `SkyModel`, `StormModel`, window-light geometry | Compose runtime |
 | `boitata-scene` | `SceneCamera`, `SceneViewport` (fits a world to any window), `Modifier.worldBounds`, `Modifier.depthDrag` (drag things about a ground, with depth) | core |
 | `boitata-light` | `LightSource`, `LightShade`, `Fire`, `drawFlameTrail`, `CastShadow`, `CastSilhouette`, `WindowLight`, flicker | core, scene |
 | `boitata-weather` | `Rain`, `Snow`, `Fog`, `SkyWindow`, `rememberStorm` (lightning) | core |
