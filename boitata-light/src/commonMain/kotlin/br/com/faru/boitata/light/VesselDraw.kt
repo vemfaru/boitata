@@ -13,6 +13,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.lerp
@@ -27,7 +30,21 @@ import kotlin.math.max
 public enum class VesselShape { Tumbler, Bottle, Jug, Mug }
 
 /** What the container is made of, for drawing: [glass] tints the walls, [ink] outlines them (the woodcut's black line). */
-public class VesselStyle(public val shape: VesselShape = VesselShape.Tumbler, public val glass: Color = Color(0xFFDCEBEA), public val ink: Color = Color(0xFF14110F))
+public class VesselStyle(
+    public val shape: VesselShape = VesselShape.Tumbler, public val glass: Color = Color(0xFFDCEBEA), public val ink: Color = Color(0xFF14110F),
+    /** Drawn art in place of the plain outline, if the container has some. */
+    public val art: VesselArt? = null,
+)
+
+/**
+ * A container drawn by hand, in layers: the [back] (the far wall, behind the liquid), the [front] (the near wall and its carved lines, over it) and a [shine], all one picture size. [body] is the part of those pictures,
+ * in their pixels, that holds the liquid: it is stretched onto the container's box (so the liquid fills it exactly) and whatever lies outside it (a bottle's neck, a handle) hangs out as drawn. An opaque container (a mug) has no back
+ * or shine, and its [opening] (the rim seen from above) goes over the top of the body, the surface of what is in it showing inside. The pictures are solid with the lines cut out, and are painted in [tint].
+ */
+public class VesselArt(
+    public val front: ImageBitmap, public val body: Rect, public val back: ImageBitmap? = null, public val shine: ImageBitmap? = null,
+    public val opening: ImageBitmap? = null, public val tint: Color = Color(0xFFE9DFC6),
+)
 
 /**
  * Draws a [LiquidVessel] with its corner (the point it tips on) at ([pivotX], [pivotY]) on the floor, [pixelsPerMeter] big: the glass, the liquid at its level with the surface rippling as the simulation says, a
@@ -96,6 +113,9 @@ public fun DrawScope.drawVessel(
     }
 
     val ceramic = style.shape == VesselShape.Mug
+    val art = style.art
+    // The far wall of a drawn glass, behind the liquid.
+    if (art?.back != null) withTransform({ translate(pivotX, pivotY); scale(s, 1f, Offset.Zero); rotate(a * 180f / PI.toFloat(), Offset.Zero) }) { drawArtLayer(art, art.back, w * ppm, h * ppm, art.tint.copy(alpha = 0.45f)) }
     // What is behind, through the liquid, magnified and tinted.
     if (hasLiquid && !ceramic) {
         val fluid = vessel.fluid
@@ -129,6 +149,12 @@ public fun DrawScope.drawVessel(
     // The glass, in the container's own frame: outline in ink, the rim as a flat ellipse, a highlight along the wall, the thick base.
     withTransform({ translate(pivotX, pivotY); scale(s, 1f, Offset.Zero); rotate(a * 180f / PI.toFloat(), Offset.Zero) }) {
         val wp = w * ppm; val hp = h * ppm
+        if (art != null) {
+            drawArtLayer(art, art.front, wp, hp, art.tint)
+            art.shine?.let { drawArtLayer(art, it, wp, hp, Color.White.copy(alpha = 0.55f)) }
+            if (ceramic && art.opening != null) drawArtOpening(art, art.opening, vessel, wp, hp)
+            return@withTransform
+        }
         val taper = when (style.shape) { VesselShape.Tumbler -> 0.07f; VesselShape.Bottle -> 0.02f; VesselShape.Jug -> 0.03f; VesselShape.Mug -> 0.05f }
         val topLeft = -wp; val bottomLeft = -wp * (1f - taper)
         val outline = Path().apply { moveTo(topLeft, -hp); lineTo(bottomLeft, 0f); lineTo(0f - wp * taper * 0f, 0f); lineTo(0f, -hp) }
@@ -272,5 +298,33 @@ public fun DrawScope.drawCaustic(vessel: LiquidVessel, pivotX: Float, pivotY: Fl
             val x0 = focus.x - radius + radius * 2f * noise.at(i, 2); val len = radius * (0.5f + 0.8f * noise.at(i, 3))
             drawLine(bright.copy(alpha = (0.35f + 0.3f * kotlin.math.sin(phase * 1.3f)).coerceIn(0.05f, 0.7f) * fill), Offset(x0, y), Offset(x0 + len * kotlin.math.cos(phase * 0.3f), y + kotlin.math.sin(phase * 0.7f) * radius * 0.12f), 1.6f, blendMode = BlendMode.Plus)
         }
+    }
+}
+
+
+/** Draws one of [art]'s layers in the container's frame (its corner at the origin, the box spanning x from -[wp] to 0 and y from -[hp] to 0), the body of the picture stretched onto the box. */
+private fun DrawScope.drawArtLayer(art: VesselArt, image: ImageBitmap, wp: Float, hp: Float, tint: Color) {
+    val kx = wp / art.body.width; val ky = hp / art.body.height
+    withTransform({ translate(-wp - art.body.left * kx, -hp - art.body.top * ky); scale(kx, ky, Offset.Zero) }) {
+        drawImage(image, filterQuality = FilterQuality.Medium, colorFilter = ColorFilter.tint(tint, BlendMode.SrcIn))
+    }
+}
+
+/** The rim of an opaque container seen from above, as a drawn ellipse the width of the body, with the surface of what is in it showing through its hollow. */
+private fun DrawScope.drawArtOpening(art: VesselArt, image: ImageBitmap, vessel: LiquidVessel, wp: Float, hp: Float) {
+    val ow = wp * 1.0f; val oh = ow * image.height / image.width
+    val left = -wp; val top = -hp - oh * 0.5f
+    if (!vessel.empty) {
+        val inner = Rect(left + ow * 0.04f, top + oh * 0.12f, left + ow * 0.96f, top + oh * 0.88f)
+        val depth = (1f - vessel.fill) * oh * 0.5f
+        clipPath(Path().apply { addOval(inner) }) {
+            drawRect(Color(0xFF241B14), inner.topLeft, inner.size)
+            drawOval(vessel.fluid.color, Offset(inner.left, inner.top + depth), Size(inner.width, inner.height))
+            if (vessel.foam > 0.02f) drawOval(lerp(vessel.fluid.color, Color.White, 0.55f).copy(alpha = 0.9f * vessel.foam), Offset(inner.left + inner.width * 0.1f, inner.top + depth + inner.height * 0.1f), Size(inner.width * 0.8f, inner.height * 0.7f))
+            drawOval(Color.White.copy(alpha = 0.16f), Offset(inner.left + inner.width * 0.2f, inner.top + depth + inner.height * 0.2f), Size(inner.width * 0.4f, inner.height * 0.2f))
+        }
+    }
+    withTransform({ translate(left, top); scale(ow / image.width, oh / image.height, Offset.Zero) }) {
+        drawImage(image, filterQuality = FilterQuality.Medium, colorFilter = ColorFilter.tint(art.tint, BlendMode.SrcIn))
     }
 }

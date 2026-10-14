@@ -5,6 +5,8 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import br.com.faru.boitata.light.VesselArt
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -43,6 +45,10 @@ class Sprites(
     val strips: Map<String, SpriteStrip> = emptyMap(),
     /** The wind's own art: gusts, flying leaves, grass (see [WindArt]). */
     val wind: WindArt? = null,
+    /** The hand-drawn containers of the liquids bench, by name (tumbler, bottle, jug, kerosene, mug). */
+    val vessels: Map<String, VesselArt> = emptyMap(),
+    /** The bench's own pictures (table parts, things to stand on it), by name without the bench_ prefix. */
+    val bench: Map<String, ImageBitmap> = emptyMap(),
 ) {
     fun prop(name: String): ImageBitmap = props.getValue(name)
 
@@ -65,7 +71,18 @@ private val stripNames = mapOf(
     "tamandua_walk" to 4, "arara_fly" to 4, "capivara_walk" to 4, "jacare_walk" to 4,
     // The jaguar, armadillo and maned wolf have three poses (a stride, a pause and the other stride).
     "onca_walk" to 3, "tatu_walk" to 3, "lobo_guara_walk" to 3,
+    // The story's cycles, four poses each (the people walk, run and burn; the animals flee and swim).
+    "lampiao_walk" to 4, "maria_walk" to 4, "cacador_walk" to 4, "cacador_run" to 4, "cacador_panic" to 4, "cacador_burning" to 4,
+    "couple_xote" to 4, "benz_pull" to 4, "arara_takeoff" to 4, "tucano_fly" to 4, "dragonfly" to 4,
+    "capivara_swim" to 4, "jacare_swim" to 4, "lobo_run" to 4, "onca_run" to 4, "tamandua_flee" to 4, "tatu_curl" to 4,
 )
+
+/** Where the liquid sits in each container's pictures (their pixels): the part stretched onto the physical box. */
+private val vesselBodies = mapOf(
+    "tumbler" to Rect(29f, 60f, 391f, 552f), "bottle" to Rect(5f, 245f, 326f, 846f), "jug" to Rect(28f, 156f, 394f, 662f),
+    "kerosene" to Rect(29f, 60f, 371f, 551f), "mug" to Rect(30f, 62f, 560f, 496f),
+)
+private val benchNames = listOf("table_top", "table_apron", "table_leg", "table_end", "clay_pot", "kettle", "rapadura", "spoon", "sugar_cube", "tin_cup")
 
 private val propNames = listOf(
     "araucaria", "palm", "sumauma", "fern", "bromeliad_log", "lantern", "floor_lamp", "stool", "plant", "crate", "pot",
@@ -108,6 +125,11 @@ suspend fun loadSprites(): Sprites = Sprites(
     sun = bitmap("sky_sun"), moon = bitmap("sky_moon"), stars = bitmap("sky_stars"),
     props = propNames.associateWith { bitmap("prop_$it") },
     strips = stripNames.mapValues { (name, frames) -> SpriteStrip(bitmap("anim_$name"), frames) },
+    vessels = vesselBodies.mapValues { (name, body) ->
+        if (name == "mug") VesselArt(bitmap("vessel_mug_body"), body, shine = bitmap("vessel_mug_shine"), opening = bitmap("vessel_mug_opening"), tint = Color(0xFFC9B38A))
+        else VesselArt(bitmap("vessel_${name}_front"), body, back = bitmap("vessel_${name}_back"), shine = bitmap("vessel_${name}_shine"))
+    },
+    bench = benchNames.associateWith { bitmap("bench_$it") },
     wind = WindArt(
         gusts = listOf("wind_gust_1", "wind_gust_2", "wind_gust_3").map { bitmap(it) },
         leaves = listOf("leaf_broad", "leaf_embauba", "leaf_dry", "leaf_grimpa").map { bitmap(it) },
@@ -161,14 +183,14 @@ fun DrawScope.drawSunArt(art: Sprites, center: Offset, radius: Float, color: Col
 class Crop(val x: Int, val y: Int, val w: Int, val h: Int)
 
 /** Draws [crop] of [image] with its top-left at [at], scaled by [scale], every visible pixel painted [tint] (null keeps the art's own ink). */
-fun DrawScope.drawArt(image: ImageBitmap, at: Offset, scale: Float, tint: Color? = null, crop: Crop? = null, alpha: Float = 1f) {
+fun DrawScope.drawArt(image: ImageBitmap, at: Offset, scale: Float, tint: Color? = null, crop: Crop? = null, alpha: Float = 1f, scaleX: Float = scale, scaleY: Float = scale) {
     val c = crop ?: Crop(0, 0, image.width, image.height)
     // A float translation, so a picture that drifts a fraction of a pixel per frame moves smoothly instead of stepping.
     translate(at.x, at.y) {
         drawImage(
             image,
             srcOffset = IntOffset(c.x, c.y), srcSize = IntSize(c.w, c.h),
-            dstSize = IntSize((c.w * scale).toInt().coerceAtLeast(1), (c.h * scale).toInt().coerceAtLeast(1)),
+            dstSize = IntSize((c.w * scaleX).toInt().coerceAtLeast(1), (c.h * scaleY).toInt().coerceAtLeast(1)),
             alpha = alpha, colorFilter = tint?.let { ColorFilter.tint(it, BlendMode.SrcIn) }, filterQuality = FilterQuality.Medium,
         )
     }

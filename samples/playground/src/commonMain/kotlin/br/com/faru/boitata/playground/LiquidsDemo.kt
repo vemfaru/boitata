@@ -53,7 +53,7 @@ import kotlin.math.min
 import kotlin.math.abs
 
 /** A container standing on the bench: the simulation, how it is drawn, and where along the table it stands (a share of the width). */
-class BenchVessel(val vessel: LiquidVessel, val style: VesselStyle, var x: Float, val fill: Float, val temperature: Float = 20f) {
+class BenchVessel(val vessel: LiquidVessel, val style: VesselStyle, var x: Float, val fill: Float, val temperature: Float = 20f, val art: String? = null) {
     internal var lastVelocity = 0f
     internal var lastX = x
     internal var lastSpilled = 0f
@@ -66,11 +66,11 @@ class BenchVessel(val vessel: LiquidVessel, val style: VesselStyle, var x: Float
  */
 class LiquidBench {
     val vessels: List<BenchVessel> = listOf(
-        BenchVessel(LiquidVessel(0.07f, 0.10f, Fluid.Kerosene, 0.75f), VesselStyle(VesselShape.Tumbler, glass = Color(0xFFE9E3C8)), 0.22f, 0.75f),
-        BenchVessel(LiquidVessel(0.07f, 0.17f, Fluid.Wine, 0.55f), VesselStyle(VesselShape.Bottle, glass = Color(0xFFBFD8C4)), 0.38f, 0.55f),
-        BenchVessel(LiquidVessel(0.08f, 0.09f, Fluid.Coffee, 0.78f), VesselStyle(VesselShape.Mug, glass = Color(0xFFEFE6D2)), 0.53f, 0.78f, temperature = 84f),
-        BenchVessel(LiquidVessel(0.07f, 0.10f, Fluid.Water, 0.6f), VesselStyle(VesselShape.Tumbler), 0.68f, 0.6f),
-        BenchVessel(LiquidVessel(0.11f, 0.14f, Fluid.Milk, 0.7f), VesselStyle(VesselShape.Jug), 0.78f, 0.7f),
+        BenchVessel(LiquidVessel(0.07f, 0.10f, Fluid.Kerosene, 0.75f), VesselStyle(VesselShape.Tumbler, glass = Color(0xFFE9E3C8)), 0.20f, 0.75f, art = "kerosene"),
+        BenchVessel(LiquidVessel(0.09f, 0.17f, Fluid.Wine, 0.55f), VesselStyle(VesselShape.Bottle, glass = Color(0xFFBFD8C4)), 0.36f, 0.55f, art = "bottle"),
+        BenchVessel(LiquidVessel(0.11f, 0.09f, Fluid.Coffee, 0.78f), VesselStyle(VesselShape.Mug, glass = Color(0xFFEFE6D2)), 0.52f, 0.78f, temperature = 84f, art = "mug"),
+        BenchVessel(LiquidVessel(0.074f, 0.10f, Fluid.Water, 0.6f), VesselStyle(VesselShape.Tumbler), 0.68f, 0.6f, art = "tumbler"),
+        BenchVessel(LiquidVessel(0.10f, 0.14f, Fluid.Milk, 0.7f), VesselStyle(VesselShape.Jug), 0.82f, 0.7f, art = "jug"),
     )
     var selected by mutableIntStateOf(2)
 
@@ -228,6 +228,8 @@ fun LiquidsScene(seconds: () -> Float, bench: LiquidBench, modifier: Modifier = 
     }
 }
 
+private fun styleOf(art: Sprites, b: BenchVessel): VesselStyle = b.art?.let { art.vessels[it] }?.let { VesselStyle(b.style.shape, b.style.glass, b.style.ink, art = it) } ?: b.style
+
 private fun pick(bench: LiquidBench, share: Float): Int = bench.vessels.indices.minByOrNull { abs(bench.vessels[it].x - share) }?.takeIf { abs(bench.vessels[it].x - share) < 0.1f } ?: -1
 
 private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androidx.compose.ui.graphics.layer.GraphicsLayer, t: Float, quality: Quality) {
@@ -252,12 +254,14 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
     }
     drawLayer(behind)
     // The table: legs, the apron, and the top with a glossy sheen. It ends at both sides.
-    val wood = Color(0xFF2A1C12)
-    drawRect(wood, Offset(left + w * 0.01f, apron), Size(w * 0.018f, floorLine + h * 0.08f - apron))
-    drawRect(wood, Offset(right - w * 0.028f, apron), Size(w * 0.018f, floorLine + h * 0.08f - apron))
-    drawRect(Color(0xFF1B130C), Offset(left, topFront), Size(right - left, apron - topFront))
+    val tint = Color(0xFF6B4A2E)
+    val legImg = art.bench.getValue("table_leg"); val legH = floorLine + h * 0.08f - apron; val legW = legImg.width * legH / legImg.height
+    drawArt(legImg, Offset(left + w * 0.01f, apron), legH / legImg.height, tint.copy(alpha = 0.9f))
+    drawArt(legImg, Offset(right - w * 0.01f - legW, apron), legH / legImg.height, tint.copy(alpha = 0.9f))
+    val apronImg = art.bench.getValue("table_apron")
+    drawStretched(apronImg, Rect(left, topFront, right, apron), Color(0xFF3F2C1C))
     drawRect(Color(0xFF0F0A06).copy(alpha = 0.6f), Offset(left, topFront), Size(right - left, h * 0.008f))
-    drawRect(Brush.verticalGradient(0f to Color(0xFF3A2A1C), 1f to Color(0xFF2A1D12), startY = topBack, endY = topFront), Offset(left, topBack), Size(right - left, topFront - topBack))
+    drawStretched(art.bench.getValue("table_top"), Rect(left, topBack, right, topFront), tint)
     drawRect(Color(0xFFFFE2B0).copy(alpha = 0.07f), Offset(left, topBack), Size(right - left, h * 0.018f))
     // Puddles on the floor under the table.
     for (p in bench.floorPuddles) drawPuddle(p.fluid.color, p.x, floorY, p.radius * ppm * 0.9f)
@@ -266,16 +270,17 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
     for (p in bench.puddles) bench.body(p)?.let { body -> if (body.status == BurnStatus.Burning) drawBurningBody(body, body.geometry().let { g -> BodyGeometry(g.feetX, tableY + h * 0.02f, g.width, g.height) }, t, Wind.Calm, quality) }
     // The mirror image of each vessel in the glossy top.
     clipRect(left, tableY, right, topFront) {
-        for (b in bench.vessels) drawVessel(b.vessel, b.style, w * b.x + b.vessel.width * ppm / 2f, tableY + 6f, ppm, t, quality, behind = behind, mirrored = 0.22f, mirrorOnly = true)
+        for (b in bench.vessels) drawVessel(b.vessel, styleOf(art, b), w * b.x + b.vessel.width * ppm / 2f, tableY + 6f, ppm, t, quality, behind = behind, mirrored = 0.22f, mirrorOnly = true)
     }
     for ((i, b) in bench.vessels.withIndex()) {
+        val style = styleOf(art, b)
         val px = w * b.x + b.vessel.width * ppm / 2f
         // Selected: a faint pool under it.
         if (i == bench.selected) drawOval(Color(0xFFFFE9B0).copy(alpha = 0.12f), Offset(px - b.vessel.width * ppm, tableY - 4f), Size(b.vessel.width * ppm * 2f, 14f))
         // The lamp is the flame on the left: the glass throws its coloured shadow and its caustic away from it.
         // (kept to the table's top: past its ends there is nothing for the light to land on)
         clipRect(left, topBack, right, topFront) { drawCaustic(b.vessel, px, tableY + 8f, ppm, t, fromLeft = b.x > 0.12f, quality = quality) }
-        drawVessel(b.vessel, b.style, px, tableY + 6f, ppm, t, quality, behind = behind)
+        drawVessel(b.vessel, style, px, tableY + 6f, ppm, t, quality, behind = behind)
         drawSpillStream(b.vessel, px, tableY + 6f, ppm, t, quality)
     }
     // Drops falling off the table's edge.
@@ -295,4 +300,9 @@ fun scriptedBench(bench: LiquidBench, t: Float) {
     if (crossed(4.8f)) { bench.select(4); bench.knock(1f) }
     if (crossed(10.2f)) { bench.select(0); bench.knock(-1f) }
     bench.scriptT = t
+}
+
+/** Draws [image] stretched to fill [target], painted [tint]. */
+private fun DrawScope.drawStretched(image: androidx.compose.ui.graphics.ImageBitmap, target: Rect, tint: Color) {
+    drawArt(image, target.topLeft, 1f, tint, scaleX = target.width / image.width, scaleY = target.height / image.height)
 }
