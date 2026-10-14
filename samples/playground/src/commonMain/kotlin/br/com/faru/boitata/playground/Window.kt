@@ -15,6 +15,15 @@ import br.com.faru.boitata.core.light.Optics
 import br.com.faru.boitata.core.FastNoise
 import androidx.compose.ui.graphics.drawscope.translate
 import kotlin.math.sin
+import br.com.faru.boitata.core.surface.PaneWeather
+import br.com.faru.boitata.core.surface.SurfaceClimate
+import br.com.faru.boitata.core.clock.RunOnSceneClock
+import br.com.faru.boitata.light.drawPaneWeather
+import br.com.faru.boitata.light.drawSillSnow
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -45,10 +54,13 @@ import br.com.faru.boitata.light.drawWindowLight
  * The [glass] says what the pane does: clear glass shows the sky and the light patch as they are; dirty or frosted glass ([Optics.Frosted]) blurs the sky and what is outside, veils it with haze, speckles the pane with dirt, and softens and dims the
  * patch of light it lets in; old glass bends the view; stained glass colours both. A clean pane costs nothing extra.
  *
+ * [pane] and [climate] put weather on the glass (see [PaneWeather]): fog, ice, rain beads, snow on the sill, wiped by dragging a hand over it; [weatherSpeed] runs it faster than the clock for a recording.
+ *
  * The wind reaches the room only through the window: with [windowOpen] the plant leans in the draught and the dust in the light drifts with it; shut it and the air inside is still, whatever blows outside.
  */
 @Composable
-fun WindowScene(seconds: () -> Float, hour: Float, cloud: Float, modifier: Modifier = Modifier.fillMaxSize(), moon: MoonPhase = MoonPhase.Full, southern: Boolean = true, windowOpen: Boolean = true, glass: Optics = Optics.Glass()) {
+fun WindowScene(seconds: () -> Float, hour: Float, cloud: Float, modifier: Modifier = Modifier.fillMaxSize(), moon: MoonPhase = MoonPhase.Full, southern: Boolean = true, windowOpen: Boolean = true, glass: Optics = Optics.Glass(),
+    pane: PaneWeather? = null, climate: SurfaceClimate? = null, warmPatch: Boolean = false, weatherSpeed: Float = 1f) {
     val art = LocalSprites.current ?: return
     val quality = rememberSceneQuality()
     val sceneWind = rememberSceneWind()
@@ -56,7 +68,21 @@ fun WindowScene(seconds: () -> Float, hour: Float, cloud: Float, modifier: Modif
     val open = animateFloatAsState(if (windowOpen) 1f else 0f, tween(700), label = "window")
     // Three offscreen layers for dirty and frosted glass: the outside as it is, the outside bent and smeared, and the light patch softened.
     val layers = GlassLayers(rememberGraphicsLayer(), rememberGraphicsLayer(), rememberGraphicsLayer())
-    Spacer(modifier.drawBehind { drawRoom(art, seconds(), hour, cloud, quality(), moon, southern, sceneWind.wind, draught = open.value, glass = glass, layers = layers) })
+    // The weather on the glass steps on the scene's clock; a shut window keeps the outside air out.
+    val currentWarm = rememberUpdatedState(warmPatch)
+    if (pane != null && climate != null) RunOnSceneClock(pane) { dt, _ ->
+        climate.draught = open.value
+        pane.step(dt * weatherSpeed, climate, if (currentWarm.value) { x, y -> if (x < 0.35f && y > 0.55f) 1f - (x / 0.35f) * 0.6f else 0f } else null)
+    }
+    // Where the pane is on screen, so a hand moved over it can wipe it.
+    val where = remember { FloatArray(4) }
+    val wipe = if (pane != null) Modifier.pointerInput(pane) {
+        detectDragGestures { change, _ ->
+            val l = where[0]; val t = where[1]; val w = where[2]; val h = where[3]
+            if (w > 1f && h > 1f) pane.wipe(((change.position.x - l) / w).coerceIn(0f, 1f), ((change.position.y - t) / h).coerceIn(0f, 1f), 0.09f)
+        }
+    } else Modifier
+    Spacer(modifier.then(wipe).drawBehind { drawRoom(art, seconds(), hour, cloud, quality(), moon, southern, sceneWind.wind, draught = open.value, glass = glass, layers = layers, weather = pane, where = where) })
 }
 
 /** Fills [area] with [image] repeated, each repeat [tile] pixels wide, painted [tint]. */
@@ -79,8 +105,17 @@ fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float, qualit
     /** What the pane does to the view and the light. */
     glass: Optics = Optics.Glass(),
     layers: GlassLayers? = null,
+    /** The weather on the pane (fog, ice, drops, snow on the sill), if any. */
+    weather: PaneWeather? = null,
+    /** Written with where the pane is, in pixels: left, top, width, height. */
+    where: FloatArray? = null,
 ) {
     val w = size.width; val h = size.height
+    // Fog and ice make the glass blurrier, hazier, more scattering and less clear, on top of whatever the pane already is.
+    val glass = if (weather == null) glass else glass.let { g ->
+        val fog = weather.averageFog(); val ice = weather.averageFrost()
+        Optics((g.opacity + 0.3f * ice).coerceAtMost(0.9f), g.tint, (g.scatter + 0.8f * fog + 0.6f * ice).coerceAtMost(1f), (g.blur + 0.9f * fog + 0.6f * ice).coerceAtMost(1f), g.distortion + 0.3f * ice, (g.haze + 0.4f * fog + 0.3f * ice).coerceAtMost(1f))
+    }
     val s = SkyModel.at(hour, SkyWeather(cloud = cloud), moon)
     val day = 0.2f + 0.8f * s.daylight
     val floorY = h * 0.62f
@@ -112,8 +147,11 @@ fun DrawScope.drawRoom(art: Sprites, t: Float, hour: Float, cloud: Float, qualit
         if (glass.haze > 0.01f) drawRect(Color(0xFFEFE8DA).copy(alpha = (0.45f * glass.haze).coerceAtMost(0.6f)), pane.topLeft, pane.size)
         if (glass.tint != Color.White) drawRect(glass.tint.copy(alpha = 0.32f), pane.topLeft, pane.size)
         if (glass.haze > 0.01f) drawDirt(pane, glass.haze)
+        if (weather != null) drawPaneWeather(weather, pane, t, quality)
     }
+    if (where != null) { where[0] = pane.left; where[1] = pane.top; where[2] = pane.width; where[3] = pane.height }
     drawArt(art.window, win.topLeft, wh / art.window.height, lerp(Color(0xFF0B0907), Color(0xFF2A1F15), day))
+    if (weather != null) drawSillSnow(Rect(win.left - ww * 0.02f, win.bottom - wh * 0.045f, win.right + ww * 0.02f, win.bottom), weather.sill, t)
     // Shut, the panes are glass: a pale sheen and two streaks of reflection (gone when it is open).
     if (draught < 0.99f) clipRect(pane.left, pane.top, pane.right, pane.bottom) {
         val shut = 1f - draught
@@ -188,4 +226,15 @@ enum class WindowGlass(val label: String, val optics: Optics) {
     Frosted("Frosted glass", Optics.Frosted(1f)),
     Old("Old glass", Optics(0.12f, Color.White, scatter = 0.1f, blur = 0.08f, distortion = 0.9f, haze = 0.1f)),
     Stained("Stained glass", Optics(0.2f, Color(0xFFFF9A5B), scatter = 0.2f, blur = 0.1f, distortion = 0.25f)),
+}
+
+/** Weather the window demo can be in: what the air is like outside and in (see [SurfaceClimate]). */
+enum class WindowWeather(val label: String, val outside: Float, val inside: Float, val humidity: Float, val rain: Float, val snow: Float, val wind: Float) {
+    Clear("Clear", 12f, 21f, 0.4f, 0f, 0f, 0f),
+    Rain("Rain", 9f, 21f, 0.5f, 0.9f, 0f, 0.4f),
+    Snow("Snow", -3f, 21f, 0.5f, 0f, 0.8f, 0f),
+    Frost("Frost", -16f, 20f, 0.6f, 0f, 0f, 0f),
+    Fog("Fog on the glass", 3f, 22f, 0.75f, 0f, 0f, 0f);
+
+    fun applyTo(c: SurfaceClimate) { c.outsideTemp = outside; c.insideTemp = inside; c.humidity = humidity; c.rain = rain; c.snow = snow; c.wind = wind }
 }

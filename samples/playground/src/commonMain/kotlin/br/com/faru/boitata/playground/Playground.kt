@@ -36,6 +36,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import br.com.faru.boitata.core.clock.BoitataScene
 import br.com.faru.boitata.core.clock.rememberSceneSeconds
+import br.com.faru.boitata.core.surface.PaneWeather
+import br.com.faru.boitata.core.surface.SurfaceClimate
 import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
 
@@ -177,14 +179,27 @@ private fun WindowDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean)
     var cloud by remember { mutableFloatStateOf(0f) }
     var open by remember { mutableStateOf(true) }
     var glass by remember { mutableStateOf(WindowGlass.Clean) }
+    var weather by remember { mutableStateOf(WindowWeather.Clear) }
+    var warm by remember { mutableStateOf(false) }
+    var outside by remember { mutableFloatStateOf(12f) }
+    var humidity by remember { mutableFloatStateOf(0.4f) }
+    val pane = remember { PaneWeather() }
+    val climate = remember { SurfaceClimate().also { WindowWeather.Clear.applyTo(it) } }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { WindowScene(seconds, hour, cloud, moon = moon, southern = southern, windowOpen = open, glass = glass.optics) }
+        Box(Modifier.weight(1f)) { WindowScene(seconds, hour, cloud, moon = moon, southern = southern, windowOpen = open, glass = glass.optics, pane = pane, climate = climate, warmPatch = warm) }
         Controls {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 FilterChip(selected = open, onClick = { open = !open }, label = { Text(if (open) "Window open" else "Window shut") })
                 for (g in WindowGlass.entries) FilterChip(selected = g == glass, onClick = { glass = g }, label = { Text(g.label) })
-                Text("Wind reaches the plant only through the window: shut it and the plant, and the dust in the light, go still.", color = Color(0xFFB7BEC8))
             }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                for (wx in WindowWeather.entries) FilterChip(selected = wx == weather, onClick = { weather = wx; wx.applyTo(climate); outside = wx.outside; humidity = wx.humidity; pane.clear() }, label = { Text(wx.label) })
+                FilterChip(selected = warm, onClick = { warm = !warm }, label = { Text("Lamp by the glass") })
+                FilterChip(selected = false, onClick = { pane.clear() }, label = { Text("Clean the glass") })
+            }
+            Text("Weather on the glass: fog forms where the pane is colder than the room's dew point, ice grows in from the edges below freezing, rain runs down in beads and leaves clear streaks, snow piles on the sill. Drag over the pane to wipe it; a lamp by the glass clears its corner; an open window keeps it clear.", color = Color(0xFFB7BEC8))
+            Labelled("Outside, degrees", outside, -20f..25f) { outside = it; climate.outsideTemp = it }
+            Labelled("Humidity in the room", humidity, 0.2f..0.95f) { humidity = it; climate.humidity = it }
             Labelled("Hour", hour, 0f..24f) { hour = it }; Labelled("Cloud", cloud, 0f..1f) { cloud = it }
         }
     }

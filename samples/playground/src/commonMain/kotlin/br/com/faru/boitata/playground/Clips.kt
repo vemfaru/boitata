@@ -1,5 +1,7 @@
 package br.com.faru.boitata.playground
 
+import br.com.faru.boitata.core.surface.PaneWeather
+import br.com.faru.boitata.core.surface.SurfaceClimate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
@@ -26,6 +28,14 @@ val Clips: List<Clip> = listOf(
     Clip("window-light", 8f, Wind.Breeze) { t -> WindowScene(t, hour = 7f + 11f * (t() / 8f).coerceIn(0f, 1f), cloud = 0f) },
     Clip("shadows", 8f, Wind.Breeze) { t -> ShadowScene({ Offset(0.5f + 0.38f * cos(t() * 0.8f), 0.45f + 0.25f * sin(t() * 0.8f)) }, 0.8f, seconds = t) },
     Clip("window-dirty", 8f, Wind.Breeze) { t -> WindowScene(t, hour = 7f + 11f * (t() / 8f).coerceIn(0f, 1f), cloud = 0f, glass = WindowGlass.Dirty.optics) },
+    Clip("window-frost", 14f, Wind.Calm, stateful = true) { t ->
+        val pane = remember { PaneWeather() }; val climate = remember { SurfaceClimate().also { WindowWeather.Frost.applyTo(it) } }
+        WindowScene(t, hour = 8f, cloud = 0.3f, windowOpen = false, pane = pane, climate = climate, weatherSpeed = 4f)
+    },
+    Clip("window-rain", 14f, Wind.Windy, stateful = true) { t ->
+        val pane = remember { PaneWeather() }; val climate = remember { SurfaceClimate().also { WindowWeather.Fog.applyTo(it); it.rain = 0.9f; it.wind = 0.4f } }
+        WindowScene(t, hour = 15f, cloud = 0.8f, windowOpen = false, pane = pane, climate = climate, weatherSpeed = 3f)
+    },
     Clip("moon-phases", 8f) { t -> WeatherScene(t, hour = 23f, kind = WeatherKind.Clear, moon = MoonPhase.All[t().toInt().coerceIn(0, 7)]) },
     Clip("burn", 10f, Wind(speed = 0.55f, direction = 1f, gustiness = 0.4f), stateful = true) { t -> BurnScene(t, timeScale = 3f) },
     Clip("lights", 10f, Wind.Breeze, stateful = true) { t -> LightsScene(t, hour = 15f + 9f * (t() / 10f).coerceIn(0f, 1f)) },
