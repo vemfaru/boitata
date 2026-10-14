@@ -102,18 +102,8 @@ private fun DepthStage.item(id: String): DepthItem = items.first { it.id == id }
 
 fun DrawScope.drawDepth(art: Sprites, stage: DepthStage, t: Float, hour: Float, quality: Quality = Quality.High, wind: Wind = Wind.Calm, reacts: Map<String, Boolean> = emptyMap()) {
     val w = size.width; val h = size.height
-    val v = cover()
-    val sc = v.scale
-    val state = SkyModel.at(hour, SkyWeather.Clear)
-    val day = state.daylight
-    val horizon = v.py(1080f * ART_HORIZON)
-    val bands = 5
-    for (i in 0 until bands) drawRect(lerp(state.zenith, state.horizon, (i + 0.5f) / bands), Offset(0f, horizon * i / bands), Size(w, horizon / bands + 1f))
-    drawRect(lerp(state.horizon, Color.Black, 0.25f), Offset(0f, horizon), Size(w, h - horizon))
-    drawNightStars(art, t, horizon, state.stars)
+    val day = drawWoodsBackdrop(art, t, hour)
     fun tint(night: Long, dayColor: Long) = lerp(Color(night), Color(dayColor), day)
-    drawArt(art.far, Offset(v.x, v.y), sc, tint(0xFF0C1A22, 0xFF6F8794))
-    drawArt(art.ground, Offset(v.x, v.y), sc, tint(0xFF0A110E, 0xFF2A3A30))
 
     // The lantern is the light: it stands where you put it, and lights and shades everything from there.
     val lantern = stage.item("lantern")
@@ -169,4 +159,21 @@ fun scriptedDrag(stage: DepthStage, t: Float) {
         feetX = stage.groundLeft + ground.third * (0.5f + 0.32f * cos(cycle * 0.5f + 3f)); feetY = y(0.25f + 0.2f * (0.5f - 0.5f * cos(cycle * 0.5f)))
         lift = 0f
     }
+}
+
+/** The night woods behind a scene: the sky in bands with your stars, the far trees and the ground. Returns how much daylight there is (0 night, 1 day), for tinting what stands in it. */
+fun DrawScope.drawWoodsBackdrop(art: Sprites, t: Float, hour: Float): Float {
+    val w = size.width; val h = size.height
+    val v = cover()
+    val sc = v.scale
+    val state = SkyModel.at(hour, SkyWeather.Clear)
+    val day = state.daylight
+    val horizon = v.py(1080f * ART_HORIZON)
+    val bands = 5
+    for (i in 0 until bands) drawRect(lerp(state.zenith, state.horizon, (i + 0.5f) / bands), Offset(0f, horizon * i / bands), Size(w, horizon / bands + 1f))
+    drawRect(lerp(state.horizon, Color.Black, 0.25f), Offset(0f, horizon), Size(w, h - horizon))
+    drawNightStars(art, t, horizon, state.stars)
+    drawArt(art.far, Offset(v.x, v.y), sc, lerp(Color(0xFF0C1A22), Color(0xFF6F8794), day))
+    drawArt(art.ground, Offset(v.x, v.y), sc, lerp(Color(0xFF0A110E), Color(0xFF2A3A30), day))
+    return day
 }

@@ -40,7 +40,7 @@ import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
 
 /** The demos, in the order of the tabs. */
-enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Fire("Fire") }
+enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Burn("Burn"), Fire("Fire") }
 
 /** The whole playground: pick a demo, play with its controls. The same scenes are what the README's GIFs are rendered from. */
 @Composable
@@ -73,6 +73,7 @@ fun PlaygroundApp() {
                     Demo.Window -> WindowDemo(seconds, moon, southern)
                     Demo.Shadows -> ShadowDemo(seconds)
                     Demo.Depth -> DepthDemo(seconds)
+                    Demo.Burn -> BurnDemo(seconds, sink, sound)
                     Demo.Fire -> FireDemo(seconds, sink, sound)
                 }
                 }
@@ -185,6 +186,24 @@ private fun DepthDemo(seconds: () -> Float) {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { DepthScene(seconds) }
         Controls { Text("Drag anything. Up sends it back, small and tucked behind what is nearer; down brings it forward, bigger. The lantern is the light. Tap a thing to switch whether the wind moves it (palms, plants and the pine do by default).", color = Color(0xFFB7BEC8)) }
+    }
+}
+
+@Composable
+private fun BurnDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
+    var rain by remember { mutableFloatStateOf(0f) }
+    var guardian by remember { mutableStateOf(false) }
+    var resetKey by remember { mutableStateOf(0) }
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) { BurnScene(seconds, rain = rain, guardian = guardian, resetKey = resetKey, sink = sink, sound = sound) }
+        Controls {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                FilterChip(selected = guardian, onClick = { guardian = !guardian }, label = { Text("Boitatá's fire") })
+                FilterChip(selected = false, onClick = { resetKey++ }, label = { Text("Start again") })
+                Text("Drag things to the fire. Downwind they warm, smoke, catch and char; upwind they stay safe. Dry grass first, a pine last. The Boitatá's fire spares every plant and puts out ordinary fires.", color = Color(0xFFB7BEC8))
+            }
+            Labelled("Rain", rain, 0f..1f) { rain = it }
+        }
     }
 }
 

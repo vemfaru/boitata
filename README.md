@@ -81,6 +81,51 @@ fun MinimalWind() {
 The lit part is drawn with a real terminator, so a crescent, a quarter and a gibbous moon each have their true shape, and the dark part shows faintly. `SkyWindow(southernHemisphere = true)` mirrors the lit side,
 because from the south a waxing moon is lit on its left. The full moon lights the night more than a thin one.
 
+### Fire that spreads
+
+![A campfire in the wind: the dry fern catches, then the crate, and the stool upwind stays safe](docs/media/burn.gif)
+
+Fire is not only a picture: things can catch it. `FireWorld` is a small simulation (fire depends on what has already burnt, so it keeps state; it steps at a fixed rate, so the same wind, rain and seed always give
+the same fires). Each thing has a `Fuel`: how much heat it takes to catch (dry grass a little, wood more, pine resin most), how long it burns, how big its flames are, and whether it is a living plant.
+
+- **Heat builds slowly.** A flame warms what stands near it, less the farther it is, and a thing catches only when its heat reaches the fuel's ignition heat. So fire *creeps*: the thing warms, then smokes,
+  then catches, then chars and burns out to ash that cannot burn again. Take it away from the flame and it cools.
+- **The wind carries it.** Downwind the flame's reach grows with the wind's strength, upwind it shrinks, and in a strong wind sparks fly off and can light something far away. A crate downwind of a campfire catches,
+  the same crate upwind does not.
+- **It spreads.** What catches heats its own neighbours in turn.
+- **Rain** wets things (harder to light) and puts fires out.
+- **The Boitatá's fire** (`FireKind.Guardian`), from the folklore: it never lights a living plant, and puts out the ordinary fires it touches.
+
+`RunFireWorld` steps the world on the scene's clock; `FireBody.tint` warms and chars a thing's colour; `drawBurningBody` draws the flames (leaning and throwing embers with the wind), the glow and the smoke.
+
+```kotlin
+@Composable
+fun MinimalBurn() {
+    val seconds = rememberSceneSeconds()
+    val sceneWind = rememberSceneWind()
+    val fire = remember {
+        FireWorld().apply {
+            add(FireBody("campfire", Fuel.Campfire) { BodyGeometry(feetX = 150f, feetY = 300f, width = 80f, height = 120f) })
+            add(FireBody("crate", Fuel.Wood) { BodyGeometry(feetX = 290f, feetY = 300f, width = 70f, height = 70f) })
+            ignite("campfire")
+        }
+    }
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B1220)), wind = Wind.Windy) {
+        RunFireWorld(fire)                                  // moves the fire on with the scene's clock and wind
+        Canvas(Modifier.fillMaxSize()) {
+            for (body in fire.bodies) {
+                val g = body.geometry()
+                // `tint` warms the colour as it nears catching, and chars it as it burns; then the flames and smoke over it.
+                if (body.fuel.flammable && body.id != "campfire") drawRect(body.tint(Color(0xFFC79B5E)), Offset(g.feetX - g.width / 2f, g.feetY - g.height), Size(g.width, g.height))
+                drawBurningBody(body, g, seconds(), sceneWind.wind)
+            }
+        }
+    }
+}
+```
+
+The playground's **Burn** tab is this with the woods around it: drag things to the fire, turn the wind, make it rain, or switch to the Boitatá's fire.
+
 ### Depth: things that go back and forward
 
 ![The serpent swims back to the horizon behind the trees, between them, and close in front of everything](docs/media/boitata.gif)
@@ -195,7 +240,7 @@ The GIFs in this README are drawn offscreen by the same code, frame by frame, so
 
 | Module | What it gives | Depends on |
 |---|---|---|
-| `boitata-core` | `BoitataScene` and the scene clock (time, quality, reduced motion, pause), `drawImageSmooth`, and the pure maths: `Perspective`, `DepthStage`, `Depth`, `FastNoise`, `SkyModel`, `StormModel`, window-light geometry | Compose runtime |
+| `boitata-core` | `BoitataScene` and the scene clock (time, quality, reduced motion, pause), `drawImageSmooth`, and the pure maths: `Perspective`, `DepthStage`, `Depth`, `FireWorld` and `Fuel`, `Wind` and `WindResponse`, `FastNoise`, `SkyModel`, `StormModel`, window-light geometry | Compose runtime |
 | `boitata-scene` | `SceneCamera`, `SceneViewport` (fits a world to any window), `Modifier.worldBounds`, `Modifier.depthDrag` (drag things about a ground, with depth) | core |
 | `boitata-light` | `LightSource`, `LightShade`, `Fire`, `drawFlameTrail`, `CastShadow`, `CastSilhouette`, `WindowLight`, flicker | core, scene |
 | `boitata-weather` | `Rain`, `Snow`, `Fog`, `SkyWindow`, `rememberStorm` (lightning) | core |

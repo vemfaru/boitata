@@ -14,6 +14,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import br.com.faru.boitata.core.Perspective
+import br.com.faru.boitata.core.burn.BodyGeometry
+import br.com.faru.boitata.core.burn.FireBody
+import br.com.faru.boitata.core.burn.FireWorld
+import br.com.faru.boitata.core.burn.Fuel
+import br.com.faru.boitata.core.burn.RunFireWorld
 import br.com.faru.boitata.core.clock.BoitataScene
 import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.draw.sway
@@ -29,6 +34,8 @@ import br.com.faru.boitata.light.Fire
 import br.com.faru.boitata.light.FlamePalette
 import br.com.faru.boitata.light.LightSource
 import br.com.faru.boitata.light.WindowLight
+import br.com.faru.boitata.light.drawBurningBody
+import br.com.faru.boitata.light.tint
 import br.com.faru.boitata.scene.depthDrag
 import br.com.faru.boitata.weather.Rain
 
@@ -108,6 +115,31 @@ fun MinimalWind() {
             val bend = WindResponse.Palm.bend(sceneWind.wind, seconds(), place = 0.5f)
             sway(feetX = size.width / 2f, feetY = size.height, bend = bend) {
                 drawRect(Color(0xFF2F5D3A), Offset(size.width / 2f - 6f, size.height - 220f), Size(12f, 220f))
+            }
+        }
+    }
+}
+
+/** A campfire and a crate downwind of it: in the wind the crate warms, smokes, catches, chars and burns out, over seconds. */
+@Composable
+fun MinimalBurn() {
+    val seconds = rememberSceneSeconds()
+    val sceneWind = rememberSceneWind()
+    val fire = remember {
+        FireWorld().apply {
+            add(FireBody("campfire", Fuel.Campfire) { BodyGeometry(feetX = 150f, feetY = 300f, width = 80f, height = 120f) })
+            add(FireBody("crate", Fuel.Wood) { BodyGeometry(feetX = 290f, feetY = 300f, width = 70f, height = 70f) })
+            ignite("campfire")
+        }
+    }
+    BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B1220)), wind = Wind.Windy) {
+        RunFireWorld(fire)                                  // moves the fire on with the scene's clock and wind
+        Canvas(Modifier.fillMaxSize()) {
+            for (body in fire.bodies) {
+                val g = body.geometry()
+                // `tint` warms the colour as it nears catching, and chars it as it burns; then the flames and smoke over it.
+                if (body.fuel.flammable && body.id != "campfire") drawRect(body.tint(Color(0xFFC79B5E)), Offset(g.feetX - g.width / 2f, g.feetY - g.height), Size(g.width, g.height))
+                drawBurningBody(body, g, seconds(), sceneWind.wind)
             }
         }
     }

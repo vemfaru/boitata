@@ -57,6 +57,7 @@ assertTrue(stats.longestStill <= 3, "stood still for ${stats.longestStill} frame
   does. Test on a release build on a real device (and an iPhone at 120 Hz) before you call a scene smooth.
 - **Pre-scaled art and cached tints** (scaling each picture once to the screen size, building colour filters once) are not done: they have to be measured first, and the sampling and snapping fixes
   already took the sky layers from about 61 ms to 19 ms of CPU a frame.
+- **Fire spread keeps state.** `FireWorld` depends on what has already burnt, so unlike rain and snow it is not a function of time alone: it steps at a fixed rate on the scene clock, deterministically for a seed, and costs about the square of the number of things in it per step (fine for dozens of things, not thousands).
 - **`rememberFlicker`** changes every 80 ms, so reading it recomposes about twelve times a second. For a per-frame flicker read the clock in a draw block instead.
 
 ## History

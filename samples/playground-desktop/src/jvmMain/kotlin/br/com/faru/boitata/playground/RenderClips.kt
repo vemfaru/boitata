@@ -36,16 +36,19 @@ fun main(args: Array<String>) {
         }
         val frames = (clip.length * FPS).toInt()
         scene.render(0L)
-        val indices = if (preview) listOf(frames / 4, frames / 2, frames * 3 / 4) else (0 until frames).toList()
+        val keep = if (preview) setOf(frames / 4, frames / 2, frames * 3 / 4) else (0 until frames).toSet()
+        // A preview of a clip that depends on its past still has to play every frame; it just saves the few it was asked for.
+        val indices = if (preview && !clip.stateful) keep.toList().sorted() else (0 until frames).toList()
+        var saved = 0
         for (i in indices) {
             t = i / FPS.toFloat()
             // Compose learns of the new time asynchronously: render, let it settle, and keep the second picture (as boitata-testing does).
             androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
             scene.render((i * 1_000_000_000L) / FPS)
             val image = scene.render((i * 1_000_000_000L) / FPS + 1)
-            File(dir, "%04d.png".format(i)).writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
+            if (i in keep) { File(dir, "%04d.png".format(i)).writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes); saved++ }
         }
         scene.close()
-        println("${clip.name}: ${indices.size} frames")
+        println("${clip.name}: $saved frames")
     }
 }
