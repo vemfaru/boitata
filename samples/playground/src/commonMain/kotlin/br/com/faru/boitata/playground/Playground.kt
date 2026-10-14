@@ -130,11 +130,22 @@ private fun Labelled(label: String, value: Float, range: ClosedFloatingPointRang
 private fun ForestDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, moon: MoonPhase, southern: Boolean) {
     var rain by remember { mutableFloatStateOf(0f) }
     var fog by remember { mutableFloatStateOf(0.35f) }
+    var hunter by remember { mutableStateOf(true) }
+    var wildlife by remember { mutableStateOf(true) }
+    var resetKey by remember { mutableStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { ForestScene(seconds, rain = rain, fog = fog, moon = moon, southern = southern) }
+        Box(Modifier.weight(1f)) { ForestScene(seconds, rain = rain, fog = fog, moon = moon, southern = southern, hunter = hunter, wildlife = wildlife, resetKey = resetKey) }
         // The serpent is a fire: its crackle is always there; the rain follows the slider, the mist muffles.
         BoitataAudio(sink, weather = SkyWeather(cloud = 0.2f + 0.4f * rain, precipitation = rain, fog = fog * 0.5f), fire = 0.7f, enabled = sound)
-        Controls { Labelled("Rain", rain, 0f..1f) { rain = it }; Labelled("Mist", fog, 0f..1f) { fog = it } }
+        Controls {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                FilterChip(selected = hunter, onClick = { hunter = !hunter }, label = { Text("Hunter") })
+                FilterChip(selected = wildlife, onClick = { wildlife = !wildlife }, label = { Text("Wildlife") })
+                FilterChip(selected = false, onClick = { resetKey++ }, label = { Text("Start again") })
+                Text("The serpent's head is a fire that never burns down, not even in the rain. When it passes close, the hunter (flammable) catches and chars. The animals are not flammable and are never touched.", color = Color(0xFFB7BEC8))
+            }
+            Labelled("Rain", rain, 0f..1f) { rain = it }; Labelled("Mist", fog, 0f..1f) { fog = it }
+        }
     }
 }
 

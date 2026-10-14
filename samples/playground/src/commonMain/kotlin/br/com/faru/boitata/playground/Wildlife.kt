@@ -90,3 +90,12 @@ fun DrawScope.drawCreature(art: Sprites, c: Creature, pose: Pose, height: Float,
         drawArt(image, Offset(-width / 2f, -height - pose.lift), k, colour, crop)
     }
 }
+
+/** The animals that wander the stage by themselves: none of them are draggable and none of them can burn. */
+val Wildlife = listOf(
+    Creature("tamandua", "tamandua", "tamandua_walk", 0.15f, Gait.Patrol(0.08f, 0.55f, 0.92f, 0.07f, pause = 2.5f)),
+    Creature("onca", "onca", null, 0.17f, Gait.Patrol(0.92f, 0.45f, 0.72f, 0.06f, pause = 3f, phase = 0.3f)),
+    Creature("capivara", "capivara", null, 0.13f, Gait.Patrol(0.15f, 0.40f, 0.42f, 0.03f, pause = 4f, phase = 0.6f)),
+    Creature("arara", "arara", "arara_fly", 0.13f, Gait.Fly(0.5f, 2.2f, 9f, rest = 3f)),
+)
+

@@ -58,18 +58,10 @@ private val LightProps = listOf(
     LightProp("candle", null, 0.07f, 0.20f, 0.88f),
 )
 
-/** The animals that wander the stage by themselves: none of them are draggable and none of them can burn. */
-private val Animals = listOf(
-    Creature("tamandua", "tamandua", "tamandua_walk", 0.15f, Gait.Patrol(0.08f, 0.55f, 0.92f, 0.07f, pause = 2.5f)),
-    Creature("onca", "onca", null, 0.17f, Gait.Patrol(0.92f, 0.45f, 0.72f, 0.06f, pause = 3f, phase = 0.3f)),
-    Creature("capivara", "capivara", null, 0.13f, Gait.Patrol(0.15f, 0.40f, 0.42f, 0.03f, pause = 4f, phase = 0.6f)),
-    Creature("arara", "arara", "arara_fly", 0.13f, Gait.Fly(0.5f, 2.2f, 9f, rest = 3f)),
-)
-
 /** The lights, the stage they light and the swing of the lamp Lampião carries, built together. */
 private class LightsSetup(val stage: DepthStage, val rig: LightRig, val sun: DirectionalLight, val moon: DirectionalLight, val fire: PointLight, val lamp: PointLight, val candle: PointLight, val lantern: SpotLight) {
     val swing = LampSwing()
-    val poses = Array(Animals.size) { Pose() }
+    val poses = Array(Wildlife.size) { Pose() }
 }
 
 private fun buildLights(art: Sprites, size: IntSize): LightsSetup {
@@ -161,7 +153,7 @@ private fun DrawScope.drawLights(art: Sprites, s: LightsSetup, t: Float, hour: F
 
     // The animals' places this instant, so they can be put in order with the things.
     val ground = Triple(stage.groundLeft, stage.groundRight, stage.groundTop)
-    for ((i, c) in Animals.withIndex()) {
+    for ((i, c) in Wildlife.withIndex()) {
         val strip = c.strip?.let { art.strips.getValue(it) }
         val aspect = strip?.aspect ?: art.prop(c.sprite).let { it.width.toFloat() / it.height }
         val height = h * c.heightShare * stage.perspective.scale(ground.third + (stage.groundBottom - ground.third) * ((c.gait as? Gait.Patrol)?.y ?: (c.gait as Gait.Fly).y))
@@ -169,13 +161,13 @@ private fun DrawScope.drawLights(art: Sprites, s: LightsSetup, t: Float, hour: F
     }
     val things = stage.ordered()
     var next = 0
-    val animalOrder = Animals.indices.sortedBy { s.poses[it].y }
+    val animalOrder = Wildlife.indices.sortedBy { s.poses[it].y }
     var nextAnimal = 0
     while (next < things.size || nextAnimal < animalOrder.size) {
         val drawAnimal = nextAnimal < animalOrder.size && (next >= things.size || s.poses[animalOrder[nextAnimal]].y < things[next].feetY)
         if (drawAnimal) {
             val i = animalOrder[nextAnimal++]
-            val c = Animals[i]; val pose = s.poses[i]
+            val c = Wildlife[i]; val pose = s.poses[i]
             val height = h * c.heightShare * stage.perspective.scale(pose.y)
             drawBeing(pose.x, pose.y, height + pose.lift, rig, t, dark, lit, quality, 0.65f) { colour -> drawCreature(art, c, pose, height, colour) }
         } else {

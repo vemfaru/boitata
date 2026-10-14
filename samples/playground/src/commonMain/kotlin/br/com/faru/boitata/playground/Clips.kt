@@ -15,8 +15,8 @@ import kotlin.math.sin
 class Clip(val name: String, val length: Float, val wind: Wind = Wind.Calm, val stateful: Boolean = false, val content: @Composable (seconds: () -> Float) -> Unit)
 
 val Clips: List<Clip> = listOf(
-    Clip("boitata", 8f, Wind.Breeze) { t -> ForestScene(t, rain = 0f, fog = 0.4f) },
-    Clip("boitata-rain", 8f, Wind.Windy) { t -> ForestScene(t, rain = 0.8f, fog = 0.5f) },
+    Clip("boitata", 12f, Wind.Breeze, stateful = true) { t -> ForestScene(t, rain = 0f, fog = 0.4f, timeScale = 3f) },
+    Clip("boitata-rain", 8f, Wind.Windy, stateful = true) { t -> ForestScene(t, rain = 0.8f, fog = 0.5f) },
     Clip("sky-day", 8f, Wind.Windy) { t -> WeatherScene(t, hour = 5f + 15f * (t() / 8f).coerceIn(0f, 1f), kind = WeatherKind.Clear) },
     Clip("weather-rain", 6f, Wind.Windy) { t -> WeatherScene(t, hour = 15f, kind = WeatherKind.Rain) },
     Clip("weather-storm", 8f, Wind.Gale) { t -> WeatherScene(t, hour = 21.5f, kind = WeatherKind.Storm) },

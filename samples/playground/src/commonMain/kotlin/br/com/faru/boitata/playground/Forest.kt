@@ -16,6 +16,15 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.FastNoise
 import androidx.compose.runtime.remember
+import br.com.faru.boitata.core.burn.BodyGeometry
+import br.com.faru.boitata.core.burn.FireBody
+import br.com.faru.boitata.core.burn.FireKind
+import br.com.faru.boitata.core.burn.FireWorld
+import br.com.faru.boitata.core.burn.Material
+import br.com.faru.boitata.core.burn.RunFireWorld
+import br.com.faru.boitata.light.drawFireAffected
+import br.com.faru.boitata.light.LightSource
+import androidx.compose.runtime.rememberUpdatedState
 import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.core.depth.Depth
 import br.com.faru.boitata.core.draw.sway
@@ -45,6 +54,10 @@ import kotlin.math.sin
 /**
  * The Boitatá in its forest: a night wood in carved woodcut, the fire serpent weaving between the trees. It lights the trunks near it and every
  * tree throws its shadow away from the serpent, so the shadows swing round as it passes. Rain and mist are optional layers.
+ *
+ * A [hunter] stands in the wood, and he is **flammable**: the serpent's head is a fire that never burns down (and rain cannot put it out), so when it passes close enough, and the wind carries its heat to him, he warms,
+ * smokes, catches and chars. The [wildlife] (a tamandua walking, a jaguar and a capybara on patrol, a macaw crossing the sky) is not flammable: the same fire never touches it. [resetKey] changing puts the hunter back;
+ * [timeScale] runs the fire faster than the clock.
  */
 @Composable
 fun ForestScene(
@@ -55,13 +68,31 @@ fun ForestScene(
     hour: Float = 23.5f,
     moon: MoonPhase = MoonPhase.Full,
     southern: Boolean = true,
+    hunter: Boolean = true,
+    wildlife: Boolean = true,
+    resetKey: Int = 0,
+    timeScale: Float = 1f,
 ) {
     val art = LocalSprites.current ?: return
     val quality = rememberSceneQuality()
     val track = remember { SerpentTrack() }
     val sceneWind = rememberSceneWind()
-    Spacer(modifier.drawBehind { drawForest(art, seconds(), rain, fog, hour, quality(), track, moon, southern, sceneWind) })
+    // The fire world: the serpent's head (always alight, the Boitatá's kind, waterproof) and the hunter (a person, who burns). Their places are read from the track each step.
+    val world = remember(track, resetKey) {
+        FireWorld().apply {
+            add(FireBody("head", Material.Spirit) { track.headBox() })
+            add(FireBody("hunter", Material.Person) { track.hunterBox() })
+            ignite("head", FireKind.Guardian)
+        }
+    }
+    val currentRain = rememberUpdatedState(rain)
+    RunFireWorld(world, rain = { currentRain.value }, timeScale = timeScale)
+    val extras = ForestExtras(world.body("hunter")!!, hunter, wildlife)
+    Spacer(modifier.drawBehind { drawForest(art, seconds(), rain, fog, hour, quality(), track, moon, southern, sceneWind, extras) })
 }
+
+/** What else is in the wood besides the serpent: the hunter (his [body] is what burns), and the animals. */
+class ForestExtras(val hunterBody: FireBody, val hunter: Boolean, val wildlife: Boolean)
 
 /** How each tree of `layer_mid` answers the wind, in the order of [MidTrees]: araucária, buriti, araucária, sumaúma (huge and stiff), araucária, embaúba, buriti, araucária. */
 private val TreeWind = listOf(
@@ -75,7 +106,7 @@ private val MidTrees = listOf(
     Crop(1034, 391, 241, 393), Crop(1309, 448, 137, 320), Crop(1490, 512, 204, 292), Crop(1706, 473, 193, 317),
 )
 
-fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: Float, quality: Quality = Quality.High, track: SerpentTrack = SerpentTrack(), moon: MoonPhase = MoonPhase.Full, southern: Boolean = true, sceneWind: SceneWind? = null) {
+fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: Float, quality: Quality = Quality.High, track: SerpentTrack = SerpentTrack(), moon: MoonPhase = MoonPhase.Full, southern: Boolean = true, sceneWind: SceneWind? = null, extras: ForestExtras? = null) {
     val wind = sceneWind?.wind ?: Wind.Calm
     val w = size.width; val h = size.height
     val v = cover()
@@ -129,6 +160,8 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
         }
     }
 
+    if (extras != null) drawWood(art, track, extras, head, light, t, wind, quality) { night, dayColor -> tint(night, dayColor) }
+
     // A glow on the ground under the serpent, and rings of carved arcs around its head.
     val glow = Offset(head.x, track.groundY(z0, h, horizon))
     val glowRadius = w * 0.28f * Depth.scale(z0).coerceIn(0.5f, 1.5f)
@@ -159,6 +192,8 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
  * The serpent's body as numbers, one entry per point from the head to the tail, made once and reused every frame (nothing is allocated while it swims): where each point is,
  * how deep (0 near, 1 at the horizon), how big and how faded for that depth, and which layer slot it is in.
  */
+private const val HUNTER_DEPTH = 0.45f
+
 private const val POINT_SECONDS = 0.07f / 1.5f
 
 class SerpentTrack(val count: Int = 72) {
@@ -168,6 +203,25 @@ class SerpentTrack(val count: Int = 72) {
     val visibility = FloatArray(count)
     private val slot = Array(count) { DepthSlot.Between }
     private var baseWidth = 0f
+    private var sceneW = 0f
+    private var sceneH = 0f
+    private var horizonY = 0f
+
+    /** Where each animal is, this instant. */
+    val poses = Array(Wildlife.size) { Pose() }
+
+    /** The head as the fire sees it: standing on the ground below it, as tall as its reach (a flame much bigger than its body), so a hunter on the ground within that catches. */
+    fun headBox(): BodyGeometry {
+        val reach = sceneH * 0.55f * scale[0].coerceIn(0.5f, 1.5f)
+        return BodyGeometry(pts[0], groundY(depth[0], sceneH, horizonY), reach * 0.4f, reach)
+    }
+
+    /** The hunter's feet and size: a little way into the wood, standing at a middle depth. */
+    fun hunterBox(): BodyGeometry {
+        val z = HUNTER_DEPTH
+        val height = sceneH * 0.3f * Depth.scale(z)
+        return BodyGeometry(sceneW * 0.62f, groundY(z, sceneH, horizonY), height * 0.45f, height)
+    }
 
     /** How fast the head moves, in pixels a second, and the speed that counts as "fast" (a third of the width a second); both worked out from the body, which is where the head was a moment ago. */
     var headVx = 0f; private set
@@ -180,6 +234,7 @@ class SerpentTrack(val count: Int = 72) {
     /** Moves the whole body to time [t] and returns the head. The head swings in depth; each point behind it is where the head was a moment earlier. */
     fun follow(t: Float, w: Float, h: Float, horizon: Float, quality: Quality): Offset {
         baseWidth = h * 0.042f
+        sceneW = w; sceneH = h; horizonY = horizon
         for (n in 0 until count) {
             val tt = t * 1.5f - n * 0.07f   // POINT_SECONDS apart in real time
             val z = Depth.swing(tt, period = 12f, phase = 0.25f)
@@ -262,3 +317,37 @@ private val HEAD_FLAMES = arrayOf(
     floatArrayOf(5f, 0f, 1.1f, 2.4f), floatArrayOf(40f, 0f, 1.0f, 2.2f), floatArrayOf(75f, 0f, 0.95f, 2.0f), floatArrayOf(110f, 0f, 0.85f, 1.7f),
     floatArrayOf(145f, 0f, 0.75f, 1.4f), floatArrayOf(178f, 0f, 0.65f, 1.1f), floatArrayOf(205f, 0f, 0.55f, 0.8f),
 )
+
+
+/**
+ * The hunter and the animals, in the middle of the wood. All lit and shadowed by the serpent: nearer it they glow warm, and every one throws a shadow away from it.
+ * The hunter is drawn by what fire does to him ([drawFireAffected]); the animals are not flammable and are drawn plain.
+ */
+private fun DrawScope.drawWood(art: Sprites, track: SerpentTrack, extras: ForestExtras, head: Offset, light: LightSource, t: Float, wind: Wind, quality: Quality, tint: (Long, Long) -> Color) {
+    val h = size.height
+    val base = tint(0xFF0A1410, 0xFF33463C)
+    fun warm(feetX: Float, feetY: Float, height: Float): Color {
+        val near = (1f - hypot(feetX - head.x, feetY - height * 0.5f - head.y) / light.reach).coerceIn(0f, 1f) * light.strength
+        return lerp(base, Color(0xFF8A4B1F), (near * 0.6f).coerceIn(0f, 0.65f))
+    }
+    if (extras.wildlife) {
+        val top = track.groundY(0.85f, h, h * ART_HORIZON); val bottom = track.groundY(0.2f, h, h * ART_HORIZON)
+        for ((i, c) in Wildlife.withIndex()) {
+            val strip = c.strip?.let { art.strips.getValue(it) }
+            val aspect = strip?.aspect ?: art.prop(c.sprite).let { it.width.toFloat() / it.height }
+            val pose = track.poses[i]
+            val share = ((c.gait as? Gait.Patrol)?.y ?: (c.gait as Gait.Fly).y)
+            val height = h * c.heightShare * Depth.scale(0.85f - 0.65f * share)
+            c.poseAt(t, size.width * 0.03f, size.width * 0.97f, top, bottom, height * aspect, pose)
+            drawCastShadow(light, pose.x, pose.y, height + pose.lift, 0.55f, quality) { col -> drawCreature(art, c, pose, height, col) }
+            withTransform({ translate(pose.x, pose.y) }) { drawCreature(art, c, pose, height, warm(pose.x, pose.y, height)) }
+        }
+    }
+    if (extras.hunter) {
+        val g = track.hunterBox()
+        val image = art.prop("cacador"); val k = g.height / image.height
+        val silhouette: DrawScope.(Color) -> Unit = { col -> drawArt(image, Offset(-image.width * k / 2f, -g.height), k, col) }
+        drawCastShadow(light, g.feetX, g.feetY, g.height, 0.6f, quality, silhouette)
+        drawFireAffected(extras.hunterBody, g, t, wind, warm(g.feetX, g.feetY, g.height), quality, silhouette = silhouette)
+    }
+}
