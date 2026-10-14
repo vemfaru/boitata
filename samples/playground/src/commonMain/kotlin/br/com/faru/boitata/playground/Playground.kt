@@ -40,7 +40,7 @@ import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
 
 /** The demos, in the order of the tabs. */
-enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Burn("Burn"), Fire("Fire") }
+enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Burn("Burn"), Fire("Fire") }
 
 /** The whole playground: pick a demo, play with its controls. The same scenes are what the README's GIFs are rendered from. */
 @Composable
@@ -75,6 +75,7 @@ fun PlaygroundApp() {
                     Demo.Depth -> DepthDemo(seconds)
                     Demo.Lights -> LightsDemo(seconds, moon, southern)
                     Demo.Stage -> LightStageDemo(seconds)
+                    Demo.Theatre -> ShadowTheatreDemo(seconds)
                     Demo.Burn -> BurnDemo(seconds, sink, sound)
                     Demo.Fire -> FireDemo(seconds, sink, sound)
                 }
@@ -239,6 +240,24 @@ private fun LightStageDemo(seconds: () -> Float) {
             }
             Labelled("Lamp height", height, 0.4f..2f) { height = it }
             Text("Four lamps light the stage from four places at once. Drag a lamp (a glowing orb) and its shadows swing while the others stay; drag a person across and their shadows turn as they pass between the lamps. Lower the lamps for long shadows. Switch on Walls: shadows thrown backward climb the back wall (bigger the farther it is behind), and shadows thrown at the crate bend onto its face.", color = Color(0xFFB7BEC8))
+        }
+    }
+}
+
+@Composable
+private fun ShadowTheatreDemo(seconds: () -> Float) {
+    var lamp by remember { mutableStateOf(TheatreLamp.Hurricane) }
+    var paper by remember { mutableStateOf(TheatrePaper.White) }
+    var backstage by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) { ShadowTheatreScene(seconds, lamp = lamp, paper = paper, backstage = backstage) }
+        Controls {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (l in TheatreLamp.entries) FilterChip(selected = l == lamp, onClick = { lamp = l }, label = { Text(l.label) })
+                for (p in TheatrePaper.entries) FilterChip(selected = p == paper, onClick = { paper = p }, label = { Text(p.label) })
+                FilterChip(selected = backstage, onClick = { backstage = !backstage }, label = { Text("Backstage") })
+            }
+            Text("Teatro de Sombras: the lamp is behind the paper and the puppets are between them. Drag a puppet toward the lamp and its shadow grows huge and soft; press it against the paper and it is small and sharp. Drag the lamp to swing every shadow. The paper's colour is the light's; backstage shows the puppeteers' side.", color = Color(0xFFB7BEC8))
         }
     }
 }

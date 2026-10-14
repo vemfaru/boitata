@@ -75,3 +75,13 @@ rig.add(crate)
 - **Order.** Draw all floor shadows first, then the things from far to near, calling `drawFaceShadows` after each: the things then cover the floor shadows they stand on without any clipping.
 
 Cost: the visibility test is a short loop per light and thing (three rays, early exits); face shadows are two small offscreen layers per shadow that can reach the receiver (the others are skipped by a bounding test), so they are a High and Medium quality feature.
+
+## Light through a translucent surface: Teatro de Sombras
+
+A surface with `Optics.Paper()` (or `Frosted`, or tinted `Glass`) lets light through. With the lamp **behind** it and things between the lamp and the surface, the audience sees the light that comes through as a **glow** and, on it, the **shadows** of the things in between, exactly as a hand behind a sheet:
+
+- The shadow is the thing's outline enlarged by `t = (screen - lamp) / (thing - lamp)`: the same geometry as a shadow on a back wall, valid with the light on either side of the thing (`ShadowMath.onWallFromPoint` accepts both). A thing pressed against the paper has `t` near 1: a small, sharp shadow. A thing near the lamp has a huge, soft one. Give the surface a larger `maxShadowScale` (the default 3.2 stops a level lamp putting a gigantic shadow on a wall; a theatre screen wants far more).
+- The glow is the light on a flat surface (Lambert, centred on the point of the paper nearest the lamp, at the lamp's height), multiplied by what the paper lets through (`1 - opacity`), tinted by it, and **spread wider and softer by `scatter`**: thin clear glass shows the lamp as it is, paper makes a soft glow. `drawWallLight(rig, screen, seconds)` draws it for a lamp on either side.
+- The shadows are drawn on the glow by `drawCastShadows(..., floor = false)`: a dark overlay keeps `1 - alpha` of the light under it, which is what an object in front of a lamp does to the paper behind.
+
+The playground's **Shadow theatre** tab is this: a paper screen in a frame, a lamp (candle, hurricane lamp or the Boitatá's fire) behind it, the characters and animals as puppets you drag between them, red or amber paper, and a Backstage view of the puppeteers' side.

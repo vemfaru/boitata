@@ -151,4 +151,19 @@ class ShadowMathTest {
             }
         }
     }
+
+    @Test
+    fun aShadowLandsOnAScreenLitFromBehindWithTheThingBetweenTheLightAndTheScreen() {
+        // A shadow theatre: the lamp at the back (y 100), the puppet in the middle (y 200), the screen in front (y 300), the audience beyond.
+        val cast = WallCast()
+        assertTrue(ShadowMath.onWallFromPoint(200f, 100f, 60f, 200f, 200f, 300f, 0.1f, cast))
+        assertEquals(2f, cast.scale, 1e-3f, "the screen is twice as far from the lamp as the puppet: the shadow is twice its size")
+        assertEquals(200f, cast.x, 1e-3f)
+        // Close to the screen, the shadow is nearly the puppet's size; close to the lamp, it is huge.
+        val nearScreen = WallCast().also { ShadowMath.onWallFromPoint(200f, 100f, 60f, 200f, 280f, 300f, 0.1f, it) }
+        val nearLamp = WallCast().also { ShadowMath.onWallFromPoint(200f, 100f, 60f, 200f, 120f, 300f, 0.1f, it, maxScale = 12f) }
+        assertTrue(nearScreen.scale < 1.15f && nearLamp.scale > 5f, "${nearScreen.scale} near the screen, ${nearLamp.scale} near the lamp")
+        // A puppet between the screen and the audience side of the lamp (the lamp in front of the puppet) throws nothing on it.
+        assertTrue(!ShadowMath.onWallFromPoint(200f, 250f, 60f, 200f, 200f, 300f, 0.1f, WallCast()), "the lamp is not behind the puppet")
+    }
 }

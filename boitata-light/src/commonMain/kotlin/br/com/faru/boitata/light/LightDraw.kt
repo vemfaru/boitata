@@ -31,7 +31,7 @@ import kotlin.math.sin
  */
 public fun DrawScope.drawCastShadows(
     rig: LightRig, feetX: Float, feetY: Float, height: Float, seconds: Float, maxAlpha: Float = 0.6f,
-    quality: Quality = Quality.High, into: ShadowCasts = DefaultCasts, ignore: Any? = null, silhouette: DrawScope.(Color) -> Unit,
+    quality: Quality = Quality.High, into: ShadowCasts = DefaultCasts, ignore: Any? = null, floor: Boolean = true, silhouette: DrawScope.(Color) -> Unit,
 ) {
     val n = rig.shadows(feetX, feetY, height, seconds, maxAlpha, when (quality) { Quality.High -> 4; Quality.Medium -> 2; Quality.Low -> 1 }, into, ignore)
     // How solid the thing is: a pane of glass throws a faint shadow, a crate a full one.
@@ -41,7 +41,7 @@ public fun DrawScope.drawCastShadows(
     var blocked = 0
     // Plain walls stop a floor shadow at their foot. Things (with a silhouette) do not need to: they are drawn after the floor shadows, which is what covers them.
     for (wall in walls) if (wall.silhouette == null && !isOwner(wall, ignore) && feetY > wall.footY + 0.5f) blocked++
-    fun floor(thick: Boolean) {
+    fun onFloor(thick: Boolean) {
         for (i in 0 until n) {
             val cast = into.casts[i]
             if (cast.alpha * opacity <= 0.01f) continue
@@ -75,11 +75,11 @@ public fun DrawScope.drawCastShadows(
         }
     }
     // With a wall behind, the floor shadow is the exact projection (so it meets the wall's shadow at the wall's foot with no seam); with none, it gets a little thickness (a footprint) so a light level with the thing still gives a shadow.
-    if (blocked == 0) floor(true) else clipOutWalls(walls, ignore, feetY, 0) { floor(false) }
+    if (floor) { if (blocked == 0) onFloor(true) else clipOutWalls(walls, ignore, feetY, 0) { onFloor(false) } }
     if (quality == Quality.Low) return
     // On the walls it stands in front of.
     for (wall in walls) {
-        if (wall.silhouette != null || isOwner(wall, ignore) || feetY <= wall.footY + 0.5f) continue
+        if (wall.silhouette != null || isOwner(wall, ignore)) continue
         val m = rig.wallShadows(feetX, feetY, wall, seconds, maxAlpha, 2, DefaultWallCasts, height, ignore)
         for (i in 0 until m) {
             val cast = DefaultWallCasts.casts[i]
@@ -189,18 +189,38 @@ private fun DrawScope.bulb(x: Float, y: Float, color: Color, strength: Float, ra
  * brightest there and falling off with the distance to the lamp and with Lambert's cosine (so a lamp close to the wall makes a small bright pool, a far one a wide dim one, and one beyond its reach none).
  * Only lights that are in front of the wall and, for a spot, aimed toward it, light it. Draw it over the wall and under the things standing in front.
  */
-public fun DrawScope.drawWallLight(rig: LightRig, wall: Wall, seconds: Float) {
+public fun DrawScope.drawWallLight(rig: LightRig, wall: Billboard, seconds: Float, gain: Float = 1f) {
+    val o = wall.optics
     clipRect(wall.left, wall.footY - wall.height, wall.right, wall.footY) {
         for (l in rig.lights) {
             if (!l.enabled || l.strength <= 0.01f) continue
             val flick = l.flickerAt(seconds)
             when (l) {
-                is PointLight -> if (l.y > wall.footY) surfaceLight(l.x, wall.footY - l.height, (l.y - wall.footY) / ShadowMath.GROUND_SQUASH, l.reach, l.color, 0.5f * l.strength * flick)
-                is SpotLight -> if (l.y > wall.footY && sin(l.aim) < -0.2f) surfaceLight(l.x + cos(l.aim) * l.reach * 0.25f, wall.footY - l.height, (l.y - wall.footY) / ShadowMath.GROUND_SQUASH, l.reach, l.color, 0.5f * l.strength * flick)
+                is PointLight -> {
+                    if (l.y > wall.footY) surfaceLight(l.x, wall.footY - l.height, (l.y - wall.footY) / ShadowMath.GROUND_SQUASH, l.reach, l.color, 0.5f * l.strength * flick * gain)
+                    else backLight(wall, l.x, l.y, l.height, l.reach, l.color, l.strength * flick * gain)
+                }
+                is SpotLight -> {
+                    if (l.y > wall.footY && sin(l.aim) < -0.2f) surfaceLight(l.x + cos(l.aim) * l.reach * 0.25f, wall.footY - l.height, (l.y - wall.footY) / ShadowMath.GROUND_SQUASH, l.reach, l.color, 0.5f * l.strength * flick * gain)
+                    else if (l.y < wall.footY && sin(l.aim) > 0.2f) backLight(wall, l.x + cos(l.aim) * l.reach * 0.25f, l.y, l.height, l.reach, l.color, l.strength * flick * gain)
+                }
                 is DirectionalLight -> Unit
             }
         }
     }
+}
+
+/**
+ * Light that comes through a translucent [wall] from a lamp behind it (a shadow theatre's paper screen): the same pool as light on the front of a wall (Lambert, centred on the point of the screen nearest the lamp),
+ * but what the audience sees is the light that gets through, so it is dimmer by what the screen stops, tinted by it, and **spread wider and softer** by how much it scatters (paper glows; clear glass shows the lamp as it is).
+ */
+private fun DrawScope.backLight(wall: Billboard, x: Float, lampY: Float, height: Float, reach: Float, color: Color, strength: Float) {
+    val o = wall.optics
+    if (!o.translucent) return
+    val through = 1f - o.opacity
+    val spread = 1f + 1.2f * o.scatter
+    val tint = Color(color.red * o.tint.red, color.green * o.tint.green, color.blue * o.tint.blue)
+    surfaceLight(x, wall.footY - height, (wall.footY - lampY) / ShadowMath.GROUND_SQUASH, reach * spread, tint, 0.9f * strength * through / (1f + 0.8f * o.scatter))
 }
 
 /**

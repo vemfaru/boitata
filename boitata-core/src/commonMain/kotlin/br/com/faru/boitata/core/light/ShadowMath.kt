@@ -67,12 +67,15 @@ public object ShadowMath {
      * from the light than the thing is ([WallCast.scale], 1 for a thing against the wall, 2 for a wall twice as far as the thing), standing on a floor of its own that is [WallCast.footLift] pixels
      * above the wall's foot (negative: below the foot, so only its upper part shows). Returns false when there is no shadow on this wall: the thing is behind it, or the light is not in front of the thing.
      */
-    public fun onWallFromPoint(lightX: Float, lightY: Float, lightHeight: Float, feetX: Float, feetY: Float, wallFootY: Float, size: Float, into: WallCast): Boolean {
+    public fun onWallFromPoint(lightX: Float, lightY: Float, lightHeight: Float, feetX: Float, feetY: Float, wallFootY: Float, size: Float, into: WallCast, maxScale: Float = MAX_WALL_SCALE): Boolean {
         val ly = lightY / GROUND_SQUASH; val py = feetY / GROUND_SQUASH; val wy = wallFootY / GROUND_SQUASH
-        if (py <= wy + 0.5f || ly <= py + 0.5f) return false
+        // The thing has to be between the light and the wall: the light nearer the viewer than the thing and the wall behind it (a back wall), or the light behind the thing and the wall in front of it (a screen
+        // lit from behind, as in a shadow theatre). Either way the shadow is the outline enlarged by how much farther the wall is from the light than the thing.
+        val between = (py - wy > 0.5f && ly - py > 0.5f) || (wy - py > 0.5f && py - ly > 0.5f)
+        if (!between) return false
         val t = (wy - ly) / (py - ly)                                   // how far along the ray from the light the wall is, in units of the way to the thing
         if (t <= 1f) return false
-        val scale = t.coerceAtMost(MAX_WALL_SCALE)
+        val scale = t.coerceAtMost(maxScale)
         into.set(lightX + scale * (feetX - lightX), lightHeight * (1f - scale), scale, size * (0.05f + 0.05f * scale))
         return true
     }
@@ -84,8 +87,9 @@ public object ShadowMath {
     public fun onWallFromDirection(azimuth: Float, elevation: Float, feetX: Float, feetY: Float, wallFootY: Float, size: Float, into: WallCast): Boolean {
         val dirY = sin(azimuth)
         val py = feetY / GROUND_SQUASH; val wy = wallFootY / GROUND_SQUASH
-        if (py <= wy + 0.5f || dirY >= -0.05f) return false
-        val along = (wy - py) / dirY                                    // how far along the ground the ray runs before it reaches the wall
+        if (dirY > -0.05f && dirY < 0.05f) return false
+        val along = (wy - py) / dirY
+        if (along <= 0.5f) return false                                    // how far along the ground the ray runs before it reaches the wall
         val e = elevation.coerceIn(MIN_ELEVATION, 1.5f)
         into.set(feetX + along * cos(azimuth), -along * tan(e), 1f, size * 0.08f)
         return true

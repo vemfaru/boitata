@@ -47,7 +47,7 @@ public sealed class Light(
     public abstract fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast)
 
     /** Writes how this light's shadow of a thing at ([feetX], [feetY]) lands on a wall standing along the screen line [wallFootY]; false if it does not reach that wall. */
-    public abstract fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean
+    public abstract fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast, maxScale: Float = ShadowMath.MAX_WALL_SCALE): Boolean
 
     /** Writes `[level, red, green, blue]` for how much of this light reaches the point ([px], [py]) on the ground, [pz] up, past [things], and in what colour (see [Transmission]). */
     public abstract fun transmission(px: Float, py: Float, pz: Float, things: List<Billboard>, self: Any?, into: FloatArray)
@@ -90,7 +90,7 @@ public class PointLight(
 
     override fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast) = ShadowMath.point(x, y, height, feetX, feetY, objectHeight, size, into)
 
-    override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean = ShadowMath.onWallFromPoint(x, y, height, feetX, feetY, wallFootY, size, into)
+    override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast, maxScale: Float): Boolean = ShadowMath.onWallFromPoint(x, y, height, feetX, feetY, wallFootY, size, into, maxScale)
 
     override fun transmission(px: Float, py: Float, pz: Float, things: List<Billboard>, self: Any?, into: FloatArray) = Transmission.fromPoint(x, y, height, px, py, pz, things, self, into)
 }
@@ -125,7 +125,7 @@ public class SpotLight(
 
     override fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast) = ShadowMath.point(x, y, height, feetX, feetY, objectHeight, size, into)
 
-    override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean = ShadowMath.onWallFromPoint(x, y, height, feetX, feetY, wallFootY, size, into)
+    override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast, maxScale: Float): Boolean = ShadowMath.onWallFromPoint(x, y, height, feetX, feetY, wallFootY, size, into, maxScale)
 
     override fun transmission(px: Float, py: Float, pz: Float, things: List<Billboard>, self: Any?, into: FloatArray) = Transmission.fromPoint(x, y, height, px, py, pz, things, self, into)
 }
@@ -149,7 +149,7 @@ public class DirectionalLight(
 
     override fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast) = ShadowMath.directional(azimuth, elevation, size, into)
 
-    override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean = ShadowMath.onWallFromDirection(azimuth, elevation, feetX, feetY, wallFootY, size, into)
+    override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast, maxScale: Float): Boolean = ShadowMath.onWallFromDirection(azimuth, elevation, feetX, feetY, wallFootY, size, into)
 
     override fun transmission(px: Float, py: Float, pz: Float, things: List<Billboard>, self: Any?, into: FloatArray) = Transmission.fromDirection(azimuth, elevation, px, py, pz, things, self, into)
 
@@ -365,10 +365,10 @@ public class LightRig(
                 if (c <= bestC) continue
                 var already = false
                 for (k in 0 until into.count) if (into.owner[k] === l) already = true
-                if (!already && l.castOnWall(feetX, feetY, wall.footY, scratchWall)) { best = l; bestC = c }
+                if (!already && l.castOnWall(feetX, feetY, wall.footY, scratchWall, wall.maxShadowScale)) { best = l; bestC = c }
             }
             if (best == null) break
-            best.castOnWall(feetX, feetY, wall.footY, scratchWall)
+            best.castOnWall(feetX, feetY, wall.footY, scratchWall, wall.maxShadowScale)
             val to = into.casts[into.count]
             to.set(scratchWall.x, scratchWall.footLift, scratchWall.scale, scratchWall.spread); to.alpha = maxAlpha * (bestC / total).coerceIn(0f, 1f)
             into.owner[into.count] = best

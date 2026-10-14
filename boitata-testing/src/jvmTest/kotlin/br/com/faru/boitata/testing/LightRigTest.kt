@@ -188,4 +188,24 @@ class LightRigTest {
         val lit = rig2.level(200f, 200f, 0f, height = 80f, self = person2.owner)
         assertTrue(lit > hidden + 0.02f, "the crate takes the lamp's light from the person: $hidden vs $lit")
     }
+
+    @Test
+    fun aPuppetBetweenALampAndAPaperScreenThrowsAShadowOnTheScreenAndTheNearerTheLampTheBiggerIt() {
+        fun shadowWidth(puppetY: Float): Int {
+            val rig = LightRig(ambient = 0.02f)
+            rig.add(Lights.lamp(200f, 60f, scale = 40f).also { it.reach = 2000f })
+            rig.add(br.com.faru.boitata.core.light.Billboard(footY = 290f, left = 0f, right = 400f, height = 250f, optics = br.com.faru.boitata.core.light.Optics.Paper()).also { it.maxShadowScale = 14f })
+            val still = renderStill(width = 400, height = 300) {
+                Spacer(Modifier.fillMaxSize().drawBehind {
+                    drawCastShadows(rig, 200f, puppetY, 40f, 0f, maxAlpha = 1f, floor = false) { c -> drawRect(c, Offset(-10f, -40f), Size(20f, 40f)) }
+                })
+            }
+            val row = 270
+            return (0 until still.width).count { x -> still.alpha(x, row) > 10 }
+        }
+        val nearScreen = shadowWidth(puppetY = 250f)
+        val nearLamp = shadowWidth(puppetY = 110f)
+        assertTrue(nearScreen in 15..40, "pressed against the paper the shadow is about the puppet's own width: $nearScreen")
+        assertTrue(nearLamp > 2.5f * nearScreen, "near the lamp it is far bigger: $nearLamp vs $nearScreen")
+    }
 }

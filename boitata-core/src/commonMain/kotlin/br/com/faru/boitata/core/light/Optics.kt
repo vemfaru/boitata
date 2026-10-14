@@ -78,4 +78,7 @@ public class Billboard(
 
     /** Whether it blocks light at all. A back wall that nothing stands behind does not need to. */
     public var blocksLight: Boolean = true
+
+    /** The most a shadow on its face may be enlarged: 3.2 keeps a lamp level with a thing from putting a gigantic shadow on a back wall; a shadow-theatre screen wants far more (a hand near the lamp is huge). */
+    public var maxShadowScale: Float = ShadowMath.MAX_WALL_SCALE
 }
