@@ -12,6 +12,7 @@ import br.com.faru.boitata.light.LightRig
 import br.com.faru.boitata.light.Lights
 import br.com.faru.boitata.light.ShadowCasts
 import br.com.faru.boitata.light.drawCastShadows
+import br.com.faru.boitata.light.drawFaceShadows
 import kotlin.math.abs
 import kotlin.math.sign
 import kotlin.test.Test
@@ -147,5 +148,44 @@ class LightRigTest {
         val open = wallScene(withWall = false)
         // The thing is the wall (a crate): nothing lands on its own face, so what is on screen is the floor shadow as if there were no wall.
         assertEquals(massAbove(open, 300), massAbove(self, 300), "no change for the wall's own owner")
+    }
+
+    private fun crateAndPerson(receives: Boolean, crateX: Float = 200f): Triple<LightRig, br.com.faru.boitata.core.light.Billboard, br.com.faru.boitata.core.light.Billboard> {
+        val rig = LightRig(ambient = 0.05f)
+        rig.add(Lights.lamp(200f, 500f, scale = 60f).also { it.reach = 900f })
+        val crate = br.com.faru.boitata.core.light.Billboard(footY = 300f, left = crateX - 50f, right = crateX + 50f, height = 60f, owner = "crate")
+        crate.silhouette = { c -> drawRect(c, Offset(-50f, -60f), Size(100f, 60f)) }
+        val person = br.com.faru.boitata.core.light.Billboard(footY = 200f, left = 180f, right = 220f, height = 80f, owner = "person")
+        person.silhouette = { c -> drawRect(c, Offset(-20f, -80f), Size(40f, 80f)) }
+        person.receivesShadows = receives
+        rig.add(crate); rig.add(person)
+        return Triple(rig, crate, person)
+    }
+
+    @Test
+    fun aCratesShadowLiesAcrossAPersonBehindItAndOnlyWhereThePersonIs() {
+        val (rig, _, person) = crateAndPerson(receives = true)
+        val still = renderStill(width = 400, height = 300) { Spacer(Modifier.fillMaxSize().drawBehind { drawFaceShadows(rig, person, 0f) }) }
+        var inside = 0; var outside = 0
+        for (y in 0 until 300) for (x in 0 until 400) if (still.alpha(x, y) > 10) { if (x in 180..220 && y in 120..200) inside++ else outside++ }
+        assertTrue(inside > 1200, "the person's body is in the crate's shadow: $inside")
+        assertEquals(0, outside, "and nothing outside the person's outline")
+    }
+
+    @Test
+    fun moveTheCrateAwayAndThePersonIsLitAgain() {
+        val (rig, _, person) = crateAndPerson(receives = true, crateX = 400f)
+        val still = renderStill(width = 400, height = 300) { Spacer(Modifier.fillMaxSize().drawBehind { drawFaceShadows(rig, person, 0f) }) }
+        assertEquals(0, still.count(10), "no shadow on the person with the crate out of the way")
+    }
+
+    @Test
+    fun aThingBehindACrateIsDarkerWhenItDoesNotShowFaceShadows() {
+        val (rig, _, person) = crateAndPerson(receives = false)
+        val hidden = rig.level(200f, 200f, 0f, height = 80f, self = person.owner)
+        val (rig2, crate2, person2) = crateAndPerson(receives = false)
+        crate2.blocksLight = false
+        val lit = rig2.level(200f, 200f, 0f, height = 80f, self = person2.owner)
+        assertTrue(lit > hidden + 0.02f, "the crate takes the lamp's light from the person: $hidden vs $lit")
     }
 }

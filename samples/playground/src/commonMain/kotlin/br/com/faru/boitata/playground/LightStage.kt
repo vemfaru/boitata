@@ -35,6 +35,9 @@ import br.com.faru.boitata.light.PointLight
 import br.com.faru.boitata.light.SpotLight
 import br.com.faru.boitata.light.drawCastShadows
 import br.com.faru.boitata.light.Wall
+import br.com.faru.boitata.light.drawFaceShadows
+import br.com.faru.boitata.core.light.Billboard
+import br.com.faru.boitata.core.light.Optics
 import br.com.faru.boitata.light.drawLightBulbs
 import br.com.faru.boitata.light.drawWallLight
 import androidx.compose.ui.geometry.Size
@@ -65,9 +68,11 @@ private val StageProps = listOf(
 )
 
 private class StageSetup(val stage: DepthStage, val rig: LightRig, val lights: List<Light>) {
-    /** The back wall of the room, and the front of the crate: the surfaces the shadows can climb. */
-    val backWall = Wall(0f, 0f, 0f, 0f)
-    var crateWall: Wall? = null
+    /** The back wall of the room: a surface the shadows can climb, that nothing stands behind. */
+    val backWall = Wall(0f, 0f, 0f, 0f).also { it.blocksLight = false }
+
+    /** Every prop is a surface too: it blocks the light that would reach what is behind it, and the shadows of what is in front of it fall across its face. */
+    val bodies = HashMap<String, Billboard>()
 }
 
 private fun DepthStage.item(id: String): DepthItem = items.first { it.id == id }
@@ -92,7 +97,11 @@ private fun buildStage(art: Sprites, size: IntSize): StageSetup {
         })
     }
     val setup = StageSetup(stage, rig, lights)
-    setup.crateWall = Wall(0f, 0f, 0f, 0f, owner = stage.item("crate"))
+    for (p in StageProps) {
+        // Trees and plants let a little light through between their leaves (their own transparency says where); a person, a crate and a stool are solid.
+        val optics = if (p.wind != WindResponse.Rigid) Optics(0.85f) else Optics.Opaque
+        setup.bodies[p.id] = Billboard(0f, 0f, 0f, 0f, owner = p.id, optics = optics, mask = art.mask(p.sprite)).also { it.receivesShadows = true }
+    }
     return setup
 }
 
@@ -137,14 +146,23 @@ private fun DrawScope.drawLightStage(art: Sprites, s: StageSetup, t: Float, on: 
         drawTiled(art.floor, androidx.compose.ui.geometry.Rect(0f, floorY, w, h), tile = w * 0.3f, tint = Color(0xFF211C17))
     } else drawWoodsBackdrop(art, t, 0f)
     rig.ambient = 0.05f
-    rig.walls.clear()
+    rig.surfaces.clear()
     if (walls) {
         s.backWall.footY = floorY; s.backWall.left = 0f; s.backWall.right = w; s.backWall.height = floorY
         rig.add(s.backWall)
-        val crate = stage.item("crate"); val ch = stage.height(crate); val cw = ch * crate.aspect
-        s.crateWall!!.apply { footY = crate.feetY; left = crate.feetX - cw / 2f; right = crate.feetX + cw / 2f; height = ch }
-        rig.add(s.crateWall!!)
     }
+    // Every prop is where it stands now, at the size it is drawn, with the picture that is its outline: it blocks light and takes shadows.
+    for (item in stage.items) {
+        if (item.id.startsWith("lamp:")) continue
+        val prop = StageProps.first { it.id == item.id }
+        val image = art.prop(prop.sprite)
+        val height = stage.height(item); val half = height * item.aspect / 2f; val k = height / image.height
+        val body = s.bodies.getValue(item.id)
+        body.footY = item.feetY; body.left = item.feetX - half; body.right = item.feetX + half; body.height = height
+        body.silhouette = { c -> drawArt(image, Offset(-image.width * k / 2f, -height), k, c) }
+        rig.add(body)
+    }
+    rig.faceShadows = quality != Quality.Low
     val person = h * 0.34f
     for ((i, l) in StageLamp.entries.withIndex()) {
         val orb = stage.item("lamp:${l.name}"); val light = s.lights[i]
@@ -162,6 +180,12 @@ private fun DrawScope.drawLightStage(art: Sprites, s: StageSetup, t: Float, on: 
     drawLightPools(rig, t, bulbs = false)
 
     val dark = Color(0xFF1A2420); val lit = Color(0xFFE6DCC4)
+    // Floor shadows first, all together, under everything: whatever is drawn after covers the part of a shadow it stands on, and shows it where it is free.
+    for (item in stage.items) {
+        if (item.id.startsWith("lamp:")) continue
+        val body = s.bodies.getValue(item.id)
+        drawCastShadows(rig, item.feetX, item.feetY, body.height, t, 0.95f * (1f - 0.25f * item.lift), quality, ignore = item.id, silhouette = body.silhouette!!)
+    }
     for (item in stage.ordered()) {
         val height = stage.height(item)
         if (item.id.startsWith("lamp:")) {
@@ -178,11 +202,11 @@ private fun DrawScope.drawLightStage(art: Sprites, s: StageSetup, t: Float, on: 
         val image = art.prop(prop.sprite)
         val k = height / image.height
         val lifted = item.lift * height * 0.05f
-        val silhouette: DrawScope.(Color) -> Unit = { c -> drawArt(image, Offset(-image.width * k / 2f, -height), k, c) }
-        drawCastShadows(rig, item.feetX, item.feetY, height, t, 0.95f * (1f - 0.25f * item.lift), quality, ignore = item, silhouette = silhouette)
-        val colour = rig.shade(dark, lit, item.feetX, item.feetY - height * 0.3f, t)
+        val colour = rig.shade(dark, lit, item.feetX, item.feetY - height * 0.3f, t, height, item.id)
         val bend = prop.wind.bend(wind, t, item.feetX / w, phase = item.id.length * 0.21f)
         sway(item.feetX, item.feetY - lifted, bend, maxLean = 0.1f) { drawArt(image, Offset(item.feetX - image.width * k / 2f, item.feetY - height - lifted), k, colour) }
+        // What stands in front of it throws its shadow across its face, only where it is.
+        drawFaceShadows(rig, s.bodies.getValue(item.id), t, 0.75f, quality)
     }
     drawLightBulbs(rig, t)
 }

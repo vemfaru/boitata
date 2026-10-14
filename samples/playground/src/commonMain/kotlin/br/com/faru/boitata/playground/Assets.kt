@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import br.com.faru.boitata.core.FastNoise
+import br.com.faru.boitata.core.light.AlphaMask
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.graphics.drawscope.clipPath
 import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.core.sky.MoonPhase
@@ -43,6 +45,11 @@ class Sprites(
     val wind: WindArt? = null,
 ) {
     fun prop(name: String): ImageBitmap = props.getValue(name)
+
+    private val masks = HashMap<String, AlphaMask>()
+
+    /** How solid a prop is where, as a coarse grid of its picture's transparency (made once, the first time it is asked for): where a ray of light passes between its parts. */
+    fun mask(name: String): AlphaMask = masks.getOrPut(name) { prop(name).toAlphaMask() }
 }
 
 /** An animation as one picture: [frames] poses of the same size side by side, in the order they play. */
@@ -180,3 +187,19 @@ fun DrawScope.cover(artW: Float = 1920f, artH: Float = 1080f): Cover {
 
 /** The scene's horizon (60% of the art's height). */
 const val ART_HORIZON = 0.6f
+
+/** A coarse grid ([cols] by [rows]) of how opaque this picture is, each cell the average of a few samples of its alpha, for the lights to ask where a thing is solid. */
+fun ImageBitmap.toAlphaMask(cols: Int = 24, rows: Int = 48): AlphaMask {
+    val pixels = toPixelMap()
+    val data = ByteArray(cols * rows)
+    for (r in 0 until rows) for (c in 0 until cols) {
+        var sum = 0f; var n = 0
+        for (sy in 0..2) for (sx in 0..2) {
+            val x = ((c + (sx + 0.5f) / 3f) / cols * width).toInt().coerceIn(0, width - 1)
+            val y = ((r + (sy + 0.5f) / 3f) / rows * height).toInt().coerceIn(0, height - 1)
+            sum += pixels[x, y].alpha; n++
+        }
+        data[r * cols + c] = (sum / n * 255f).toInt().toByte()
+    }
+    return AlphaMask(cols, rows, data)
+}

@@ -58,3 +58,20 @@ Everything is worked out from three numbers per light and thing: where the light
 **Light on walls and floors.** A point light a distance `d` from a flat surface lights a point `rho` along it by `strength * falloff(r) * cos(theta)` with `r = sqrt(d² + rho²)` and `cos(theta) = d / r` (Lambert). That depends only on `rho`, so the pool is a **radial gradient sampled once from that formula**, exact and one draw: a lamp near a wall makes a small bright pool, a far one a wide dim one, and one beyond its reach none. The floor pools use the same maths.
 
 **Cost.** Per thing, per light: a handful of multiplications to build one matrix, and up to three draws of the silhouette. Nothing is allocated except one small matrix per draw; at Low quality only the strongest light casts, once, and only on the floor.
+
+## Things block light, and shadows land on things
+
+Every `Billboard` in the rig is a standing thing (or a wall) with `Optics`: how much of the light that hits it is stopped (`opacity`), the colour of what passes (`tint`), and how it scatters, blurs or bends light that goes through (`scatter`, `blur`, `distortion`, `haze`). `Optics.Opaque` is a crate or a person, `Optics.Glass(tint)` clear glass, `Optics.Frosted(dirt)` dirty or frosted glass, `Optics.Paper()` paper or cloth. A thing's own picture says *where* it is, and an `AlphaMask` (a coarse copy of the picture's transparency) says where light passes between its parts.
+
+```kotlin
+val crate = Billboard(footY = crate.feetY, left = x0, right = x1, height = h, owner = "crate", mask = art.mask("crate"))
+crate.silhouette = { colour -> drawArt(image, Offset(-w / 2, -h), k, colour) }   // feet at (0, 0), up negative
+crate.receivesShadows = true
+rig.add(crate)
+```
+
+- **Light that is in the way.** For every light, `rig.shade`, `rig.level` and `rig.shadows` ask how much of it reaches the thing: the ray from the light to three points on it (foot, middle, head) is tested against the things between, and each multiplies it by `1 - opacity * coverage`. A crate between the lamp and a person puts the person in shadow (their colour goes dark and cold); a pane of glass lets most through and tints it; two sheets of paper let a quarter through. A thing that cannot see a light throws no shadow of its own from it. Pure maths in `Transmission`, no allocation.
+- **Shadows on faces.** `drawFaceShadows(rig, receiver, seconds)`, drawn right after a thing marked `receivesShadows`, lays the shadows of the things in front of it across it, projected onto its plane (the wall projection) and **cut to its outline**: the crate's shadow lies across the person only where the person is. With `faceShadows` on, such a thing is not also darkened as a whole, since its face already shows which part is in shadow; turn it off for the cheaper whole-thing darkening.
+- **Order.** Draw all floor shadows first, then the things from far to near, calling `drawFaceShadows` after each: the things then cover the floor shadows they stand on without any clipping.
+
+Cost: the visibility test is a short loop per light and thing (three rays, early exits); face shadows are two small offscreen layers per shadow that can reach the receiver (the others are skipped by a bounding test), so they are a High and Medium quality feature.

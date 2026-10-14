@@ -5,13 +5,16 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.light.Billboard
 import br.com.faru.boitata.core.light.LightMath
 import br.com.faru.boitata.core.light.ShadowMath
 import kotlin.math.cos
@@ -30,15 +33,18 @@ public fun DrawScope.drawCastShadows(
     rig: LightRig, feetX: Float, feetY: Float, height: Float, seconds: Float, maxAlpha: Float = 0.6f,
     quality: Quality = Quality.High, into: ShadowCasts = DefaultCasts, ignore: Any? = null, silhouette: DrawScope.(Color) -> Unit,
 ) {
-    val n = rig.shadows(feetX, feetY, height, seconds, maxAlpha, when (quality) { Quality.High -> 4; Quality.Medium -> 2; Quality.Low -> 1 }, into)
+    val n = rig.shadows(feetX, feetY, height, seconds, maxAlpha, when (quality) { Quality.High -> 4; Quality.Medium -> 2; Quality.Low -> 1 }, into, ignore)
+    // How solid the thing is: a pane of glass throws a faint shadow, a crate a full one.
+    val opacity = if (ignore == null) 1f else (rig.surfaces.firstOrNull { it.owner === ignore }?.optics?.opacity ?: 1f)
     // On the floor. A wall the thing stands in front of stops the shadow at its foot (it climbs the wall instead, below), so the floor's part is cut off there.
     val walls = rig.walls
     var blocked = 0
-    for (wall in walls) if (!isOwner(wall, ignore) && feetY > wall.footY + 0.5f) blocked++
+    // Plain walls stop a floor shadow at their foot. Things (with a silhouette) do not need to: they are drawn after the floor shadows, which is what covers them.
+    for (wall in walls) if (wall.silhouette == null && !isOwner(wall, ignore) && feetY > wall.footY + 0.5f) blocked++
     fun floor(thick: Boolean) {
         for (i in 0 until n) {
             val cast = into.casts[i]
-            if (cast.alpha <= 0.01f) continue
+            if (cast.alpha * opacity <= 0.01f) continue
             // The thing flipped onto the ground and sheared along the light: x gets lean * height, y gets lean * height down the screen. Softened with a few passes, each a little longer and fainter.
             for (pass in 0..(if (quality == Quality.Low) 0 else 2)) {
                 val m = Matrix()
@@ -62,8 +68,8 @@ public fun DrawScope.drawCastShadows(
                     limit = Float.POSITIVE_INFINITY
                 }
                 withTransform({ transform(m) }) {
-                    if (limit.isInfinite()) silhouette(Color.Black.copy(alpha = cast.alpha * (if (pass == 0) 0.8f else 0.4f)))
-                    else clipRect(-BIG, -limit, BIG, BIG) { silhouette(Color.Black.copy(alpha = cast.alpha * (if (pass == 0) 0.8f else 0.4f))) }
+                    if (limit.isInfinite()) silhouette(Color.Black.copy(alpha = cast.alpha * opacity * (if (pass == 0) 0.8f else 0.4f)))
+                    else clipRect(-BIG, -limit, BIG, BIG) { silhouette(Color.Black.copy(alpha = cast.alpha * opacity * (if (pass == 0) 0.8f else 0.4f))) }
                 }
             }
         }
@@ -73,8 +79,8 @@ public fun DrawScope.drawCastShadows(
     if (quality == Quality.Low) return
     // On the walls it stands in front of.
     for (wall in walls) {
-        if (isOwner(wall, ignore) || feetY <= wall.footY + 0.5f) continue
-        val m = rig.wallShadows(feetX, feetY, wall, seconds, maxAlpha, 2, DefaultWallCasts)
+        if (wall.silhouette != null || isOwner(wall, ignore) || feetY <= wall.footY + 0.5f) continue
+        val m = rig.wallShadows(feetX, feetY, wall, seconds, maxAlpha, 2, DefaultWallCasts, height, ignore)
         for (i in 0 until m) {
             val cast = DefaultWallCasts.casts[i]
             if (cast.alpha <= 0.01f) continue
@@ -82,7 +88,7 @@ public fun DrawScope.drawCastShadows(
                 for (pass in 0..2) {
                     val grow = cast.scale * (1f + pass * (0.03f + cast.spread))
                     withTransform({ translate(cast.x, wall.footY - cast.footLift); scale(grow, grow, Offset.Zero) }) {
-                        silhouette(Color.Black.copy(alpha = cast.alpha * (if (pass == 0) 0.8f else 0.4f)))
+                        silhouette(Color.Black.copy(alpha = cast.alpha * opacity * (if (pass == 0) 0.8f else 0.4f)))
                     }
                 }
             }
@@ -93,7 +99,7 @@ public fun DrawScope.drawCastShadows(
 /** Runs [draw] with the faces of the walls cut out of the clip, so nothing drawn lands on them. */
 private fun DrawScope.clipOutWalls(walls: List<Wall>, ignore: Any?, feetY: Float, from: Int, draw: () -> Unit) {
     var i = from
-    while (i < walls.size && (isOwner(walls[i], ignore) || feetY <= walls[i].footY + 0.5f)) i++
+    while (i < walls.size && (walls[i].silhouette != null || isOwner(walls[i], ignore) || feetY <= walls[i].footY + 0.5f)) i++
     if (i >= walls.size) { draw(); return }
     val w = walls[i]
     clipRect(w.left, w.footY - w.height, w.right, w.footY, ClipOp.Difference) { clipOutWalls(walls, ignore, feetY, i + 1, draw) }
@@ -196,3 +202,49 @@ public fun DrawScope.drawWallLight(rig: LightRig, wall: Wall, seconds: Float) {
         }
     }
 }
+
+/**
+ * The shadows that other things throw on the face of [receiver], cut to its outline: where a crate stands in front of a person with a light behind it, the crate's shadow lies across the person, and only
+ * where the person is. Call it right after drawing [receiver], so the shadow lies over it. For every [Billboard] in front of it with a silhouette, and each light that reaches it, the thing's outline is projected
+ * onto the receiver's plane (the wall projection: enlarged by how much farther the receiver is from the light) and kept where the receiver's own picture is.
+ *
+ * Costs two small offscreen layers per shadow that lands on the receiver (things whose shadow cannot reach it are skipped before that), so it is a High and Medium quality feature; at Low nothing is drawn.
+ */
+public fun DrawScope.drawFaceShadows(rig: LightRig, receiver: Billboard, seconds: Float, maxAlpha: Float = 0.7f, quality: Quality = Quality.High, into: WallCasts = FaceCasts) {
+    val picture = receiver.silhouette ?: return
+    if (!receiver.receivesShadows || quality == Quality.Low) return
+    val bounds = androidx.compose.ui.geometry.Rect(receiver.left - 2f, receiver.footY - receiver.height - 2f, receiver.right + 2f, receiver.footY + 2f)
+    val centre = (receiver.left + receiver.right) / 2f
+    for (thing in rig.surfaces) {
+        if (thing === receiver || !thing.blocksLight || thing.owner === receiver.owner || thing.footY <= receiver.footY + 0.5f) continue
+        val outline = thing.silhouette ?: continue
+        val half = (thing.right - thing.left) / 2f
+        val n = rig.wallShadows((thing.left + thing.right) / 2f, thing.footY, receiver, seconds, maxAlpha * thing.optics.opacity, 2, into, thing.height, thing.owner)
+        for (i in 0 until n) {
+            val cast = into.casts[i]
+            if (cast.alpha <= 0.01f) continue
+            // Skip a shadow that cannot reach the receiver's box.
+            val reach = cast.scale * half
+            val top = receiver.footY - (cast.footLift + cast.scale * thing.height); val bottom = receiver.footY - cast.footLift
+            if (cast.x + reach < receiver.left || cast.x - reach > receiver.right || bottom < receiver.footY - receiver.height || top > receiver.footY) continue
+            drawIntoCanvas { canvas ->
+                // One layer holds the receiver's picture; a second, composited onto it with DstIn, holds the shadow: what is left is the shadow where the receiver is.
+                canvas.saveLayer(bounds, Paint())
+                withTransform({ translate(centre, receiver.footY) }) { picture(Color.Black) }
+                canvas.saveLayer(bounds, FaceMask)
+                for (pass in 0..1) {
+                    val grow = cast.scale * (1f + pass * (0.03f + cast.spread))
+                    withTransform({ translate(cast.x, receiver.footY - cast.footLift); scale(grow, grow, Offset.Zero) }) {
+                        outline(Color.Black.copy(alpha = cast.alpha * (if (pass == 0) 0.85f else 0.4f)))
+                    }
+                }
+                canvas.restore()
+                canvas.restore()
+            }
+        }
+    }
+}
+
+private val FaceCasts = WallCasts()
+
+private val FaceMask = Paint().apply { blendMode = BlendMode.DstIn }

@@ -3,9 +3,11 @@ package br.com.faru.boitata.light
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.FastNoise
+import br.com.faru.boitata.core.light.Billboard
 import br.com.faru.boitata.core.light.LightMath
 import br.com.faru.boitata.core.light.ShadowCast
 import br.com.faru.boitata.core.light.ShadowMath
+import br.com.faru.boitata.core.light.Transmission
 import br.com.faru.boitata.core.light.WallCast
 import br.com.faru.boitata.core.sky.MoonPhase
 import kotlin.math.PI
@@ -47,6 +49,9 @@ public sealed class Light(
     /** Writes how this light's shadow of a thing at ([feetX], [feetY]) lands on a wall standing along the screen line [wallFootY]; false if it does not reach that wall. */
     public abstract fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean
 
+    /** Writes `[level, red, green, blue]` for how much of this light reaches the point ([px], [py]) on the ground, [pz] up, past [things], and in what colour (see [Transmission]). */
+    public abstract fun transmission(px: Float, py: Float, pz: Float, things: List<Billboard>, self: Any?, into: FloatArray)
+
     /** The flicker as a multiplier near 1, smooth, changing about twelve times a second: a pure function of time. */
     public fun flickerAt(seconds: Float): Float {
         if (flicker <= 0f) return 1f
@@ -86,6 +91,8 @@ public class PointLight(
     override fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast) = ShadowMath.point(x, y, height, feetX, feetY, objectHeight, size, into)
 
     override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean = ShadowMath.onWallFromPoint(x, y, height, feetX, feetY, wallFootY, size, into)
+
+    override fun transmission(px: Float, py: Float, pz: Float, things: List<Billboard>, self: Any?, into: FloatArray) = Transmission.fromPoint(x, y, height, px, py, pz, things, self, into)
 }
 
 /** A light that shines in a cone, like a lantern held up or a torch: lights and shadows only inside the cone, soft at its edge. */
@@ -119,6 +126,8 @@ public class SpotLight(
     override fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast) = ShadowMath.point(x, y, height, feetX, feetY, objectHeight, size, into)
 
     override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean = ShadowMath.onWallFromPoint(x, y, height, feetX, feetY, wallFootY, size, into)
+
+    override fun transmission(px: Float, py: Float, pz: Float, things: List<Billboard>, self: Any?, into: FloatArray) = Transmission.fromPoint(x, y, height, px, py, pz, things, self, into)
 }
 
 /**
@@ -141,6 +150,8 @@ public class DirectionalLight(
     override fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast) = ShadowMath.directional(azimuth, elevation, size, into)
 
     override fun castOnWall(feetX: Float, feetY: Float, wallFootY: Float, into: WallCast): Boolean = ShadowMath.onWallFromDirection(azimuth, elevation, feetX, feetY, wallFootY, size, into)
+
+    override fun transmission(px: Float, py: Float, pz: Float, things: List<Billboard>, self: Any?, into: FloatArray) = Transmission.fromDirection(azimuth, elevation, px, py, pz, things, self, into)
 
     /** Puts this light where the sun is at [hour] (0 to 24): it rises on the left, crosses high at noon and sets on the right, orange at the edges and pale at noon, off at night. */
     public fun followSun(hour: Float) {
@@ -243,36 +254,90 @@ public class LightRig(
 ) {
     public val lights: MutableList<Light> = ArrayList()
 
-    /** The vertical surfaces that shadows can land on, besides the floor. */
-    public val walls: MutableList<Wall> = ArrayList()
+    /**
+     * The things and walls that block light and that shadows land on (see [Billboard]), besides the floor. A thing that stands in front of a light's view of another puts it in shadow, by how much its
+     * [Optics] stop; and shadows thrown toward one land on its face.
+     */
+    public val surfaces: MutableList<Billboard> = ArrayList()
 
-    public fun add(wall: Wall): Wall { walls += wall; return wall }
+    /** The same list, under its older name: back walls were its first members. */
+    public val walls: MutableList<Billboard> get() = surfaces
 
-    private val scratchWall = WallCast()
+    /**
+     * Whether a thing that [Billboard.receivesShadows] shows the shadows of the things in front of it on its face, cut to its outline (the exact way, and the more costly). When true, such a thing is not also darkened as a
+     * whole by what is between it and a light: the shadow on its face already says which part is in shadow. Set it false for the cheap way (the whole thing is darkened by how much of it the light can see).
+     */
+    public var faceShadows: Boolean = true
+
+    public fun add(surface: Billboard): Billboard { surfaces += surface; return surface }
 
     public fun add(light: Light): Light { lights += light; return light }
 
+    private val scratchWall = WallCast()
     private val scratchCast = ShadowCast()
+    private val ray = FloatArray(4)
+
+    // What each light does at the thing being asked about, filled by [sample]: how much of it reaches the thing (strength, flicker, distance, and what stands in the way) and the colour it arrives in.
+    private var strength = FloatArray(8)
+    private var tintR = FloatArray(8)
+    private var tintG = FloatArray(8)
+    private var tintB = FloatArray(8)
+
+    private fun isReceiver(self: Any?): Boolean {
+        if (self == null || !faceShadows) return false
+        for (b in surfaces) if (b.owner === self && b.receivesShadows) return true
+        return false
+    }
+
+    /**
+     * Works out what every light does at a thing standing at ([feetX], [feetY]) that is [height] tall: one number and one colour per light, in the arrays. The light is its [Light.contribution] times how much of it
+     * gets past the things between (looked at from three heights on the thing: foot, middle and head, so a low crate shades a person's legs but not their face). [self] is the thing itself, which never blocks its own light.
+     */
+    private fun sample(feetX: Float, feetY: Float, height: Float, seconds: Float, self: Any?) {
+        val n = lights.size
+        if (strength.size < n) { strength = FloatArray(n * 2); tintR = FloatArray(n * 2); tintG = FloatArray(n * 2); tintB = FloatArray(n * 2) }
+        val occlude = surfaces.isNotEmpty() && !isReceiver(self)
+        for (i in 0 until n) {
+            val l = lights[i]
+            val c = l.contribution(feetX, feetY, seconds)
+            tintR[i] = 1f; tintG[i] = 1f; tintB[i] = 1f
+            if (c <= 0.001f || !occlude) { strength[i] = c; continue }
+            var sum = 0f; var r = 0f; var g = 0f; var b = 0f
+            val samples = if (height > 1f) 3 else 1
+            for (k in 0 until samples) {
+                val z = if (samples == 1) 0f else height * (if (k == 0) 0.12f else if (k == 1) 0.5f else 0.9f)
+                l.transmission(feetX, feetY, z, surfaces, self, ray)
+                sum += ray[0]; r += ray[0] * ray[1]; g += ray[0] * ray[2]; b += ray[0] * ray[3]
+            }
+            strength[i] = c * sum / samples
+            if (sum > 0.001f) { tintR[i] = r / sum; tintG[i] = g / sum; tintB[i] = b / sum }
+        }
+    }
 
     /** How much light reaches a thing at ([feetX], [feetY]): the lights added up and held to 1, plus the ambient. */
-    public fun level(feetX: Float, feetY: Float, seconds: Float): Float {
+    public fun level(feetX: Float, feetY: Float, seconds: Float, height: Float = 0f, self: Any? = null): Float {
+        sample(feetX, feetY, height, seconds, self)
         var sum = ambient
-        for (l in lights) sum += l.contribution(feetX, feetY, seconds)
+        for (i in lights.indices) sum += strength[i]
         return min(1f, sum)
     }
 
     /**
      * The colour of a thing standing at ([feetX], [feetY]): [dark] with no light on it up to [lit] fully lit, where [lit] is first tinted by the colours of the lights that reach it, weighted by how
-     * much each does. A thing between a campfire and the moon comes out warm and cold at once, in proportion.
+     * much each does. A thing between a campfire and the moon comes out warm and cold at once, in proportion. A light that comes through coloured glass arrives in the glass's colour; one that is blocked does not arrive.
+     * Give the thing's [height] and itself ([self]) so what stands between it and each light counts.
      */
-    public fun shade(dark: Color, lit: Color, feetX: Float, feetY: Float, seconds: Float): Color {
+    public fun shade(dark: Color, lit: Color, feetX: Float, feetY: Float, seconds: Float, height: Float = 0f, self: Any? = null): Color {
+        sample(feetX, feetY, height, seconds, self)
         var sum = 0f; var r = 0f; var g = 0f; var b = 0f
-        for (l in lights) {
-            val c = l.contribution(feetX, feetY, seconds)
+        for (i in lights.indices) {
+            val l = lights[i]
+            val c = strength[i]
             if (c <= 0f) continue
             sum += c
-            val m = max(l.color.red, max(l.color.green, l.color.blue)).coerceAtLeast(0.01f)
-            r += l.color.red / m * c; g += l.color.green / m * c; b += l.color.blue / m * c
+            val lr = l.color.red * tintR[i]; val lg = l.color.green * tintG[i]; val lb = l.color.blue * tintB[i]
+            val m = max(lr, max(lg, lb)).coerceAtLeast(0.01f)
+            r += lr / m * c; g += lg / m * c; b += lb / m * c
         }
         if (sum <= 0f) return lerp(dark, lit, (ambient * 0.5f).coerceIn(0f, 1f) * 0.25f)
         val tinted = Color((lit.red * r / sum).coerceIn(0f, 1f), (lit.green * g / sum).coerceIn(0f, 1f), (lit.blue * b / sum).coerceIn(0f, 1f), lit.alpha)
@@ -282,22 +347,24 @@ public class LightRig(
     }
 
     /**
-     * The shadows of a thing at ([feetX], [feetY]) on [wall], one per light that lights it and shines on the wall, the [max] strongest, in [into]; each one's alpha is [maxAlpha] times its light's share of
-     * all the light there. Returns how many it wrote (0 if the thing is behind the wall or no light is in front of it).
+     * The shadows of a thing at ([feetX], [feetY]) on [wall] (a surface it stands in front of), one per light that lights it and shines on the wall, the [max] strongest, in [into]; each one's alpha is [maxAlpha]
+     * times its light's share of all the light there. Returns how many it wrote (0 if the thing is behind the wall or no light is in front of it). [objectHeight] and [self] let what stands between the light and the thing count.
      */
-    public fun wallShadows(feetX: Float, feetY: Float, wall: Wall, seconds: Float, maxAlpha: Float, max: Int, into: WallCasts): Int {
+    public fun wallShadows(feetX: Float, feetY: Float, wall: Billboard, seconds: Float, maxAlpha: Float, max: Int, into: WallCasts, objectHeight: Float = 0f, self: Any? = null): Int {
         into.count = 0
+        sample(feetX, feetY, objectHeight, seconds, self)
         var total = ambient
-        for (l in lights) total += l.contribution(feetX, feetY, seconds)
+        for (i in lights.indices) total += strength[i]
         val limit = min(max, into.capacity)
         var taken = 0
         while (taken < limit) {
             var best: Light? = null; var bestC = 0.02f
-            for (l in lights) {
-                val c = l.contribution(feetX, feetY, seconds)
+            for (i in lights.indices) {
+                val l = lights[i]
+                val c = strength[i]
                 if (c <= bestC) continue
                 var already = false
-                for (i in 0 until into.count) if (into.owner[i] === l) already = true
+                for (k in 0 until into.count) if (into.owner[k] === l) already = true
                 if (!already && l.castOnWall(feetX, feetY, wall.footY, scratchWall)) { best = l; bestC = c }
             }
             if (best == null) break
@@ -313,19 +380,21 @@ public class LightRig(
 
     /**
      * The shadows of a thing at ([feetX], [feetY]) that is [objectHeight] tall, one per light that lights it, the [max] strongest, written to [into] with each one's [ShadowCast.alpha] set to
-     * [maxAlpha] times its light's share of all the light there. Returns how many it wrote.
+     * [maxAlpha] times its light's share of all the light there. Returns how many it wrote. A light that cannot see the thing (something opaque in the way) throws no shadow of it. [self] is the thing itself.
      */
-    public fun shadows(feetX: Float, feetY: Float, objectHeight: Float, seconds: Float, maxAlpha: Float, max: Int, into: ShadowCasts): Int {
+    public fun shadows(feetX: Float, feetY: Float, objectHeight: Float, seconds: Float, maxAlpha: Float, max: Int, into: ShadowCasts, self: Any? = null): Int {
         into.count = 0
+        sample(feetX, feetY, objectHeight, seconds, self)
         var total = ambient
-        for (l in lights) total += l.contribution(feetX, feetY, seconds)
+        for (i in lights.indices) total += strength[i]
         val limit = min(max, into.capacity)
         // Take the strongest few (a small selection, no sorting and nothing allocated).
         var taken = 0
         while (taken < limit) {
             var best: Light? = null; var bestC = 0.02f
-            for (l in lights) {
-                val c = l.contribution(feetX, feetY, seconds)
+            for (i in lights.indices) {
+                val l = lights[i]
+                val c = strength[i]
                 if (c > bestC && !into.has(l)) { best = l; bestC = c }
             }
             if (best == null) break
@@ -337,12 +406,8 @@ public class LightRig(
     }
 }
 
-/**
- * A vertical surface that faces the viewer and stands on the ground along the screen line [footY], from [left] to [right] and [height] pixels tall: the back wall of a room, or the face of a crate.
- * Shadows of things standing in front of it land on it in the shape the light gives them (see [ShadowMath.onWallFromPoint]), instead of lying flat on the floor.
- * A thing that is itself the wall (a crate) names itself as [owner] so it does not shadow its own face. Plain data: move it by setting its fields.
- */
-public class Wall(public var footY: Float, public var left: Float, public var right: Float, public var height: Float, public val owner: Any? = null)
+/** Walls were the first [Billboard]s; the name stays for a plain back wall or the face of a crate. */
+public typealias Wall = Billboard
 
 /** A few shadows on walls' worth of room, reused by [LightRig.wallShadows]. */
 public class WallCasts(public val capacity: Int = 4) {
