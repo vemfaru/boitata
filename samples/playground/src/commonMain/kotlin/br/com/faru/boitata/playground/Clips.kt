@@ -17,6 +17,7 @@ class Clip(val name: String, val length: Float, val wind: Wind = Wind.Calm, val 
 val Clips: List<Clip> = listOf(
     Clip("boitata", 12f, Wind.Breeze, stateful = true) { t -> ForestScene(t, rain = 0f, fog = 0.4f, timeScale = 3f) },
     Clip("boitata-rain", 8f, Wind.Windy, stateful = true) { t -> ForestScene(t, rain = 0.8f, fog = 0.5f) },
+    Clip("boitata-wind", 8f, Wind.Gale, stateful = true) { t -> ForestScene(t, rain = 0f, fog = 0.2f) },
     Clip("sky-day", 8f, Wind.Windy) { t -> WeatherScene(t, hour = 5f + 15f * (t() / 8f).coerceIn(0f, 1f), kind = WeatherKind.Clear) },
     Clip("weather-rain", 6f, Wind.Windy) { t -> WeatherScene(t, hour = 15f, kind = WeatherKind.Rain) },
     Clip("weather-storm", 8f, Wind.Gale) { t -> WeatherScene(t, hour = 21.5f, kind = WeatherKind.Storm) },
@@ -26,8 +27,8 @@ val Clips: List<Clip> = listOf(
     Clip("moon-phases", 8f) { t -> WeatherScene(t, hour = 23f, kind = WeatherKind.Clear, moon = MoonPhase.All[t().toInt().coerceIn(0, 7)]) },
     Clip("burn", 10f, Wind(speed = 0.55f, direction = 1f, gustiness = 0.4f), stateful = true) { t -> BurnScene(t, timeScale = 3f) },
     Clip("lights", 10f, Wind.Breeze, stateful = true) { t -> LightsScene(t, hour = 15f + 9f * (t() / 10f).coerceIn(0f, 1f)) },
-    Clip("depth", 8f, Wind.Windy, stateful = true) { t -> DepthScene(t, script = ::scriptedDrag) },
     Clip("light-stage", 10f, Wind.Breeze, stateful = true) { t -> LightStageScene(t, script = ::scriptedLamps) },
+    Clip("depth", 8f, Wind.Windy, stateful = true) { t -> DepthScene(t, script = ::scriptedDrag) },
     Clip("fire-campfire", 5f, Wind.Windy) { t -> FireScene(t, 0.9f, FireKind.Campfire) },
     Clip("fire-boitata", 5f, Wind.Breeze) { t -> FireScene(t, 0.9f, FireKind.Boitata) },
 )

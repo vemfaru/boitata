@@ -98,8 +98,8 @@ public class Material(
         /** Metal: heats fast, glows, holds the heat, never burns. */
         public val Metal: Material = Material("Metal", ignitionHeat = Float.POSITIVE_INFINITY, burnSeconds = 0f, intensity = 0f, style = BurnStyle.Glow, glowHeat = 0.5f, heatGain = 1.6f, coolRate = 0.05f)
 
-        /** A person in their clothes: cloth and leather catch slowly, then burn well. Not a plant, so the Boitatá's fire lights them; stone and animals ([None]) never catch. */
-        public val Person: Material = Material("Person", ignitionHeat = 1.2f, burnSeconds = 12f, intensity = 0.65f, style = BurnStyle.Char)
+        /** A person in their clothes: cloth and leather catch slowly, then burn well and end as ash that the wind takes. Not a plant, so the Boitatá's fire lights them; stone and animals ([None]) never catch. */
+        public val Person: Material = Material("Person", ignitionHeat = 1.2f, burnSeconds = 12f, intensity = 0.65f, style = BurnStyle.AshAway)
 
         /** The Boitatá's own flame: always burning, never burns down and rain cannot touch it. */
         public val Spirit: Material = Material("Spirit", ignitionHeat = 0.01f, burnSeconds = Float.POSITIVE_INFINITY, intensity = 1f, style = BurnStyle.None, waterproof = true)

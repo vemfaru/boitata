@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.FastNoise
 import androidx.compose.runtime.remember
 import br.com.faru.boitata.core.burn.BodyGeometry
+import br.com.faru.boitata.core.burn.BurnStatus
 import br.com.faru.boitata.core.burn.FireBody
 import br.com.faru.boitata.core.burn.FireKind
 import br.com.faru.boitata.core.burn.FireWorld
@@ -25,6 +26,7 @@ import br.com.faru.boitata.core.burn.RunFireWorld
 import br.com.faru.boitata.light.drawFireAffected
 import br.com.faru.boitata.light.LightSource
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.graphics.drawscope.rotate
 import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.core.depth.Depth
 import br.com.faru.boitata.core.draw.sway
@@ -79,6 +81,7 @@ fun ForestScene(
     val sceneWind = rememberSceneWind()
     // The fire world: the serpent's head (always alight, the Boitatá's kind, waterproof) and the hunter (a person, who burns). Their places are read from the track each step.
     val world = remember(track, resetKey) {
+        track.resetChase()
         FireWorld().apply {
             add(FireBody("head", Material.Spirit) { track.headBox() })
             add(FireBody("hunter", Material.Person) { track.hunterBox() })
@@ -135,6 +138,8 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
 
     // The serpent swims through the wood in depth as well as across it: back to the horizon behind the trees, between the trees, then close in front of everything.
     // Every point of its body has its own depth, so its size, its fade and the layers it passes behind are decided point by point.
+    // The serpent goes for the hunter while he stands, and lets go when he is ash.
+    track.hunt(t, extras != null && extras.hunter && extras.hunterBody.status != BurnStatus.Spent)
     val head = track.follow(t, w, h, horizon, quality)
     val z0 = track.depth[0]
     val light = fireLight(
@@ -145,8 +150,8 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
     // Behind the mid trees: the part of the body that is far away.
     val sparks = WindResponse.Ember.drift(wind, t, 0.5f).coerceIn(-3f, 3f) * 0.6f
     // The head goes down first and the body's flame over it, so the fire runs into the head instead of stopping at its edge.
-    track.drawHeadIfIn(DepthSlot.Behind, art, this, h, t, quality, wind)
-    track.draw(Depth.slot(0.9f), this, h, t, quality, sparks)
+    track.drawHeadIfIn(LAYER_BEHIND, art, this, h, t, quality, wind)
+    track.draw(LAYER_BEHIND, this, h, t, quality, sparks)
 
     for (tr in MidTrees) {
         val feetX = v.px(tr.x + tr.w / 2f); val feetY = v.py((tr.y + tr.h).toFloat())
@@ -160,7 +165,30 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
         }
     }
 
+    // Lit like the trees: warmer the nearer the serpent.
+    fun lit(base: Color, x: Float, y: Float): Color {
+        val near = (1f - hypot(x - head.x, y - head.y) / light.reach).coerceIn(0f, 1f) * light.strength
+        return lerp(base, Color(0xFF8A4B1F), (near * 0.6f).coerceIn(0f, 0.65f))
+    }
+    // The grass and the banana plants, bent by the wind from their feet: the ones farther than the hunter behind him and the animals, the rest in front.
+    val plantBase = tint(0xFF0A1410, 0xFF33463C)
+    fun drawPlants(nearer: Boolean) {
+        for ((i, p) in ForestPlants.withIndex()) {
+            if ((p.z <= HUNTER_DEPTH) != nearer) continue
+            val image = p.image(art) ?: continue
+            val feetX = w * p.x; val feetY = track.groundY(p.z, h, horizon)
+            val height = h * p.height * Depth.scale(p.z)
+            val bend = p.response.bend(wind, t, p.x, phase = i * 0.37f)
+            if (p.castsShadow) drawCastShadow(light, feetX, feetY, height, 0.55f, quality) { c -> val k = height / image.height; drawArt(image, Offset(-image.width * k / 2f, -height), k, c) }
+            drawRooted(image, feetX, feetY, height, bend, p.maxLean, lit(plantBase, feetX, feetY - height * 0.5f))
+        }
+    }
+    drawPlants(nearer = false)
+    // The part of the serpent that is in the wood behind the hunter, drawn before him so he stands in front of it.
+    track.drawHeadIfIn(LAYER_BEHIND_HUNTER, art, this, h, t, quality, wind)
+    track.draw(LAYER_BEHIND_HUNTER, this, h, t, quality, sparks)
     if (extras != null) drawWood(art, track, extras, head, light, t, wind, quality) { night, dayColor -> tint(night, dayColor) }
+    drawPlants(nearer = true)
 
     // A glow on the ground under the serpent, and rings of carved arcs around its head.
     val glow = Offset(head.x, track.groundY(z0, h, horizon))
@@ -169,20 +197,34 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
 
     // Between the mid trees and the near foliage.
     // The head goes down first and the body's flame over it, so the fire runs into the head instead of stopping at its edge.
-    track.drawHeadIfIn(DepthSlot.Between, art, this, h, t, quality, wind)
-    track.draw(Depth.slot(0.4f), this, h, t, quality, sparks)
+    track.drawHeadIfIn(LAYER_BETWEEN, art, this, h, t, quality, wind)
+    track.draw(LAYER_BETWEEN, this, h, t, quality, sparks)
 
     val nearTint = tint(0xFF040A08, 0xFF16201A)
     // The foliage that frames the picture leans a little too.
     sway(w / 2f, v.y + 1080f * sc, WindResponse.Plant.bend(wind, t, 0.5f, 0.5f), maxLean = 0.03f) {
         drawArt(art.near, Offset(v.x, v.y), sc, lerp(nearTint, Color(0xFF5A3216), (0.25f * light.strength).coerceIn(0f, 0.3f)))
     }
+    // Two cipós hanging into the picture from the canopy above it, swinging about their tops.
+    art.props["cipo"]?.let { vine ->
+        for ((i, ax) in floatArrayOf(0.27f, 0.74f).withIndex()) {
+            drawHangingVine(vine, w * ax, -h * 0.02f, h * (0.3f + 0.1f * i), WindResponse.Plant.bend(wind, t, ax, 0.6f + 0.3f * i), lerp(nearTint, Color(0xFF5A3216), (0.25f * light.strength).coerceIn(0f, 0.3f)))
+        }
+    }
 
     // In front of everything: close to the viewer, large, with the foliage behind it.
     // The head goes down first and the body's flame over it, so the fire runs into the head instead of stopping at its edge.
-    track.drawHeadIfIn(DepthSlot.InFront, art, this, h, t, quality, wind)
-    track.draw(Depth.slot(0.05f), this, h, t, quality, sparks)
+    track.drawHeadIfIn(LAYER_FRONT, art, this, h, t, quality, wind)
+    track.draw(LAYER_FRONT, this, h, t, quality, sparks)
     for (k in 1..3) drawCircle(Color(0xFFF2A83B).copy(alpha = 0.35f / k * (1f - day) * Depth.visibility(z0)), radius = h * 0.09f * k * Depth.scale(z0), center = head, style = Stroke(2f))
+
+    // The wind itself: leaves and paina seeds blowing through, and the carved swirls of the gusts.
+    art.wind?.let { wa ->
+        val travelled = sceneWind?.travelled ?: 0f
+        val leafBase = tint(0xFF34463F, 0xFF2A3A30)
+        drawFlyingLeaves(wa, wind, travelled, t, -h * 0.05f, h * 1.02f, h * 0.045f, (16 * quality.particles).toInt().coerceAtLeast(4)) { x, y -> lit(leafBase, x, y) }
+        drawGusts(wa, wind, travelled, t, h * 0.06f, horizon + (h - horizon) * 0.5f, lerp(Color(0xFFC9D3E6), Color(0xFF14110F), day).copy(alpha = 0.32f))
+    }
 
     if (fog > 0f) drawFog(t, fog, Color(0xFF8DA2B5), quality = quality, carried = (sceneWind?.travelled ?: 0f) * WindResponse.Fog.driftGain)
     if (rain > 0f) drawRain(t, rain, wind, WindResponse.Raindrop, Color(0xFFB7C8DC), quality = quality)
@@ -194,6 +236,11 @@ fun DrawScope.drawForest(art: Sprites, t: Float, rain: Float, fog: Float, hour: 
  */
 private const val HUNTER_DEPTH = 0.45f
 
+private const val LAYER_BEHIND = 0
+private const val LAYER_BEHIND_HUNTER = 1
+private const val LAYER_BETWEEN = 2
+private const val LAYER_FRONT = 3
+
 private const val POINT_SECONDS = 0.07f / 1.5f
 
 class SerpentTrack(val count: Int = 72) {
@@ -201,11 +248,37 @@ class SerpentTrack(val count: Int = 72) {
     val depth = FloatArray(count)
     val scale = FloatArray(count)
     val visibility = FloatArray(count)
-    private val slot = Array(count) { DepthSlot.Between }
+    private val layer = IntArray(count) { LAYER_BETWEEN }
     private var baseWidth = 0f
     private var sceneW = 0f
     private var sceneH = 0f
     private var horizonY = 0f
+
+    private var chaseFrom = Float.NaN
+    private var chaseEnd = Float.NaN
+    private var chasing = false
+
+    /** Back to the start (the hunter is whole again): the serpent will go after him afresh. */
+    fun resetChase() { chaseFrom = Float.NaN; chaseEnd = Float.NaN; chasing = false }
+
+    /**
+     * Tells the track whether there is a hunter to go after at time [t] (he is in the wood and has not burnt to ash). The serpent starts going for him when this turns true and lets go when it turns false;
+     * how much it is going for him at any moment is [engage], a pure function of time from those two moments, so the body (which is where the head was a moment ago) bends into the chase and out of it smoothly.
+     */
+    fun hunt(t: Float, active: Boolean) {
+        if (active && !chasing) { chasing = true; chaseFrom = t; chaseEnd = Float.NaN }
+        else if (!active && chasing) { chasing = false; chaseEnd = t }
+    }
+
+    private fun smooth(x: Float): Float { val u = x.coerceIn(0f, 1f); return u * u * (3f - 2f * u) }
+
+    /** 0 swimming free, 1 circling the hunter, at the real time [t] (a point of the body asks about the time the head was there). */
+    private fun engage(t: Float): Float {
+        if (chaseFrom.isNaN()) return 0f
+        val up = smooth((t - chaseFrom) / 2.5f)
+        val down = if (chaseEnd.isNaN()) 0f else smooth((t - chaseEnd) / 3f)
+        return up * (1f - down)
+    }
 
     /** Where each animal is, this instant. */
     val poses = Array(Wildlife.size) { Pose() }
@@ -242,24 +315,46 @@ class SerpentTrack(val count: Int = 72) {
             // Sideways it sweeps less when far away, as everything does toward the vanishing point.
             val across = 0.34f * sin(tt * 0.62f) + 0.04f * sin(tt * 1.9f)
             val x = w * (0.5f + across * (0.35f + 0.65f * (1f - z)))
-            val hover = h * 0.2f * sc
+            var hover = h * 0.2f * sc
+            var px = x; var gz = z
+            val e = engage(t - n * POINT_SECONDS)
+            if (e > 0f) {
+                // Circling the hunter: round him in a ring that takes it behind him and in front of him, and up over his head and down by his feet, closing in as it goes.
+                val hunter = hunterBox()
+                val u = (t - n * POINT_SECONDS) * 1.35f
+                val ring = hunter.height * (1.25f - 0.25f * sin(u * 0.4f))
+                val zo = (HUNTER_DEPTH + 0.16f * sin(u)).coerceIn(0.2f, 0.7f)
+                val ox = hunter.feetX + ring * cos(u)
+                val scaleO = Depth.scale(zo).coerceAtMost(1.7f)
+                val high = hunter.height * (0.5f + 0.55f * sin(u * 0.8f + 0.6f)) * scaleO / Depth.scale(HUNTER_DEPTH)
+                px = x + (ox - x) * e; gz = z + (zo - z) * e
+                hover = hover + (high - hover) * e
+            }
+            val sc2 = Depth.scale(gz).coerceAtMost(1.7f)
             val weave = sin(n * 0.32f - t * 3.5f) * h * 0.04f * (0.3f + n / count.toFloat()) * sc
-            pts[n * 2] = x
-            pts[n * 2 + 1] = groundY(z, h, horizon) - hover + weave
-            depth[n] = z; scale[n] = sc; visibility[n] = Depth.visibility(z); slot[n] = Depth.slot(z)
+            pts[n * 2] = px
+            pts[n * 2 + 1] = groundY(gz, h, horizon) - hover + weave
+            depth[n] = gz; scale[n] = sc2; visibility[n] = Depth.visibility(gz); layer[n] = layerOf(gz)
         }
         headVx = (pts[0] - pts[2]) / POINT_SECONDS; headVy = (pts[1] - pts[3]) / POINT_SECONDS
         fastSpeed = w * 0.3f
         return Offset(pts[0], pts[1])
     }
 
-    /** Draws the runs of the body that are in the same slot as [which] (a representative depth in it). */
-    fun draw(which: DepthSlot, scope: DrawScope, h: Float, t: Float, quality: Quality, sparkDrift: Float = 0f) {
+    /** Which layer of the picture a point at depth [z] is drawn in: far behind the trees, in the wood behind the hunter, in the wood in front of him, or close in front of everything. */
+    private fun layerOf(z: Float): Int = when (Depth.slot(z)) {
+        DepthSlot.Behind -> LAYER_BEHIND
+        DepthSlot.InFront -> LAYER_FRONT
+        DepthSlot.Between -> if (z > HUNTER_DEPTH) LAYER_BEHIND_HUNTER else LAYER_BETWEEN
+    }
+
+    /** Draws the runs of the body that are in layer [which]. */
+    fun draw(which: Int, scope: DrawScope, h: Float, t: Float, quality: Quality, sparkDrift: Float = 0f) {
         var i = 0
         while (i < count) {
-            val s = slot[i]
+            val s = layer[i]
             var j = i
-            while (j + 1 < count && slot[j + 1] == s) j++
+            while (j + 1 < count && layer[j + 1] == s) j++
             if (s == which) with(scope) {
                 // One point more at the end of the run, so the pieces join where the body crosses from one layer to the next.
                 drawFlameTrail(pts, count, baseWidth, t, FlamePalette.Boitata, quality = quality, scales = scale, visibility = visibility, range = i..minOf(j + 1, count - 1), sparkDrift = sparkDrift)
@@ -269,8 +364,8 @@ class SerpentTrack(val count: Int = 72) {
     }
 
     /** The head, once, in the slot it is in. */
-    fun drawHeadIfIn(which: DepthSlot, art: Sprites, scope: DrawScope, h: Float, seconds: Float, quality: Quality, wind: Wind) {
-        if (slot[0] != which) return
+    fun drawHeadIfIn(which: Int, art: Sprites, scope: DrawScope, h: Float, seconds: Float, quality: Quality, wind: Wind) {
+        if (layer[0] != which) return
         with(scope) { drawSerpentHead(art, pts, baseWidth * scale[0], visibility[0], seconds, quality, wind, headVx / fastSpeed, headVy / fastSpeed) }
     }
 }
@@ -349,5 +444,35 @@ private fun DrawScope.drawWood(art: Sprites, track: SerpentTrack, extras: Forest
         val silhouette: DrawScope.(Color) -> Unit = { col -> drawArt(image, Offset(-image.width * k / 2f, -g.height), k, col) }
         drawCastShadow(light, g.feetX, g.feetY, g.height, 0.6f, quality, silhouette)
         drawFireAffected(extras.hunterBody, g, t, wind, warm(g.feetX, g.feetY, g.height), quality, silhouette = silhouette)
+        drawHunterLamp(art, extras.hunterBody, g, image.width.toFloat() / image.height, t, wind, ::warm)
     }
+}
+
+
+/**
+ * The lamp in the hunter's free hand: it hangs from his fist, swaying a little and more in the wind, and its flame lights the ground at his feet. When he is nothing but ash he lets go of it and it
+ * lies where he stood, burning low. [warm] colours a thing by how near it is to the serpent's light.
+ */
+private fun DrawScope.drawHunterLamp(art: Sprites, body: FireBody, g: BodyGeometry, aspect: Float, t: Float, wind: Wind, warm: (Float, Float, Float) -> Color) {
+    val lamp = art.prop("lampiao_lamp")
+    val hand = HandAnchors.getValue("cacador")
+    val lampHeight = g.height * Lamp.OF_HOLDER
+    val k = lampHeight / lamp.height
+    val dropped = body.status == BurnStatus.Spent || body.consumed > 0.9f
+    val fist = Offset(g.feetX + g.height * aspect * (hand.x - 0.5f), g.feetY - g.height * (1f - hand.y))
+    val sway = 0.07f * sin(t * 1.9f + 1f) + 0.3f * WindResponse.Palm.bend(wind, t, (g.feetX / size.width).coerceIn(0f, 1f))
+    val flicker = 0.9f + 0.1f * sin(t * 11f) + 0.05f * cos(t * 17.3f)
+    // Held: hanging from the fist. Dropped: standing on the ground where he stood, tipped over a little.
+    val pivot = if (dropped) Offset(fist.x, g.feetY - lampHeight * 0.1f) else fist
+    val angle = if (dropped) 80f else -sway * 57.3f
+    val flame = if (dropped) Offset(pivot.x + lampHeight * 0.5f, pivot.y) else Offset(fist.x + sin(sway) * lampHeight * 0.58f, fist.y + cos(sway) * lampHeight * 0.58f)
+    val strength = (if (dropped) 0.35f else 1f) * flicker
+    // Its light on the ground: a pool flattened by the slant, and a bright bulb in the glass.
+    withTransform({ scale(1f, 0.5f, Offset(flame.x, g.feetY)) }) {
+        drawCircle(Brush.radialGradient(0f to Color(0xFFFFC46B).copy(alpha = 0.32f * strength), 1f to Color.Transparent, center = Offset(flame.x, g.feetY), radius = g.height * 0.9f), radius = g.height * 0.9f, center = Offset(flame.x, g.feetY), blendMode = BlendMode.Plus)
+    }
+    rotate(angle, pivot) {
+        drawArt(lamp, Offset(pivot.x - Lamp.handle.x * lamp.width * k, pivot.y - Lamp.handle.y * lampHeight), k, lerp(warm(fist.x, fist.y, g.height), Color(0xFFE9B567), 0.35f))
+    }
+    drawCircle(Brush.radialGradient(0f to Color(0xFFFFF1C2).copy(alpha = strength), 0.3f to Color(0xAAFFC46B).copy(alpha = strength), 1f to Color.Transparent, center = flame, radius = lampHeight * 0.6f), radius = lampHeight * 0.6f, center = flame, blendMode = BlendMode.Plus)
 }

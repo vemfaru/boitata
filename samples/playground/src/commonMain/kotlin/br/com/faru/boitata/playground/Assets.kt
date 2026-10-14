@@ -39,6 +39,8 @@ class Sprites(
     val props: Map<String, ImageBitmap>,
     /** The animations: a row of poses side by side (see [SpriteStrip]). */
     val strips: Map<String, SpriteStrip> = emptyMap(),
+    /** The wind's own art: gusts, flying leaves, grass (see [WindArt]). */
+    val wind: WindArt? = null,
 ) {
     fun prop(name: String): ImageBitmap = props.getValue(name)
 }
@@ -63,6 +65,8 @@ private val propNames = listOf(
     // The cordel people, the lamp Lampião carries, and the animals of the woods and the sertão (side on, facing right).
     "lampiao", "maria_bonita", "cacador", "lampiao_lamp",
     "onca", "tamandua", "capivara", "lobo_guara", "jacare", "tatu", "arara", "tucano",
+    // Plants that sway in the wind: a banana plant standing, a cipó hanging from the top.
+    "bananeira", "cipo",
 )
 
 /**
@@ -97,6 +101,12 @@ suspend fun loadSprites(): Sprites = Sprites(
     sun = bitmap("sky_sun"), moon = bitmap("sky_moon"), stars = bitmap("sky_stars"),
     props = propNames.associateWith { bitmap("prop_$it") },
     strips = stripNames.mapValues { (name, frames) -> SpriteStrip(bitmap("anim_$name"), frames) },
+    wind = WindArt(
+        gusts = listOf("wind_gust_1", "wind_gust_2", "wind_gust_3").map { bitmap(it) },
+        leaves = listOf("leaf_broad", "leaf_embauba", "leaf_dry", "leaf_grimpa").map { bitmap(it) },
+        paina = bitmap("seed_paina"),
+        tufts = listOf("grass_tuft_low", "grass_tuft_tall", "grass_tuft_flower").map { bitmap(it) },
+    ),
 )
 
 /** The art for the scenes below; null while it loads. */
