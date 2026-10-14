@@ -52,7 +52,11 @@ class SpriteStrip(val image: ImageBitmap, val frames: Int) {
 }
 
 /** The animations that exist, by name, and how many poses each has (the strips exported by docs/design/anim_strip.py). */
-private val stripNames = mapOf("tamandua_walk" to 4, "arara_fly" to 4)
+private val stripNames = mapOf(
+    "tamandua_walk" to 4, "arara_fly" to 4, "capivara_walk" to 4, "jacare_walk" to 4,
+    // The jaguar, armadillo and maned wolf have three poses (a stride, a pause and the other stride).
+    "onca_walk" to 3, "tatu_walk" to 3, "lobo_guara_walk" to 3,
+)
 
 private val propNames = listOf(
     "araucaria", "palm", "sumauma", "fern", "bromeliad_log", "lantern", "floor_lamp", "stool", "plant", "crate", "pot",

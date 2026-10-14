@@ -94,8 +94,10 @@ fun DrawScope.drawCreature(art: Sprites, c: Creature, pose: Pose, height: Float,
 /** The animals that wander the stage by themselves: none of them are draggable and none of them can burn. */
 val Wildlife = listOf(
     Creature("tamandua", "tamandua", "tamandua_walk", 0.15f, Gait.Patrol(0.08f, 0.55f, 0.92f, 0.07f, pause = 2.5f)),
-    Creature("onca", "onca", null, 0.17f, Gait.Patrol(0.92f, 0.45f, 0.72f, 0.06f, pause = 3f, phase = 0.3f)),
-    Creature("capivara", "capivara", null, 0.13f, Gait.Patrol(0.15f, 0.40f, 0.42f, 0.03f, pause = 4f, phase = 0.6f)),
+    Creature("onca", "onca", "onca_walk", 0.17f, Gait.Patrol(0.92f, 0.45f, 0.72f, 0.06f, pause = 3f, phase = 0.3f)),
+    Creature("capivara", "capivara", "capivara_walk", 0.13f, Gait.Patrol(0.15f, 0.40f, 0.42f, 0.03f, pause = 4f, phase = 0.6f)),
+    Creature("lobo_guara", "lobo_guara", "lobo_guara_walk", 0.20f, Gait.Patrol(0.05f, 0.35f, 0.55f, 0.07f, pause = 3.5f, phase = 0.1f)),
+    Creature("tatu", "tatu", "tatu_walk", 0.07f, Gait.Patrol(0.60f, 0.30f, 0.97f, 0.035f, pause = 2f, phase = 0.5f)),
+    Creature("jacare", "jacare", "jacare_walk", 0.08f, Gait.Patrol(0.72f, 0.95f, 0.99f, 0.02f, pause = 6f, phase = 0.8f)),
     Creature("arara", "arara", "arara_fly", 0.13f, Gait.Fly(0.5f, 2.2f, 9f, rest = 3f)),
 )
-
