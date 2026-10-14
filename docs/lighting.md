@@ -93,3 +93,14 @@ The playground's **Shadow theatre** tab is this: a paper screen in a frame, a la
 - **The view.** What is outside is recorded once into an offscreen layer, drawn again in strips shifted by a slow wave (`distortion`), and the result is blurred (`blur`) by the platform's blur effect, then veiled (`haze`) and speckled with dirt. Where the platform cannot blur (Android before 12) the view stays sharp. At Low quality only the haze and dirt are drawn. A clean pane costs nothing extra.
 - **The light.** The patch the window throws on the floor is tinted by the glass, dimmed by what it stops, and, when the glass scatters, drawn into a layer, blurred and added, so it lands wider and softer.
 - One setting drives both, so a dirty window looks dirty through the glass and in the light it lets in. The playground's Window tab has Clean, Dirty, Frosted, Old and Stained glass.
+
+## Liquid: reflection and refraction
+
+A `Liquid` is a pond lying on the ground: an ellipse (a round pond seen at a slant) that is `maxDepth` deep at the middle and nothing at the shore, with `optics` for what it does to what is seen through it. The physics is in `LiquidMath`; the drawing in `drawWaterSurface`, `drawReflection`, `drawStandingInWater` and `drawGlitter`.
+
+- **Reflection.** What stands at the edge is mirrored about its waterline, clipped to the pond, shaken sideways by ripples (strips, each shifted by a slow wave: no shader, so it is the same on every target) and fading with how far down it goes. Its strength is the water's Fresnel reflectance, Schlick's `R0 + (1 - R0) * (1 - cos)^5` with `R0 = ((n - 1) / (n + 1))^2`: about 2% looking straight down and over 60% at a grazing look, but only about 6% at our camera angle, so `Liquid.reflectance` defaults to a stylised 0.42. The moon is mirrored the same way, flattened by the slant.
+- **Refraction.** What is under the surface looks nearer to it than it is, by the index (`apparentDepth = depth / n`, 0.75 for water). A thing wading in is drawn in two parts: above the surface as it is; below it squashed to `1/n` toward the waterline (its feet look higher than they are), tinted and dimmed by the water, shaken by the ripples, with rings spreading from where it meets the water. How deep it stands is `Liquid.depthAt` (a bowl: 0 at the shore, 1 in the middle).
+- **Glitter.** A light over or near the water leaves a column of short bright dashes under it toward its mirror image: wider and brighter near, breaking up with the ripples.
+- **Cost.** Reflections and wading are drawn in a handful of strips (14, 7 or 1 by quality), clipped to the pond; nothing else is allocated.
+
+The playground's **Pond** tab: drag the people into the water, and watch the caiman and the capybara wade through it, the macaw reflected as it flies over, and the fire and Lampião's lamp glittering on it.

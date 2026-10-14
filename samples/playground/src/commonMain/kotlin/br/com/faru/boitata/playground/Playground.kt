@@ -40,7 +40,7 @@ import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
 
 /** The demos, in the order of the tabs. */
-enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Burn("Burn"), Fire("Fire") }
+enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Pond("Pond"), Burn("Burn"), Fire("Fire") }
 
 /** The whole playground: pick a demo, play with its controls. The same scenes are what the README's GIFs are rendered from. */
 @Composable
@@ -76,6 +76,7 @@ fun PlaygroundApp() {
                     Demo.Lights -> LightsDemo(seconds, moon, southern)
                     Demo.Stage -> LightStageDemo(seconds)
                     Demo.Theatre -> ShadowTheatreDemo(seconds)
+                    Demo.Pond -> PondDemo(seconds, moon, southern)
                     Demo.Burn -> BurnDemo(seconds, sink, sound)
                     Demo.Fire -> FireDemo(seconds, sink, sound)
                 }
@@ -260,6 +261,18 @@ private fun ShadowTheatreDemo(seconds: () -> Float) {
                 FilterChip(selected = backstage, onClick = { backstage = !backstage }, label = { Text("Backstage") })
             }
             Text("Teatro de Sombras: the lamp is behind the paper and the puppets are between them. Drag a puppet toward the lamp and its shadow grows huge and soft; press it against the paper and it is small and sharp. Drag the lamp to swing every shadow. The paper's colour is the light's; backstage shows the puppeteers' side.", color = Color(0xFFB7BEC8))
+        }
+    }
+}
+
+@Composable
+private fun PondDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
+    var hour by remember { mutableFloatStateOf(22f) }
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) { PondScene(seconds, hour = hour, moon = moon, southern = southern) }
+        Controls {
+            Labelled("Hour", hour, 0f..24f) { hour = it }
+            Text("Water behaves as water: everything at the edge is mirrored in it (faint, rippling, fading with depth), the moon and the lamps leave glitter, and whatever wades in is partly under water, looking nearer the surface than it is. Drag the people into the pond; the caiman and the capybara wade through it themselves.", color = Color(0xFFB7BEC8))
         }
     }
 }
