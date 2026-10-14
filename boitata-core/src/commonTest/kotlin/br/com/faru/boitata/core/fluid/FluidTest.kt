@@ -174,3 +174,74 @@ class PuddleTest {
         assertEquals(0.5f * 9.81f * Spill.fallTime(0.1f) * Spill.fallTime(0.1f), 0.1f, 1e-4f, "it falls the height of the lip")
     }
 }
+
+class HotLiquidTest {
+    @Test
+    fun hotLiquidPouredIntoColdMixesByVolume() {
+        val cup = LiquidVessel(0.08f, 0.1f, Fluid.Coffee, fill = 0.4f)          // 20 degrees
+        val before = cup.volume
+        cup.pour(before, temperature = 90f)                                     // as much again, at 90
+        assertEquals(55f, cup.temperature, 0.5f)
+    }
+
+    @Test
+    fun hotCoffeeCoolsTowardTheRoomAndNeverBelowIt() {
+        val cup = LiquidVessel(0.08f, 0.1f, Fluid.Coffee, fill = 0.7f)
+        cup.heatTo(90f); cup.coolingSeconds = 60f
+        var last = 90f
+        repeat(1200) { cup.step(1f / 60f); assertTrue(cup.temperature <= last + 1e-3f, "falls"); last = cup.temperature }
+        assertTrue(cup.temperature in 30f..55f, "cooled most of the way in 20 s of a 60 s cooling time: ${cup.temperature}")
+        repeat(60 * 600) { cup.step(1f / 60f) }
+        assertTrue(cup.temperature >= 20.9f, "never below the room: ${cup.temperature}")
+    }
+
+    @Test
+    fun itSteamsFromFortyFiveDegreesAndBoilsNearAHundred() {
+        val cup = LiquidVessel(0.08f, 0.1f, fill = 0.7f)
+        cup.heatTo(30f); assertEquals(0f, cup.steam); assertEquals(0f, cup.boil)
+        cup.heatTo(70f); assertTrue(cup.steam in 0.3f..0.7f); assertEquals(0f, cup.boil)
+        cup.heatTo(100f); assertEquals(1f, cup.steam); assertEquals(1f, cup.boil)
+    }
+
+    @Test
+    fun aBoilingPotRaisesBubblesThatBurstAndAColdOneHasNone() {
+        val boiling = LiquidVessel(0.2f, 0.2f, fill = 0.7f); boiling.heatTo(100f); boiling.coolingSeconds = 1e9f
+        var seen = 0
+        repeat(180) { boiling.step(1f / 60f); seen = maxOf(seen, boiling.bubbles) }
+        assertTrue(seen > 4, "bubbles: $seen")
+        val cold = LiquidVessel(0.2f, 0.2f, fill = 0.7f)
+        repeat(180) { cold.step(1f / 60f) }
+        assertEquals(0, cold.bubbles)
+    }
+
+    @Test
+    fun pouringHotCoffeeMakesFoamThatFades() {
+        val cup = LiquidVessel(0.08f, 0.1f, Fluid.Coffee, fill = 0.2f)
+        cup.pour(0.08f * 0.1f * 0.3f, temperature = 92f, foamy = true)
+        assertTrue(cup.foam > 0.6f)
+        repeat(60 * 90) { cup.step(1f / 60f) }
+        assertEquals(0f, cup.foam, 0.05f, "gone after ninety seconds")
+    }
+}
+
+class DripsTest {
+    @Test
+    fun dropsFallUnderGravityAndHandTheirLiquidToTheFloor() {
+        val drips = Drips()
+        drips.emit(100f, 50f, 1e-6f); drips.emit(120f, 50f, 2e-6f)
+        var landed = 0f; var where = 0f
+        repeat(120) { drips.step(1f / 60f, floorY = 300f, gravity = 3000f) { x, v, _ -> landed += v; where = x } }
+        assertEquals(3e-6f, landed, 1e-9f, "all of it arrived")
+        assertEquals(0, drips.count)
+        assertTrue(where in 99f..121f)
+    }
+
+    @Test
+    fun aPuddleLosesVolumeWhatRunsOffTheEdge() {
+        val p = Puddle(0f, Fluid.Water, 1e-4f); p.add(0f)
+        p.remove(4e-5f)
+        assertEquals(6e-5f, p.volume, 1e-9f)
+        p.remove(1f)
+        assertEquals(0f, p.volume)
+    }
+}

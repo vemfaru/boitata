@@ -129,3 +129,13 @@ A `PaneWeather` is a small simulation of one pane, stepped at a fixed rate so th
 - **Snow** piles on the sill and melts. **Heat** (`heat` at a place: a lamp by the glass) evaporates fog and melts ice there; **wiping** (`wipe`) clears the fog under a hand, and it comes back.
 
 Drawing: `drawPaneWeather` draws the fog as a veil in a few shades (merged into runs: a few hundred rectangles, not thousands), the ice as frosted cells with crystals that grow in along stems, and the beads with a rim and highlight; `drawSillSnow` the snow. The Window room also turns the pane's state into optics (more blur, haze and scatter, less clear), so the sky blurs and the light patch softens as the glass fogs or freezes. In the playground's Window tab: Rain, Snow, Frost, Fog chips, temperature and humidity, a lamp by the glass, wipe by dragging, and an open window.
+
+## Hot liquids, and the edge of the table
+
+- **Temperature** (`LiquidVessel.temperature`): liquid cools toward the room's (Newton's law: `T' = -(T - room) / tau`, `coolingSeconds` is how long a vessel takes), and pouring mixes by volume (`T = (T1 V1 + T2 V2) / (V1 + V2)`: 90 degrees poured into as much again at 20 gives 55). `heat(...)` and `heatTo(...)` heat it (a plate under it); it cannot pass the boil.
+- **Steam** (`steam`, 0 at 45 degrees to 1 at 95): wisps rise from the surface and sway, thicker the hotter it is. **Boiling** (`boil`, from about 80 degrees): bubbles start at the bottom, speed up as they rise and burst at the surface, stirring it a little. **Foam** from a pour (`pour(..., foamy = true)`) floats on top and fades over about a minute.
+- **A mug** (`VesselShape.Mug`) is opaque ceramic: only the surface of what is in it is seen through the opening, a little below the rim.
+- **The edge of the table.** A puddle that has spread to an end of the table runs off it in drops in proportion to how much of it hangs over (`Puddle.remove`); the drops fall under gravity (`Drips`, a fixed pool, nothing allocated) and join a puddle on the floor, in their own liquid. Liquid that is thrown past the end by a tipping glass falls straight to the floor.
+- The playground's Liquids tab: pour hot coffee into the mug, heat a glass, slide the jug to the end and knock it over.
+
+The plan for the next object that goes into a liquid (a folded paper strip in the coffee, for the Typist) is in [docs/design/benzedrine-coffee-plan.md](design/benzedrine-coffee-plan.md).

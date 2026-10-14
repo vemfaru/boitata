@@ -301,12 +301,14 @@ private fun LiquidsDemo(seconds: () -> Float) {
         Controls {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = false, onClick = { bench.pour() }, label = { Text("Pour") })
+                FilterChip(selected = false, onClick = { bench.pourHot() }, label = { Text("Pour hot coffee") })
+                FilterChip(selected = false, onClick = { bench.heat() }, label = { Text("Heat it") })
                 FilterChip(selected = false, onClick = { bench.drop() }, label = { Text("Drop in") })
                 FilterChip(selected = false, onClick = { bench.knock() }, label = { Text("Knock over") })
                 FilterChip(selected = false, onClick = { bench.light() }, label = { Text("Light the spill") })
                 FilterChip(selected = false, onClick = { bench.refill() }, label = { Text("Refill all") })
             }
-            Text("Tap a glass to pick it (and drop a ripple in). Drag it along the table and the liquid lags and sloshes. Pour more (it runs over the rim), knock it over (it pours out in a stream and makes a puddle that spreads), or drop something in. Spilled kerosene burns: slide it next to the flame and knock it over, or light it. What is behind the glass shows through the liquid, magnified; the table mirrors it.", color = Color(0xFFB7BEC8))
+            Text("Tap a glass to pick it (and drop a ripple in). Hot liquids steam, boil and cool; pouring hot coffee mixes by volume and leaves foam. Drag it along the table and the liquid lags and sloshes. Pour more (it runs over the rim), knock it over (it pours out in a stream and makes a puddle that spreads), or drop something in. Spill over the end of the table and it runs off in drops to a puddle on the floor. Spilled kerosene burns: knock it over toward the flame, or light it. What is behind the glass shows through the liquid, magnified; the table mirrors it.", color = Color(0xFFB7BEC8))
         }
     }
 }

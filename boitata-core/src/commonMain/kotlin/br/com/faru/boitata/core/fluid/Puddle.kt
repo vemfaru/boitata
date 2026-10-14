@@ -34,6 +34,9 @@ public class Puddle(
     /** More liquid lands in it ([volume] in m^3); a splash of it first wets a spot a few millimetres across. */
     public fun add(volume: Float) { this.volume += volume; if (radius < 0.004f) radius = 0.004f }
 
+    /** Takes [volume] away (it ran off an edge, it soaked in). */
+    public fun remove(volume: Float) { this.volume = (this.volume - volume).coerceAtLeast(0f) }
+
     /** Spreads it on by [dt] seconds. */
     public fun step(dt: Float) {
         val rate = 7f / (1f + 9f * fluid.viscosity)
@@ -54,4 +57,42 @@ public object Spill {
 
     /** How thick the stream is, in meters (for a flow of [rate] m^2/s leaving at [speed]: `rate / speed`, the thickness that carries that much liquid at that speed). */
     public fun thickness(rate: Float, speed: Float): Float = if (speed <= 0.05f) 0f else rate / speed
+}
+
+/**
+ * Drops falling off an edge: each leaves a point with a little [volume] and falls under gravity until it reaches the floor, where it hands its liquid to [Drips.step]'s `onLand`. A fixed-size pool, nothing allocated while it runs.
+ * Positions are in the scene's pixels; [gravity] is in pixels per second squared.
+ */
+public class Drips(private val capacity: Int = 64) {
+    public val x: FloatArray = FloatArray(capacity)
+    public val y: FloatArray = FloatArray(capacity)
+    private val vy = FloatArray(capacity)
+    private val volume = FloatArray(capacity)
+    private val tags = arrayOfNulls<Any>(capacity)
+    public var count: Int = 0
+        private set
+
+    /** A drop leaves the edge at ([x], [y]) carrying [volume] (m^3) of whatever [tag] says (the fluid, say), and it comes back to [step]'s `onLand`. */
+    public fun emit(x: Float, y: Float, volume: Float, tag: Any? = null) {
+        if (count >= capacity) return
+        this.x[count] = x; this.y[count] = y; vy[count] = 0f; this.volume[count] = volume; tags[count] = tag; count++
+    }
+
+    /** Takes every drop away. */
+    public fun clear() { count = 0 }
+
+    /** Lets everything fall for [dt] seconds; a drop that reaches [floorY] is removed and reported with where it landed and how much it carried. */
+    public fun step(dt: Float, floorY: Float, gravity: Float, onLand: (x: Float, volume: Float, tag: Any?) -> Unit) {
+        var i = 0
+        while (i < count) {
+            vy[i] += gravity * dt
+            y[i] += vy[i] * dt
+            if (y[i] >= floorY) {
+                onLand(x[i], volume[i], tags[i])
+                count--; x[i] = x[count]; y[i] = y[count]; vy[i] = vy[count]; volume[i] = volume[count]; tags[i] = tags[count]; tags[count] = null
+                continue
+            }
+            i++
+        }
+    }
 }
