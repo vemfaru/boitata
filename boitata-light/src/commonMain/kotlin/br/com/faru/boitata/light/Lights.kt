@@ -123,6 +123,10 @@ public class DirectionalLight(
     strength: Float,
     size: Float = 0.35f,
 ) : Light(color, strength, size, 0f) {
+    /** How far along its path across the sky it is: 0 just rising on the left, 0.5 highest, 1 setting on the right; -1 while it is below the horizon. Set by [followSun] and [followMoon], for drawing its disc. */
+    public var arc: Float = -1f
+        private set
+
     override fun contribution(feetX: Float, feetY: Float, seconds: Float): Float = if (enabled) strength.coerceIn(0f, 1f) else 0f
 
     override fun cast(feetX: Float, feetY: Float, objectHeight: Float, into: ShadowCast) = ShadowMath.directional(azimuth, elevation, size, into)
@@ -130,7 +134,8 @@ public class DirectionalLight(
     /** Puts this light where the sun is at [hour] (0 to 24): it rises on the left, crosses high at noon and sets on the right, orange at the edges and pale at noon, off at night. */
     public fun followSun(hour: Float) {
         val t = (hour - 6f) / 12f
-        if (t <= 0f || t >= 1f) { strength = 0f; return }
+        if (t <= 0f || t >= 1f) { strength = 0f; arc = -1f; return }
+        arc = t
         val angle = PI.toFloat() * t
         val high = sin(angle)
         arc(angle)
@@ -148,13 +153,14 @@ public class DirectionalLight(
         val transit = 12f + 24f * age                                                         // the hour it stands highest
         var ha = (hour - transit) % 24f
         if (ha > 12f) ha -= 24f else if (ha < -12f) ha += 24f
-        if (abs(ha) >= 6f) { strength = 0f; return }
+        if (abs(ha) >= 6f) { strength = 0f; arc = -1f; return }
+        arc = (ha + 6f) / 12f
         val angle = PI.toFloat() * (ha + 6f) / 12f
         val high = sin(angle)
         arc(angle)
         elevation = max(ShadowMath.MIN_ELEVATION, high * 1.1f)
         color = MOONLIGHT
-        strength = smooth(high * 3f) * 0.62f * sqrt(phase.fraction)
+        strength = smooth(high * 3f) * 0.4f * sqrt(phase.fraction)
     }
 
     /** The shadows run along the way across the sky, a little toward the viewer (the sun is a little behind the scene). */
@@ -206,7 +212,8 @@ public object Lights {
 /** 1 at the light, falling smoothly to 0 at [reach]. */
 private fun falloff(distance: Float, reach: Float): Float {
     val x = (1f - distance / reach).coerceIn(0f, 1f)
-    return x * x * (3f - 2f * x)
+    val s = x * x * (3f - 2f * x)
+    return s * s            // squared again: the light gathers near its source and is nearly gone well before its reach
 }
 
 private fun smooth(x: Float): Float { val t = x.coerceIn(0f, 1f); return t * t * (3f - 2f * t) }
@@ -256,7 +263,9 @@ public class LightRig(
         }
         if (sum <= 0f) return lerp(dark, lit, (ambient * 0.5f).coerceIn(0f, 1f) * 0.25f)
         val tinted = Color((lit.red * r / sum).coerceIn(0f, 1f), (lit.green * g / sum).coerceIn(0f, 1f), (lit.blue * b / sum).coerceIn(0f, 1f), lit.alpha)
-        return lerp(dark, tinted, min(1f, sum + ambient * 0.5f))
+        // Squared: half the light looks a quarter as bright, so what is far from every light stays dark and what is beside one glows.
+        val level = min(1f, sum + ambient * 0.5f)
+        return lerp(dark, tinted, level * level)
     }
 
     /**

@@ -151,4 +151,20 @@ class MaterialsTest {
         assertEquals(BurnStyle.Melt, Material.Wax.style); assertEquals(BurnStyle.Glow, Material.Metal.style); assertEquals(BurnStyle.Smoulder, Material.Cloth.style)
         assertTrue(!Material.Metal.flammable && !Material.Wax.flammable && Material.Wax.meltable && !Material.None.flammable)
     }
+
+    @Test
+    fun theBoitatasFlameNeverGoesOutInTheRainAndItLightsAPersonButNotAnAnimal() {
+        val world = FireWorld()
+        val spirit = world.add(FireBody("head", Material.Spirit) { BodyGeometry(100f, 200f, 40f, 120f) })
+        val hunter = world.add(FireBody("hunter", Material.Person) { BodyGeometry(160f, 200f, 40f, 120f) })
+        val animal = world.add(FireBody("onca", Material.None) { BodyGeometry(60f, 200f, 60f, 60f) })
+        world.ignite("head", FireKind.Guardian)
+        var t = 0f
+        repeat(600) { t += 0.05f; world.step(0.05f, t, Wind.Calm, rain = 0f) }
+        assertTrue(hunter.status != BurnStatus.Cold, "a person beside it catches: ${hunter.status}")
+        repeat(600) { t += 0.05f; world.step(0.05f, t, Wind.Calm, rain = 1f) }
+        assertTrue(spirit.alight && spirit.burn > 0.9f && spirit.consumed == 0f, "still burning after 30 s of downpour: burn ${spirit.burn}")
+        assertEquals(BurnStatus.Cold, animal.status, "an animal never does")
+        assertEquals(0f, animal.heat, "it does not even warm")
+    }
 }

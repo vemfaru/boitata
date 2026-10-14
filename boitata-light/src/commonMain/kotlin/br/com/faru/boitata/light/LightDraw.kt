@@ -50,32 +50,47 @@ private val DefaultCasts = ShadowCasts()
  * a bright bulb where each source is. Draw it over the scene (it adds light, [BlendMode.Plus]). Directional lights (sun and moon) have no pool: they are the sky's.
  */
 public fun DrawScope.drawLightPools(rig: LightRig, seconds: Float, bulbs: Boolean = true) {
+    drawLights(rig, seconds, pools = true, bulbs = bulbs)
+}
+
+/** Just the bright bulbs where the lights are, to draw over the things standing in the scene after the pools were drawn under them. */
+public fun DrawScope.drawLightBulbs(rig: LightRig, seconds: Float) {
+    drawLights(rig, seconds, pools = false, bulbs = true)
+}
+
+private fun DrawScope.drawLights(rig: LightRig, seconds: Float, pools: Boolean, bulbs: Boolean) {
     for (l in rig.lights) {
         if (!l.enabled || l.strength <= 0.01f) continue
         val flick = l.flickerAt(seconds)
         when (l) {
             is PointLight -> {
-                pool(l.x, l.y, l.reach, l.color, l.strength * flick * 0.42f)
+                if (pools) pool(l.x, l.y, l.reach, l.color, l.strength * flick * 0.42f)
                 if (bulbs) bulb(l.x, l.y - l.height, l.color, l.strength * flick, l.height * 0.5f)
             }
             is SpotLight -> {
-                val reach = l.reach
-                val path = Path().apply {
-                    moveTo(l.x, l.y)
-                    val steps = 8
-                    for (i in 0..steps) {
-                        val a = l.aim - l.cone + 2f * l.cone * i / steps
-                        lineTo(l.x + cos(a) * reach, l.y + sin(a) * reach * ShadowMath.GROUND_SQUASH)
+                if (pools) {
+                    // The beam is a few wedges, each narrower and adding a little, so its edge is soft like a real penumbra and not a polygon.
+                    val path = Path()
+                    for (layer in 0 until BEAM_LAYERS) {
+                        val half = l.cone * (1f - l.penumbra * layer / (BEAM_LAYERS - 1))
+                        path.rewind()
+                        path.moveTo(l.x, l.y)
+                        for (i in 0..8) {
+                            val a = l.aim - half + 2f * half * i / 8
+                            path.lineTo(l.x + cos(a) * l.reach, l.y + sin(a) * l.reach * ShadowMath.GROUND_SQUASH)
+                        }
+                        path.close()
+                        clipPath(path) { pool(l.x, l.y, l.reach, l.color, l.strength * flick * 0.5f / BEAM_LAYERS * 1.6f) }
                     }
-                    close()
                 }
-                clipPath(path) { pool(l.x, l.y, reach, l.color, l.strength * flick * 0.5f) }
                 if (bulbs) bulb(l.x, l.y - l.height, l.color, l.strength * flick, l.height * 0.5f)
             }
             is DirectionalLight -> Unit
         }
     }
 }
+
+private const val BEAM_LAYERS = 5
 
 private fun DrawScope.pool(x: Float, y: Float, reach: Float, color: Color, alpha: Float) {
     withTransform({ scale(1f, ShadowMath.GROUND_SQUASH, Offset(x, y)) }) {

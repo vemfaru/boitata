@@ -37,9 +37,22 @@ class Sprites(
     val wall: ImageBitmap, val floor: ImageBitmap, val window: ImageBitmap,
     val sun: ImageBitmap, val moon: ImageBitmap, val stars: ImageBitmap,
     val props: Map<String, ImageBitmap>,
+    /** The animations: a row of poses side by side (see [SpriteStrip]). */
+    val strips: Map<String, SpriteStrip> = emptyMap(),
 ) {
     fun prop(name: String): ImageBitmap = props.getValue(name)
 }
+
+/** An animation as one picture: [frames] poses of the same size side by side, in the order they play. */
+class SpriteStrip(val image: ImageBitmap, val frames: Int) {
+    val frameWidth: Int get() = image.width / frames
+
+    /** Width over height of one pose. */
+    val aspect: Float get() = frameWidth.toFloat() / image.height
+}
+
+/** The animations that exist, by name, and how many poses each has (the strips exported by docs/design/anim_strip.py). */
+private val stripNames = mapOf("tamandua_walk" to 4, "arara_fly" to 4)
 
 private val propNames = listOf(
     "araucaria", "palm", "sumauma", "fern", "bromeliad_log", "lantern", "floor_lamp", "stool", "plant", "crate", "pot",
@@ -79,6 +92,7 @@ suspend fun loadSprites(): Sprites = Sprites(
     wall = bitmap("room_wall"), floor = bitmap("room_floor"), window = bitmap("room_window"),
     sun = bitmap("sky_sun"), moon = bitmap("sky_moon"), stars = bitmap("sky_stars"),
     props = propNames.associateWith { bitmap("prop_$it") },
+    strips = stripNames.mapValues { (name, frames) -> SpriteStrip(bitmap("anim_$name"), frames) },
 )
 
 /** The art for the scenes below; null while it loads. */

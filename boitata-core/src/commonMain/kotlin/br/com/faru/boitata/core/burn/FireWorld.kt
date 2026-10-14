@@ -224,7 +224,7 @@ public class FireWorld(private val seed: Long = 7L) {
         val gain = FloatArray(all.size)
 
         // Weather first: rain wets everything, a dry spell dries it.
-        for (b in all) b.wetness = (b.wetness + (rain * WET_RATE - (1f - rain) * DRY_RATE) * dt).coerceIn(0f, 1f)
+        for (b in all) if (!b.material.waterproof) b.wetness = (b.wetness + (rain * WET_RATE - (1f - rain) * DRY_RATE) * dt).coerceIn(0f, 1f)
 
         for ((i, source) in all.withIndex()) {
             if (!source.alight || source.burn <= 0.02f) continue

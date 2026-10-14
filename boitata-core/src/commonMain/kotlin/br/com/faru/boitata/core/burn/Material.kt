@@ -52,6 +52,8 @@ public class Material(
     public val heatGain: Float = 1f,
     /** How fast it loses heat when no flame is near (metal holds it a long time). */
     public val coolRate: Float = 0.12f,
+    /** Rain does not wet it and cannot put it out: the Boitatá's own flame. */
+    public val waterproof: Boolean = false,
 ) {
     /** Whether it can burn at all. */
     public val flammable: Boolean get() = ignitionHeat > 0f && ignitionHeat < Float.POSITIVE_INFINITY
@@ -95,6 +97,12 @@ public class Material(
 
         /** Metal: heats fast, glows, holds the heat, never burns. */
         public val Metal: Material = Material("Metal", ignitionHeat = Float.POSITIVE_INFINITY, burnSeconds = 0f, intensity = 0f, style = BurnStyle.Glow, glowHeat = 0.5f, heatGain = 1.6f, coolRate = 0.05f)
+
+        /** A person in their clothes: cloth and leather catch slowly, then burn well. Not a plant, so the Boitatá's fire lights them; stone and animals ([None]) never catch. */
+        public val Person: Material = Material("Person", ignitionHeat = 1.2f, burnSeconds = 12f, intensity = 0.65f, style = BurnStyle.Char)
+
+        /** The Boitatá's own flame: always burning, never burns down and rain cannot touch it. */
+        public val Spirit: Material = Material("Spirit", ignitionHeat = 0.01f, burnSeconds = Float.POSITIVE_INFINITY, intensity = 1f, style = BurnStyle.None, waterproof = true)
 
         /** A campfire kept fed: always burning. */
         public val Campfire: Material = Material("Campfire", ignitionHeat = 0.01f, burnSeconds = Float.POSITIVE_INFINITY, intensity = 1f, style = BurnStyle.Char)

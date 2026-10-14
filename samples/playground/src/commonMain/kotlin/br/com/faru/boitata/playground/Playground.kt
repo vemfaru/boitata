@@ -40,7 +40,7 @@ import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
 
 /** The demos, in the order of the tabs. */
-enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Burn("Burn"), Fire("Fire") }
+enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Burn("Burn"), Fire("Fire") }
 
 /** The whole playground: pick a demo, play with its controls. The same scenes are what the README's GIFs are rendered from. */
 @Composable
@@ -73,6 +73,7 @@ fun PlaygroundApp() {
                     Demo.Window -> WindowDemo(seconds, moon, southern)
                     Demo.Shadows -> ShadowDemo(seconds)
                     Demo.Depth -> DepthDemo(seconds)
+                    Demo.Lights -> LightsDemo(seconds, moon, southern)
                     Demo.Burn -> BurnDemo(seconds, sink, sound)
                     Demo.Fire -> FireDemo(seconds, sink, sound)
                 }
@@ -186,6 +187,22 @@ private fun DepthDemo(seconds: () -> Float) {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { DepthScene(seconds) }
         Controls { Text("Drag anything. Up sends it back, small and tucked behind what is nearer; down brings it forward, bigger. Lampião's lamp is the light: carry him about and every shadow swings. Tap a thing to switch whether the wind moves it (palms, plants and the pine do by default).", color = Color(0xFFB7BEC8)) }
+    }
+}
+
+@Composable
+private fun LightsDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
+    var hour by remember { mutableFloatStateOf(19f) }
+    var on by remember { mutableStateOf(LightKind.entries.toSet()) }
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) { LightsScene(seconds, hour = hour, moon = moon, southern = southern, on = on) }
+        Controls {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (k in LightKind.entries) FilterChip(selected = k in on, onClick = { on = if (k in on) on - k else on + k }, label = { Text(k.label) })
+            }
+            Labelled("Hour", hour, 0f..24f) { hour = it }
+            Text("Each light throws its own shadow, its own way: the sun and moon (far away) in parallel, long at dawn; the fire, candle and lamp (near) fanning out from them; the lantern only inside its cone. Drag the fire, the candle, the lantern post or Lampião (he carries the lamp) and watch every shadow swing. The animals wander on their own and cannot burn.", color = Color(0xFFB7BEC8))
+        }
     }
 }
 

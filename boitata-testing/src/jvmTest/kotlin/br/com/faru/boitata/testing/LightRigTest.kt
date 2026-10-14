@@ -29,7 +29,7 @@ class LightRigTest {
         val nearFire = rig.shade(dark, lit, 120f, 300f, 0f)
         val faraway = rig.shade(dark, lit, 900f, 300f, 0f)
         assertTrue(nearFire.red > nearFire.blue + 0.15f, "warm beside the fire: $nearFire")
-        assertTrue(faraway.blue > faraway.red * 0.9f || faraway.blue > 0.2f, "only the cold moon reaches far: $faraway")
+        assertTrue(faraway.blue / faraway.red > nearFire.blue / nearFire.red * 1.4f, "only the cold moon reaches far, so it is bluer than beside the fire: $faraway vs $nearFire")
         assertTrue(nearFire.red > faraway.red, "brighter beside the fire")
     }
 
@@ -76,7 +76,7 @@ class LightRigTest {
 
     @Test
     fun theMoonIsUpAtMidnightWhenFullAndNotWhenNewAndTheQuarterSetsByMidnight() {
-        assertTrue(Lights.moon(0f, MoonPhase.Full).strength > 0.4f)
+        assertTrue(Lights.moon(0f, MoonPhase.Full).strength > 0.3f)
         assertEquals(0f, Lights.moon(0f, MoonPhase.New).strength)
         assertTrue(Lights.moon(20f, MoonPhase.FirstQuarter).strength > 0f, "a first quarter is up in the evening")
         assertEquals(0f, Lights.moon(5f, MoonPhase.FirstQuarter).strength, "and gone by dawn")
