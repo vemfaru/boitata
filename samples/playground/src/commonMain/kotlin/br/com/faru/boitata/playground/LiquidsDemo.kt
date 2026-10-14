@@ -33,6 +33,7 @@ import br.com.faru.boitata.core.fluid.Puddle
 import br.com.faru.boitata.core.fluid.Spill
 import br.com.faru.boitata.core.wind.Wind
 import br.com.faru.boitata.light.drawBurningBody
+import br.com.faru.boitata.light.drawCaustic
 import br.com.faru.boitata.light.drawPuddle
 import br.com.faru.boitata.light.drawSpillStream
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -188,6 +189,8 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
         val px = w * b.x + b.vessel.width * ppm / 2f
         // Selected: a faint pool under it.
         if (i == bench.selected) drawOval(Color(0xFFFFE9B0).copy(alpha = 0.12f), Offset(px - b.vessel.width * ppm, tableY - 4f), Size(b.vessel.width * ppm * 2f, 14f))
+        // The lamp is the flame on the left: the glass throws its coloured shadow and its caustic away from it.
+        drawCaustic(b.vessel, px, tableY + 8f, ppm, t, fromLeft = b.x > 0.12f, quality = quality)
         drawVessel(b.vessel, b.style, px, tableY + 6f, ppm, t, quality, behind = behind, mirrored = 0.22f)
         drawSpillStream(b.vessel, px, tableY + 6f, ppm, t, quality)
     }

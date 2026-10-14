@@ -169,6 +169,16 @@ drawCastShadows(rig, feetX, feetY, height, seconds) { colour -> /* draw the thin
 
 More in [docs/lighting.md](docs/lighting.md). The playground's **Lights** and **Light stage** tabs are this, with every lamp draggable.
 
+### Water, glass and weather
+
+![A bench of glasses: a spilled glass of kerosene runs to the flame and burns](docs/media/liquids.gif)
+
+Liquids slosh, ripple, magnify what is behind them, throw a coloured shadow and a caustic, and spill when the container tips over (a stream, a spreading puddle, kerosene that burns). Ponds mirror what stands at their edge and refract what wades in. Windows fog up, frost over and run with rain, and you can wipe them:
+
+![A frosted window](docs/media/window-frost.gif)
+
+The physics (dew point, Fresnel, Snell, Torricelli, the tipping angle) and the cost of each are in [docs/lighting.md](docs/lighting.md). The playground's **Liquids**, **Pond**, **Window light**, **Shadow theatre** and **Light stage** tabs are these.
+
 ### Depth: things that go back and forward
 
 ![The serpent swims back to the horizon behind the trees, between them, and close in front of everything](docs/media/boitata.gif)

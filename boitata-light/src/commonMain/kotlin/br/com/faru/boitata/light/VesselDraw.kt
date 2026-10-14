@@ -182,3 +182,37 @@ public fun DrawScope.drawPuddle(color: Color, centreX: Float, surfaceY: Float, r
     drawOval(Color.White.copy(alpha = 0.22f * (1f - burnt)), Offset(centreX - radius * 0.7f, surfaceY - ry * 0.7f), Size(radius * 1.4f, ry * 0.7f))
     drawOval(Color.White.copy(alpha = 0.35f * (1f - burnt)), top, size, style = Stroke(1.4f))
 }
+
+/**
+ * The light a filled glass throws on the table beside it, from a lamp on the side [fromLeft] says: a **coloured shadow** (the glass lets the light through, tinted by the liquid, so its shadow is the liquid's colour and faint, not
+ * black) stretching away from the lamp, and inside it a bright **caustic** where the curved glass and liquid focus the light, wobbling with the surface as the ripples move. Both are as strong as the glass is full.
+ * Draw on the table before the vessel. [pivotX], [pivotY] are as for [drawVessel]; nothing is drawn for an empty or tipped glass.
+ */
+public fun DrawScope.drawCaustic(vessel: LiquidVessel, pivotX: Float, pivotY: Float, pixelsPerMeter: Float, seconds: Float, fromLeft: Boolean, quality: Quality = Quality.High) {
+    if (vessel.empty || abs(vessel.body.angle) > 0.4f) return
+    val ppm = pixelsPerMeter
+    val dir = if (fromLeft) 1f else -1f                         // the way the shadow goes
+    val wp = vessel.width * ppm; val hp = vessel.height * ppm
+    val fill = vessel.fill
+    val tint = vessel.fluid.color
+    val baseX = pivotX - wp / 2f
+    // The coloured shadow: a long flat ellipse running away from the lamp, faint and tinted.
+    val length = hp * (0.7f + 0.5f * fill)
+    val shadow = Size(length, wp * 0.32f)
+    drawOval(tint.copy(alpha = 0.2f * fill + 0.05f), Offset(if (dir > 0f) baseX else baseX - length + wp * 0.2f, pivotY - shadow.height * 0.4f), shadow)
+    // The caustic: the light focused beyond the glass, brightest in a small patch, with filaments that shimmer with the surface.
+    val focus = Offset(baseX + dir * (wp * 0.45f + length * 0.62f), pivotY + wp * 0.02f)
+    val wob = vessel.surface.energy().coerceAtMost(4f)
+    val bright = Color(0xFFFFF6DC)
+    val radius = wp * 0.34f
+    drawOval(Brush.radialGradient(0f to bright.copy(alpha = (0.55f * fill + 0.1f).coerceAtMost(0.7f)), 0.55f to tint.copy(alpha = 0.3f * fill), 1f to Color.Transparent, center = focus, radius = radius * 1.4f), Offset(focus.x - radius * 1.4f, focus.y - radius * 0.5f), Size(radius * 2.8f, radius), blendMode = BlendMode.Plus)
+    if (quality != Quality.Low) {
+        val noise = br.com.faru.boitata.core.FastNoise(13L)
+        for (i in 0 until 7) {
+            val phase = seconds * (1.2f + noise.at(i, 0)) + i * 1.7f + wob
+            val y = focus.y - radius * 0.2f + radius * 0.4f * noise.at(i, 1) + kotlin.math.sin(phase) * 1.5f
+            val x0 = focus.x - radius + radius * 2f * noise.at(i, 2); val len = radius * (0.5f + 0.8f * noise.at(i, 3))
+            drawLine(bright.copy(alpha = (0.35f + 0.3f * kotlin.math.sin(phase * 1.3f)).coerceIn(0.05f, 0.7f) * fill), Offset(x0, y), Offset(x0 + len * kotlin.math.cos(phase * 0.3f), y + kotlin.math.sin(phase * 0.7f) * radius * 0.12f), 1.6f, blendMode = BlendMode.Plus)
+        }
+    }
+}

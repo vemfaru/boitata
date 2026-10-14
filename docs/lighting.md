@@ -104,3 +104,28 @@ A `Liquid` is a pond lying on the ground: an ellipse (a round pond seen at a sla
 - **Cost.** Reflections and wading are drawn in a handful of strips (14, 7 or 1 by quality), clipped to the pond; nothing else is allocated.
 
 The playground's **Pond** tab: drag the people into the water, and watch the caiman and the capybara wade through it, the macaw reflected as it flies over, and the fire and Lampião's lamp glittering on it.
+
+## Liquids in containers
+
+A `LiquidVessel` is a container (sizes in meters, so the physics is the real thing's) with a `Fluid` in it (`Water`, `Tea`, `Wine`, `Milk`, `Oil`, `Kerosene`: colour, viscosity, index of refraction, cloudiness, whether it burns). Three small pieces of physics, all pure and tested:
+
+- **The surface** (`WaveSurface`) is the one-dimensional wave equation with damping: a drop (`drop`) or a pour (`pour`) makes ripples that travel at `sqrt(g * depth) / width`, bounce off the walls and die away with the volume kept. The liquid also **sloshes**: pushed sideways (`accelerate`) or turned, it is pulled toward a slanted surface at the frequency of its fundamental mode, `omega^2 = (pi g / w) tanh(pi d / w)` (about 3 Hz for a glass, 1.5 Hz for a bucket). Thick liquids damp it more.
+- **The container** (`TippingBody`) is a rectangle on a floor that tips about its bottom corner: its centre of mass is above the corner until the *tipping angle* `atan(width / height)`, so a gentle knock (`knock`) rocks it back upright and a hard one tips it over, then it falls to lie on its side and bounces a little (`angle'' = 3 g / (4 R) sin(angle - tipping angle)`).
+- **Spilling.** `Tilt` works out, for any tilt, how much liquid the container holds before its level reaches the lowest point of the rim (`capacity`); anything above runs over the lip at the rate of a weir (Torricelli: it leaves at `sqrt(2 g h)`, flow `Cd * (2/3) * sqrt(2 g) * h^1.5`, h the depth over the lip), slower for viscous liquids. Volume is conserved (`spilled`).
+
+Drawing: `drawVessel` draws the glass, the liquid at its level (staying level in the world as the glass tips) with the surface rippling, a bright surface line, and, through the liquid, **what is behind** the glass magnified by `1 + (index - 1) * 0.75` and tinted; `mirrored` draws the glossy table's reflection. `drawSpillStream` draws the stream (a parabola from the lip, as thick as `Spill.thickness` says) with its splash. `drawCaustic` draws, beside a filled glass, a faint **coloured shadow** (the glass lets the light through tinted) and a bright **caustic** where the glass focuses it, shimmering with the surface.
+
+**Puddles.** What is spilled lands (`Spill.reach`) and joins or starts a `Puddle`: a thin film of settled thickness 3 mm (water) to 6 mm (oil) whose radius goes toward `sqrt(volume / (pi * thickness))` (a glassful makes a puddle 15 cm across), fast at first and slowly after, slower the thicker the liquid. A spilled `flammable` fluid is a fire body (`Material.SpilledOil`) in the bench's `FireWorld`: a puddle that reaches the flame catches, burns across its whole surface and is used up (the puddle shrinks with `burnt`).
+
+The playground's **Liquids** tab: tap a glass (it ripples), drag it along the table (it sloshes), pour, drop something in, knock it over, light the spill.
+
+## Weather on glass
+
+A `PaneWeather` is a small simulation of one pane, stepped at a fixed rate so the same weather and seed always give the same pane (`SurfaceClimate` is the weather: temperatures inside and out, humidity, rain, snow, wind, and how much the window is open):
+
+- **Fog.** Water condenses where the glass is colder than the room's **dew point** (`SurfaceClimate.dewPoint`, Magnus's formula: 9 degrees for 20 degrees at 50%); the glass is nearer the outside's temperature than the inside's. The colder the glass, the faster. An open window mixes outside air in and dries it.
+- **Frost.** Below 0 degrees ice grows from the edges inward in a fixed pattern, and thaws above freezing.
+- **Beads.** Rain lands as beads that stick until heavy enough, then run, **clearing a streak through the fog** as they go; heavy fog runs by itself.
+- **Snow** piles on the sill and melts. **Heat** (`heat` at a place: a lamp by the glass) evaporates fog and melts ice there; **wiping** (`wipe`) clears the fog under a hand, and it comes back.
+
+Drawing: `drawPaneWeather` draws the fog as a veil in a few shades (merged into runs: a few hundred rectangles, not thousands), the ice as frosted cells with crystals that grow in along stems, and the beads with a rim and highlight; `drawSillSnow` the snow. The Window room also turns the pane's state into optics (more blur, haze and scatter, less clear), so the sky blurs and the light patch softens as the glass fogs or freezes. In the playground's Window tab: Rain, Snow, Frost, Fog chips, temperature and humidity, a lamp by the glass, wipe by dragging, and an open window.
