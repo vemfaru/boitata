@@ -38,6 +38,7 @@ public object ShadowMath {
     public fun directional(azimuth: Float, elevation: Float, size: Float, into: ShadowCast) {
         val k = (1f / tan(elevation.coerceIn(MIN_ELEVATION, 1.5f))).coerceIn(0.05f, MAX_LENGTH)
         into.set(cos(azimuth) * k, sin(azimuth) * k * GROUND_SQUASH + FOOTPRINT, spread(size, k))
+        into.clearProjective()
     }
 
     /**
@@ -55,6 +56,7 @@ public object ShadowMath {
         val above = lightHeight - 0.5f * objectHeight
         val k = if (above <= 0f) MAX_LENGTH else (distance / above).coerceIn(0.05f, MAX_LENGTH)
         into.set(dx * k, dy * k * GROUND_SQUASH + FOOTPRINT, spread(size, k))
+        into.setProjective(lightX - feetX, lightY - feetY, lightHeight)
     }
 
     /**
@@ -89,6 +91,17 @@ public object ShadowMath {
         return true
     }
 
+    /**
+     * The height on a standing thing, in pixels, above which its shadow no longer lands on the floor in front of the wall along [wallFootY] but on the wall: where the ray from the light past the thing
+     * reaches the floor exactly at the wall's foot. The floor shadow of everything below it and the wall shadow of everything above it meet there, with no gap and no overlap. Infinite if no wall shadow.
+     */
+    public fun wallCrossing(lightY: Float, lightHeight: Float, feetY: Float, wallFootY: Float): Float {
+        val ly = lightY / GROUND_SQUASH; val py = feetY / GROUND_SQUASH; val wy = wallFootY / GROUND_SQUASH
+        if (py <= wy || ly <= py) return Float.POSITIVE_INFINITY
+        val sw = (wy - py) / (py - ly)                                   // how far past the thing, in units of the way from the light to it
+        return lightHeight * sw / (1f + sw)
+    }
+
     /** The direction (radians on the ground) a light at ([lightX], [lightY]) throws shadows over a thing at ([feetX], [feetY]). */
     public fun azimuthFrom(lightX: Float, lightY: Float, feetX: Float, feetY: Float): Float =
         atan2((feetY - lightY) / GROUND_SQUASH, feetX - lightX)
@@ -114,7 +127,44 @@ public class ShadowCast {
     /** How dark, 0 to 1, set by whoever combines several lights. */
     public var alpha: Float = 0f
 
+    /**
+     * Whether the shadow is the exact one of a light at a place (a perspective projection, see [floorPoint]) and not the shear of a light far away. A point light's shadow of a standing thing is not
+     * a straight lean: the nearer the thing's tip is to the light's height, the farther along the floor it lands, so the shadow stretches toward its tip.
+     */
+    public var projective: Boolean = false
+        private set
+
+    /** Where the light is relative to the thing's feet, in screen pixels (valid when [projective]), and how high it is above the ground. */
+    public var lightDX: Float = 0f
+        private set
+    public var lightDY: Float = 0f
+        private set
+    public var lightHeight: Float = 0f
+        private set
+
     public fun set(leanX: Float, leanY: Float, spread: Float) { this.leanX = leanX; this.leanY = leanY; this.spread = spread }
+
+    internal fun setProjective(lightDX: Float, lightDY: Float, lightHeight: Float) { projective = true; this.lightDX = lightDX; this.lightDY = lightDY; this.lightHeight = lightHeight }
+
+    internal fun clearProjective() { projective = false }
+
+    /** Copies another shadow's shape (not its alpha). */
+    public fun copyShapeFrom(o: ShadowCast) {
+        set(o.leanX, o.leanY, o.spread)
+        if (o.projective) setProjective(o.lightDX, o.lightDY, o.lightHeight) else clearProjective()
+    }
+
+    /**
+     * Where the part of a standing thing at sideways offset [u] from its centre and height [z] throws its shadow on the floor, relative to the thing's feet, written to [into] as (x, y) in screen pixels.
+     * For a point light that is the light's ray through the point continued to the floor: it lands `lightHeight / (lightHeight - z)` times as far from the light's foot as the point's own foot does,
+     * which stretches toward the tip and is why a tall thing beside a low lamp has a very long shadow. Valid for `z` below the light's height; for a far-away light it is the straight lean.
+     */
+    public fun floorPoint(u: Float, z: Float, into: FloatArray) {
+        if (!projective) { into[0] = u + leanX * z; into[1] = leanY * z; return }
+        val m = lightHeight / (lightHeight - z)
+        into[0] = lightDX + (u - lightDX) * m
+        into[1] = lightDY * (1f - m)
+    }
 
     /** How far the tip of the shadow of a thing [height] tall is from its feet, in pixels. */
     public fun length(height: Float): Float = hypot(leanX, leanY) * height

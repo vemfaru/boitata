@@ -3,6 +3,7 @@ package br.com.faru.boitata.light
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import br.com.faru.boitata.core.FastNoise
+import br.com.faru.boitata.core.light.LightMath
 import br.com.faru.boitata.core.light.ShadowCast
 import br.com.faru.boitata.core.light.ShadowMath
 import br.com.faru.boitata.core.light.WallCast
@@ -219,12 +220,7 @@ public object Lights {
         PointLight(source.groundX, source.groundY, max(source.groundY - source.y, source.reach * 0.25f), source.color, source.strength, source.reach, flicker = source.flicker)
 }
 
-/** 1 at the light, falling smoothly to 0 at [reach]. */
-private fun falloff(distance: Float, reach: Float): Float {
-    val x = (1f - distance / reach).coerceIn(0f, 1f)
-    val s = x * x * (3f - 2f * x)
-    return s * s            // squared again: the light gathers near its source and is nearly gone well before its reach
-}
+private fun falloff(distance: Float, reach: Float): Float = LightMath.falloff(distance, reach)
 
 private fun smooth(x: Float): Float { val t = x.coerceIn(0f, 1f); return t * t * (3f - 2f * t) }
 
@@ -367,7 +363,7 @@ public class ShadowCasts(public val capacity: Int = 4) {
 
     internal fun put(light: Light, from: ShadowCast, alpha: Float) {
         val to = casts[count]
-        to.set(from.leanX, from.leanY, from.spread); to.alpha = alpha
+        to.copyShapeFrom(from); to.alpha = alpha
         owner[count] = light
         count++
     }

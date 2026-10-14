@@ -41,3 +41,20 @@ the thing's size and is moved along the ray, and only a sun shining toward the w
 The geometry is pure maths in `ShadowMath` (`onWallFromPoint`, `onWallFromDirection`) with tests; walls are drawn at Medium and High quality.
 
 Not yet: walls that face sideways, and the tops of things (a shadow lying across a table).
+
+## The physics, and why it is cheap
+
+Everything is worked out from three numbers per light and thing: where the light is, how high it is, and where the thing stands.
+
+**Floor shadow of a point light.** A standing thing is a flat picture in a vertical plane. The light's ray through a point of it at height `z` meets the floor `lz / (lz - z)` times as far from the light's foot as the point's own foot is, where `lz` is the light's height: low points land near the thing and the tip lands far away (it stretches toward the tip, and a tip as high as the light has a shadow that reaches infinity). In the picture's own coordinates that is `x' = (lz * x + a * y) / (lz + y)`, `y' = c * y / (lz + y)` with `(a, c)` the light's offset from the feet: a *perspective transform*. So the whole shadow is **one matrix and one draw call**, and the canvas does the division. A far-away light (sun, moon) has parallel rays, which makes it an ordinary shear. The shadow is drawn up to 80% of the lamp's height (above that the ray is nearly level).
+
+**Shadow on a wall.** The wall is a plane parallel to the picture, so the same ray gives something simpler: the shadow is the picture *scaled* by `t = (wall - light) / (thing - light)` (how much farther the wall is than the thing, measured from the light) and moved, an affine transform: also one matrix. A thing against the wall gets `t = 1`, one far in front gets a big, soft shadow.
+
+**The corner.** The ray past a point reaches either the floor or the wall first. The point where it reaches both at once is at the height `ShadowMath.wallCrossing`: everything below it throws its shadow on the floor in front of the wall, everything above it on the wall. Because both shadows are exact, the floor shadow arrives at the wall's foot line exactly where the wall shadow starts (the tests check this for several lights and walls to a twentieth of a pixel). So there is no seam to blend: the floor shadow is clipped at the wall's foot, the wall shadow is clipped to above it, and they meet.
+(The enlargement on a wall is capped at 3.2 so a light level with the thing does not put a gigantic shadow on the wall; the join is exact below the cap.)
+
+**Soft edges.** A bigger light gives a softer edge, and the edge is sharp where the thing touches the ground and blurrier at the tip. Each shadow is drawn in three passes with the lamp a little lower each time, which lengthens the shadow with its feet fixed, so the tip softens and the contact stays crisp.
+
+**Light on walls and floors.** A point light a distance `d` from a flat surface lights a point `rho` along it by `strength * falloff(r) * cos(theta)` with `r = sqrt(d² + rho²)` and `cos(theta) = d / r` (Lambert). That depends only on `rho`, so the pool is a **radial gradient sampled once from that formula**, exact and one draw: a lamp near a wall makes a small bright pool, a far one a wide dim one, and one beyond its reach none. The floor pools use the same maths.
+
+**Cost.** Per thing, per light: a handful of multiplications to build one matrix, and up to three draws of the silhouette. Nothing is allocated except one small matrix per draw; at Low quality only the strongest light casts, once, and only on the floor.

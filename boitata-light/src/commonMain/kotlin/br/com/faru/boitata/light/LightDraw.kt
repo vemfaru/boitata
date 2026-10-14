@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import br.com.faru.boitata.core.clock.Quality
+import br.com.faru.boitata.core.light.LightMath
 import br.com.faru.boitata.core.light.ShadowMath
 import kotlin.math.cos
 import kotlin.math.sin
@@ -34,25 +35,41 @@ public fun DrawScope.drawCastShadows(
     val walls = rig.walls
     var blocked = 0
     for (wall in walls) if (!isOwner(wall, ignore) && feetY > wall.footY + 0.5f) blocked++
-    fun floor() {
+    fun floor(thick: Boolean) {
         for (i in 0 until n) {
             val cast = into.casts[i]
             if (cast.alpha <= 0.01f) continue
             // The thing flipped onto the ground and sheared along the light: x gets lean * height, y gets lean * height down the screen. Softened with a few passes, each a little longer and fainter.
             for (pass in 0..(if (quality == Quality.Low) 0 else 2)) {
-                val soften = 1f + pass * (0.04f + cast.spread)
-                val m = Matrix().apply {
-                    this[0, 0] = 1f
-                    this[1, 0] = -cast.leanX * soften
-                    this[1, 1] = -(cast.leanY * soften)
-                    this[3, 0] = feetX
-                    this[3, 1] = feetY
+                val m = Matrix()
+                val limit: Float
+                if (cast.projective) {
+                    // The exact shadow of a light at a place: the thing projected onto the floor along the light's rays. In the thing's own drawing (x across, y up negative) the floor point is
+                    //   x' = (lz * x + a * y) / (lz + y),  y' = c * y / (lz + y)        (a, c: the light's offset from the feet; lz: its height)
+                    // which is a perspective transform: the matrix holds the two numerators and the shared divisor, and the canvas divides. A lower lamp (a softer pass) lengthens it, feet fixed.
+                    val lz = cast.lightHeight * (1f - pass * (0.03f + 0.5f * cast.spread))
+                    // A thing has a footprint and the ground is seen from a little above, so the shadow keeps some thickness toward the viewer even for a light level with the thing (see ShadowMath.FOOTPRINT).
+                    m[0, 0] = lz; m[1, 0] = cast.lightDX + feetX; m[3, 0] = feetX * lz
+                    m[0, 1] = 0f; m[1, 1] = cast.lightDY + feetY - (if (thick) ShadowMath.FOOTPRINT * lz else 0f); m[3, 1] = feetY * lz
+                    m[0, 3] = 0f; m[1, 3] = 1f; m[3, 3] = lz
+                    limit = 0.8f * lz            // above this the ray runs off to infinity: the shadow of what is above the light is not on the floor
+                } else {
+                    val soften = 1f + pass * (0.04f + cast.spread)
+                    m[1, 0] = -cast.leanX * soften
+                    m[1, 1] = -(cast.leanY * soften)
+                    m[3, 0] = feetX
+                    m[3, 1] = feetY
+                    limit = Float.POSITIVE_INFINITY
                 }
-                withTransform({ transform(m) }) { silhouette(Color.Black.copy(alpha = cast.alpha * (if (pass == 0) 0.8f else 0.4f))) }
+                withTransform({ transform(m) }) {
+                    if (limit.isInfinite()) silhouette(Color.Black.copy(alpha = cast.alpha * (if (pass == 0) 0.8f else 0.4f)))
+                    else clipRect(-BIG, -limit, BIG, BIG) { silhouette(Color.Black.copy(alpha = cast.alpha * (if (pass == 0) 0.8f else 0.4f))) }
+                }
             }
         }
     }
-    if (blocked == 0) floor() else clipOutWalls(walls, ignore, feetY, 0) { floor() }
+    // With a wall behind, the floor shadow is the exact projection (so it meets the wall's shadow at the wall's foot with no seam); with none, it gets a little thickness (a footprint) so a light level with the thing still gives a shadow.
+    if (blocked == 0) floor(true) else clipOutWalls(walls, ignore, feetY, 0) { floor(false) }
     if (quality == Quality.Low) return
     // On the walls it stands in front of.
     for (wall in walls) {
@@ -84,6 +101,8 @@ private fun DrawScope.clipOutWalls(walls: List<Wall>, ignore: Any?, feetY: Float
 
 private val DefaultWallCasts = WallCasts()
 
+private const val BIG = 100000f
+
 private fun isOwner(wall: Wall, thing: Any?): Boolean = thing != null && wall.owner === thing
 private val DefaultCasts = ShadowCasts()
 
@@ -106,7 +125,7 @@ private fun DrawScope.drawLights(rig: LightRig, seconds: Float, pools: Boolean, 
         val flick = l.flickerAt(seconds)
         when (l) {
             is PointLight -> {
-                if (pools) pool(l.x, l.y, l.reach, l.color, l.strength * flick * 0.42f)
+                if (pools) pool(l.x, l.y, l.reach, l.height, l.color, l.strength * flick * 0.42f)
                 if (bulbs) bulb(l.x, l.y - l.height, l.color, l.strength * flick, l.height * 0.5f)
             }
             is SpotLight -> {
@@ -122,7 +141,7 @@ private fun DrawScope.drawLights(rig: LightRig, seconds: Float, pools: Boolean, 
                             path.lineTo(l.x + cos(a) * l.reach, l.y + sin(a) * l.reach * ShadowMath.GROUND_SQUASH)
                         }
                         path.close()
-                        clipPath(path) { pool(l.x, l.y, l.reach, l.color, l.strength * flick * 0.5f / BEAM_LAYERS * 1.6f) }
+                        clipPath(path) { pool(l.x, l.y, l.reach, l.height, l.color, l.strength * flick * 0.5f / BEAM_LAYERS * 1.6f) }
                     }
                 }
                 if (bulbs) bulb(l.x, l.y - l.height, l.color, l.strength * flick, l.height * 0.5f)
@@ -134,10 +153,24 @@ private fun DrawScope.drawLights(rig: LightRig, seconds: Float, pools: Boolean, 
 
 private const val BEAM_LAYERS = 5
 
-private fun DrawScope.pool(x: Float, y: Float, reach: Float, color: Color, alpha: Float) {
-    withTransform({ scale(1f, ShadowMath.GROUND_SQUASH, Offset(x, y)) }) {
-        drawCircle(Brush.radialGradient(0f to color.copy(alpha = alpha.coerceIn(0f, 1f)), 0.55f to color.copy(alpha = alpha * 0.35f), 1f to Color.Transparent, center = Offset(x, y), radius = reach), radius = reach, center = Offset(x, y), blendMode = BlendMode.Plus)
+/**
+ * A pool of light on a flat surface with the light [perpendicular] away from it, as wide as the light reaches along the surface, shaded by Lambert's law: `falloff(r) * cos(theta)` (see [LightMath.onSurface]).
+ * Sampled into a few stops of a radial gradient, which is exact because the light depends only on how far you are from the point nearest the light. Centred on ([x], [y]), [alpha] at the brightest.
+ */
+private fun DrawScope.surfaceLight(x: Float, y: Float, perpendicular: Float, reach: Float, color: Color, alpha: Float, stops: Int = 7): Boolean {
+    val radius = LightMath.surfaceRadius(perpendicular, reach)
+    if (radius < 2f) return false
+    // Denser near the light where it changes fastest.
+    val list = Array(stops) { i ->
+        val u = i / (stops - 1f)
+        Pair(u, color.copy(alpha = (alpha * LightMath.onSurface(perpendicular, radius * u * u, reach)).coerceIn(0f, 1f)))
     }
+    drawCircle(Brush.radialGradient(colorStops = list, center = Offset(x, y), radius = radius), radius = radius, center = Offset(x, y), blendMode = BlendMode.Plus)
+    return true
+}
+
+private fun DrawScope.pool(x: Float, y: Float, reach: Float, height: Float, color: Color, alpha: Float) {
+    withTransform({ scale(1f, ShadowMath.GROUND_SQUASH, Offset(x, y)) }) { surfaceLight(x, y, height.coerceAtLeast(8f), reach, color, alpha * 1.6f) }
 }
 
 private fun DrawScope.bulb(x: Float, y: Float, color: Color, strength: Float, radius: Float) {
@@ -146,21 +179,20 @@ private fun DrawScope.bulb(x: Float, y: Float, color: Color, strength: Float, ra
 }
 
 /**
- * The light of the rig's lights on a [wall]: a soft glow on its face centred where each light stands in front of it (at the light's height), as wide as its reach. Draw it over the wall and under the things
- * standing in front, so the shadows that land on the wall show against something lit.
+ * The light of the rig's lights on a [wall], by the physics of a flat surface: a lamp [D] in front of the wall lights it in a round pool centred on the point of the wall nearest the lamp (at the lamp's height),
+ * brightest there and falling off with the distance to the lamp and with Lambert's cosine (so a lamp close to the wall makes a small bright pool, a far one a wide dim one, and one beyond its reach none).
+ * Only lights that are in front of the wall and, for a spot, aimed toward it, light it. Draw it over the wall and under the things standing in front.
  */
 public fun DrawScope.drawWallLight(rig: LightRig, wall: Wall, seconds: Float) {
     clipRect(wall.left, wall.footY - wall.height, wall.right, wall.footY) {
         for (l in rig.lights) {
             if (!l.enabled || l.strength <= 0.01f) continue
             val flick = l.flickerAt(seconds)
-            val (x, y, reach) = when (l) {
-                is PointLight -> if (l.y > wall.footY) Triple(l.x, wall.footY - l.height, l.reach) else continue
-                is SpotLight -> if (l.y > wall.footY) Triple(l.x + cos(l.aim) * l.reach * 0.3f, wall.footY - l.height, l.reach * 0.8f) else continue
-                is DirectionalLight -> continue
+            when (l) {
+                is PointLight -> if (l.y > wall.footY) surfaceLight(l.x, wall.footY - l.height, (l.y - wall.footY) / ShadowMath.GROUND_SQUASH, l.reach, l.color, 0.5f * l.strength * flick)
+                is SpotLight -> if (l.y > wall.footY && sin(l.aim) < -0.2f) surfaceLight(l.x + cos(l.aim) * l.reach * 0.25f, wall.footY - l.height, (l.y - wall.footY) / ShadowMath.GROUND_SQUASH, l.reach, l.color, 0.5f * l.strength * flick)
+                is DirectionalLight -> Unit
             }
-            val r = reach * 0.75f
-            drawCircle(Brush.radialGradient(0f to l.color.copy(alpha = (0.3f * l.strength * flick).coerceIn(0f, 1f)), 0.5f to l.color.copy(alpha = 0.1f * l.strength * flick), 1f to Color.Transparent, center = Offset(x, y), radius = r), radius = r, center = Offset(x, y), blendMode = BlendMode.Plus)
         }
     }
 }

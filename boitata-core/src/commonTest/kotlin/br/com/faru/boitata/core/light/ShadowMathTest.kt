@@ -120,4 +120,35 @@ class ShadowMathTest {
         assertEquals(1f, cast.scale)
         assertTrue(!ShadowMath.onWallFromDirection((PI / 2).toFloat(), 0.6f, 200f, 300f, 100f, 0.3f, WallCast()), "shining toward the viewer: nothing on a wall behind")
     }
+
+    @Test
+    fun theFloorShadowOfAPointLightIsTheExactProjectionAndStretchesTowardTheTip() {
+        val cast = ShadowCast().also { ShadowMath.point(lightX = -100f, lightY = 200f, lightHeight = 120f, feetX = 100f, feetY = 200f, objectHeight = 60f, size = 0.2f, into = it) }
+        val out = FloatArray(2)
+        cast.floorPoint(0f, 0f, out)
+        assertEquals(0f, out[0], 1e-3f); assertEquals(0f, out[1], 1e-3f)
+        cast.floorPoint(0f, 30f, out); val half = out[0]
+        cast.floorPoint(0f, 60f, out); val full = out[0]
+        // Twice the height lands more than twice as far (the ray flattens toward the tip): 30 high -> m = 120/90, 60 high -> m = 2.
+        assertTrue(full > 2.05f * half, "the shadow stretches toward its tip: $half then $full")
+        assertEquals(200f * (2f - 1f) + 0f, full, 1e-2f, "60 high lands where the ray through it meets the floor: light at -200 from the feet, m = 2")
+    }
+
+    @Test
+    fun theFloorShadowAndTheWallShadowMeetExactlyAtTheWallsFoot() {
+        // Whatever the light and wall, the part of the thing where the floor shadow reaches the wall's foot is the part where the wall shadow starts, at the same place on screen.
+        for ((lx, ly, lh) in listOf(Triple(150f, 500f, 150f), Triple(320f, 420f, 90f), Triple(40f, 390f, 200f))) {
+            val feetX = 200f; val feetY = 300f; val wallY = 120f
+            val floor = ShadowCast().also { ShadowMath.point(lx, ly, lh, feetX, feetY, 80f, 0.2f, it) }
+            val wall = WallCast(); assertTrue(ShadowMath.onWallFromPoint(lx, ly, lh, feetX, feetY, wallY, 0.2f, wall))
+            val zc = ShadowMath.wallCrossing(ly, lh, feetY, wallY)
+            val out = FloatArray(2)
+            for (u in listOf(-10f, 0f, 14f)) {
+                floor.floorPoint(u, zc, out)
+                assertEquals(wallY, feetY + out[1], 0.05f, "the floor shadow reaches the wall's foot at the crossing height (light $lx,$ly,$lh)")
+                assertEquals(wall.x + wall.scale * u, feetX + out[0], 0.05f, "and lands where the wall shadow starts")
+                assertEquals(0f, wall.footLift + wall.scale * zc, 0.05f, "the wall shadow's bottom is at the wall's foot")
+            }
+        }
+    }
 }

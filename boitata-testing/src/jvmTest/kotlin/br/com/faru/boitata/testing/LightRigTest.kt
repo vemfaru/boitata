@@ -128,11 +128,16 @@ class LightRigTest {
     private fun massAbove(s: Still, y: Int) = (0 until y).sumOf { r -> (0 until s.width).count { x -> s.alpha(x, r) > 10 } }
 
     @Test
-    fun aShadowClimbsTheWallBehindTheThing() {
-        val open = wallScene(withWall = false)
+    fun aShadowClimbsTheWallBehindTheThingExactlyWhereTheGeometrySaysItLands() {
         val walled = wallScene(withWall = true)
-        assertTrue(massAbove(walled, 100) > 150, "a shadow on the wall face above its foot: ${massAbove(walled, 100)}")
-        assertTrue(massAbove(walled, 90) > massAbove(open, 90) + 100, "the wall carries a bigger shadow up there: ${massAbove(walled, 90)} vs ${massAbove(open, 90)}")
+        // The lamp is Lights.lamp(200, 280, scale = 60): 72 high. The shadow on the wall is the thing's 20 pixel width times the enlargement, centred where the ray through its feet lands.
+        val wall = br.com.faru.boitata.core.light.WallCast()
+        assertTrue(br.com.faru.boitata.core.light.ShadowMath.onWallFromPoint(200f, 280f, 72f, 200f, 200f, 100f, 0.15f, wall))
+        val half = wall.scale * 10f + 4f
+        var inside = 0; var outside = 0
+        for (y in 0 until 96) for (x in 0 until walled.width) if (walled.alpha(x, y) > 10) { if (kotlin.math.abs(x - wall.x) <= half) inside++ else outside++ }
+        assertTrue(inside > 100, "a shadow on the wall above its foot: $inside")
+        assertEquals(0, outside, "and nothing on the wall but the shadow of that thing, where the geometry puts it")
     }
 
     @Test
