@@ -139,3 +139,21 @@ Drawing: `drawPaneWeather` draws the fog as a veil in a few shades (merged into 
 - The playground's Liquids tab: pour hot coffee into the mug, heat a glass, slide the jug to the end and knock it over.
 
 The plan for the next object that goes into a liquid (a folded paper strip in the coffee, for the Typist) is in [docs/design/benzedrine-coffee-plan.md](design/benzedrine-coffee-plan.md).
+
+## Setting a liquid: viscosity, density and the rest
+
+A `Fluid` takes every number you care about, and `Fluid.copy(...)` makes a variation of any preset (`Fluid.Coffee.copy(viscosity = 0.8f)`); a vessel's liquid can be swapped or changed at any time (`LiquidVessel.fluid`, the volume stays). The presets: `Water`, `Tea`, `Coffee`, `Wine`, `Milk`, `Oil`, `Kerosene`, `Honey`, `Mercury` (`Fluid.All`).
+
+| Number | What it does |
+|---|---|
+| `viscosity` 0..1 (water 0, honey 1) | thick liquids slosh less (more damping), spill slowly (the weir flow is divided by `1 + 4 v`), and spread slowly into a thicker puddle. **Heat thins it**: `effectiveViscosity` falls by a factor `e` for every 36 degrees above 20, so warm honey flows. |
+| `density` in kg/m^3 (water 1000, kerosene 800, mercury 13534) | the liquid's **weight** (`liquidMass = density * volume * depth`) weighs on the container: it lowers the centre of mass, which raises the tipping angle and changes the resistance to turning, so a glass with a little mercury in it is far harder to knock over than one with water, and a glass with a little water is steadier than an empty one. (It is also what things will float or sink in, when something is dropped into a liquid.) |
+| `index` | how much the liquid magnifies and bends what is seen through the glass. |
+| `turbidity` | how cloudy it is, 0 clear to 1 opaque. |
+| `flammable` | whether a spilled puddle burns. |
+
+`TippingBody.setLoad(containerMass, liquidMass, liquidDepth)` is the physics behind the density: the centre of mass is the average of the container's and the liquid's, and the inertia the sum of theirs about the corner.
+
+## The edges of a table
+
+A puddle runs off the table wherever it spreads past an edge: **the ends** (the drops fall beside the table), **the front** (they fall down in front of it, over the apron) and **the back** (they fall behind it, out of sight: the liquid is simply lost). How much runs off is in proportion to how much of the puddle hangs over; the drops fall under gravity (`Drips`) and join a puddle on the floor in their own liquid. A glass's coloured shadow and caustic are drawn only on the table's top, never past its ends.

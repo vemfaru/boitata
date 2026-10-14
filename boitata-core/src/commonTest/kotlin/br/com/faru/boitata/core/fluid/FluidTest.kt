@@ -245,3 +245,46 @@ class DripsTest {
         assertEquals(0f, p.volume)
     }
 }
+
+class DensityTest {
+    private fun tipsAt(fluid: Fluid, fill: Float): Float {
+        // The slowest knock that tips a glass over, found by bisection.
+        var lo = 0.2f; var hi = 40f
+        repeat(18) {
+            val mid = (lo + hi) / 2f
+            val v = LiquidVessel(0.07f, 0.1f, fluid, fill)
+            v.knock(mid)
+            repeat(720) { v.step(1f / 120f) }
+            if (v.body.lying) hi = mid else lo = mid
+        }
+        return hi
+    }
+
+    @Test
+    fun aDenseLiquidLowersTheCentreOfMassSoTheGlassIsHarderToKnockOver() {
+        val water = tipsAt(Fluid.Water, 0.3f); val mercury = tipsAt(Fluid.Mercury, 0.3f); val empty = tipsAt(Fluid.Water, 0f)
+        assertTrue(mercury > water * 1.5f, "mercury $mercury vs water $water")
+        assertTrue(water > empty, "a little water steadies it: $water vs empty $empty")
+    }
+
+    @Test
+    fun theWeightOfTheLiquidIsItsDensityTimesItsVolume() {
+        val a = LiquidVessel(0.07f, 0.1f, Fluid.Water, 0.5f); val b = LiquidVessel(0.07f, 0.1f, Fluid.Mercury, 0.5f)
+        assertEquals(Fluid.Mercury.density / Fluid.Water.density, b.liquidMass / a.liquidMass, 0.01f)
+    }
+
+    @Test
+    fun heatThinsAThickLiquid() {
+        val honey = LiquidVessel(0.07f, 0.1f, Fluid.Honey, 0.5f)
+        val cold = honey.effectiveViscosity
+        honey.heatTo(80f)
+        assertTrue(honey.effectiveViscosity < cold * 0.4f, "${honey.effectiveViscosity} vs $cold")
+    }
+
+    @Test
+    fun aVariationOfALiquidChangesOnlyWhatYouAskFor() {
+        val thick = Fluid.Coffee.copy(viscosity = 0.8f, density = 1100f)
+        assertEquals(0.8f, thick.viscosity); assertEquals(1100f, thick.density)
+        assertEquals(Fluid.Coffee.color, thick.color); assertEquals(Fluid.Coffee.index, thick.index)
+    }
+}

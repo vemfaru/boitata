@@ -74,9 +74,23 @@ class LiquidBench {
     )
     var selected by mutableIntStateOf(2)
 
+    /** Counts changes of a vessel's liquid, so the controls know to redraw. */
+    var fluidVersion by mutableIntStateOf(0)
+        private set
+
+    /** The liquid in the picked vessel. */
+    val fluid: Fluid get() = vessels[selected].vessel.fluid
+
+    /** Changes the liquid in the picked vessel (a different one, or the same with other numbers: see [Fluid.copy]); what is in it stays. */
+    fun setFluid(fluid: Fluid) { vessels[selected].vessel.fluid = fluid; fluidVersion++ }
+
     /** The ends of the table, as shares of the width. */
     internal val tableLeft = 0.07f
     internal val tableRight = 0.93f
+
+    /** How deep the table is, front to back, in meters, and how far from its front edge the vessels stand: a puddle that spreads farther than that runs off the front or the back. */
+    internal val tableDepth = 0.55f
+    internal val standingDepth = 0.28f
 
     internal var metersPerShare = 1f
     internal var scriptT = -1f
@@ -146,6 +160,7 @@ class LiquidBench {
                 if (landing < width * tableLeft || landing > width * tableRight) puddleAt(floorPuddles, landing, ves.fluid).add(ran * ves.width)
                 else {
                     val puddle = puddles.firstOrNull { it.fluid === ves.fluid && abs(it.x - landing) < it.radius * ppm + 16f } ?: Puddle(landing, ves.fluid).also { p ->
+                        p.viscosity = ves.effectiveViscosity
                         puddles += p
                         if (ves.fluid.flammable) {
                             val id = "puddle${puddles.size}-${elapsed}"
@@ -156,20 +171,30 @@ class LiquidBench {
                 }
             }
         }
-        // A puddle that has spread to an end of the table runs off it in drops, in proportion to how much of it hangs over.
+        // A puddle that has spread past an end, the front or the back of the table runs off it in drops, in proportion to how much of it hangs over. Off the front the drops fall down in front of the table;
+        // off an end they fall beside it; off the back they fall behind it, out of sight (the liquid is simply lost there).
         val left = width * tableLeft; val right = width * tableRight
         for (p in puddles) {
             p.step(dt); bodies[p]?.let { p.burnt = it.consumed }
-            val r = p.radius * ppm
+            val rM = p.radius                                   // meters
+            val r = rM * ppm
             if (r < 2f) continue
-            val over = max(0f, left - (p.x - r)) + max(0f, (p.x + r) - right)
+            val overLeft = max(0f, left - (p.x - r)) / ppm; val overRight = max(0f, (p.x + r) - right) / ppm
+            val overFront = max(0f, rM - standingDepth); val overBack = max(0f, rM - (tableDepth - standingDepth))
+            val over = overLeft + overRight + overFront + overBack
             if (over > 0f) {
-                val leak = min(p.volume, p.volume * 0.9f * min(0.9f, over / (2f * r)) * dt)
+                val leak = min(p.volume, p.volume * 0.9f * min(0.9f, over / (2f * rM)) * dt)
                 p.remove(leak)
-                val edge = if (left - (p.x - r) > (p.x + r) - right) left else right
+                if (overBack > overFront && overBack > overLeft && overBack > overRight) continue
                 var n = (leak / 2e-6f).toInt().coerceIn(0, 3)
                 if (n == 0 && leak > 1e-8f && (elapsed * 12f).toInt() != ((elapsed - dt) * 12f).toInt()) n = 1
-                repeat(n) { drips.emit(edge + (if (edge == left) -3f else 3f), tableY + height * 0.1f, leak / max(1, n), p.fluid) }
+                // Where it leaves: the front edge below the puddle (a random spot along the part that hangs over), or the nearer end.
+                val frontEdgeY = height * 0.72f
+                repeat(n) { k ->
+                    val share = leak / max(1, n)
+                    if (overFront >= overLeft && overFront >= overRight) drips.emit(p.x + (((elapsed * 37f + k * 11f) % 1f) - 0.5f) * r * 1.4f, frontEdgeY, share, p.fluid)
+                    else { val edge = if (overLeft > overRight) left else right; drips.emit(edge + (if (edge == left) -3f else 3f), tableY + height * 0.1f, share, p.fluid) }
+                }
             }
         }
         // The drops fall to the floor and join a puddle there.
@@ -248,7 +273,8 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
         // Selected: a faint pool under it.
         if (i == bench.selected) drawOval(Color(0xFFFFE9B0).copy(alpha = 0.12f), Offset(px - b.vessel.width * ppm, tableY - 4f), Size(b.vessel.width * ppm * 2f, 14f))
         // The lamp is the flame on the left: the glass throws its coloured shadow and its caustic away from it.
-        drawCaustic(b.vessel, px, tableY + 8f, ppm, t, fromLeft = b.x > 0.12f, quality = quality)
+        // (kept to the table's top: past its ends there is nothing for the light to land on)
+        clipRect(left, topBack, right, topFront) { drawCaustic(b.vessel, px, tableY + 8f, ppm, t, fromLeft = b.x > 0.12f, quality = quality) }
         drawVessel(b.vessel, b.style, px, tableY + 6f, ppm, t, quality, behind = behind)
         drawSpillStream(b.vessel, px, tableY + 6f, ppm, t, quality)
     }

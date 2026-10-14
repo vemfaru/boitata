@@ -6,28 +6,43 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
- * A liquid, as the drawing and the simulation need to know it: its colour, how thick it is, how it bends light, and whether it burns.
- * [viscosity] 0 (water) to 1 (honey): thick liquids slosh less, ripple more slowly and spread slowly when spilled.
+ * A liquid, as the drawing and the simulation need to know it. Every number can be set, and [copy] makes a variation of any preset (a thicker coffee, a heavier wine):
+ *
+ * - [viscosity], 0 (water) to 1 (honey): how thick it is. Thick liquids slosh less, spill slowly and spread slowly into a thicker puddle. Heat thins it (see `LiquidVessel.effectiveViscosity`).
+ * - [density], in kg/m^3 (water 1000, kerosene 800, mercury 13534): how heavy it is. It is what weighs on a container: a dense liquid lowers the centre of mass of a glass, so it is harder to knock over, and it is what
+ *   things float or sink in.
+ * - [index], the index of refraction: how much it magnifies and bends what is seen through a glass of it (water 1.33, oil 1.47).
+ * - [turbidity], 0 clear to 1 opaque (milk).
+ * - [flammable]: whether a puddle of it burns.
  */
 public class Fluid(
     public val name: String,
     public val color: Color,
     public val viscosity: Float = 0f,
-    /** The index of refraction: how much it magnifies and bends what is seen through a glass of it (water 1.33, oil 1.47). */
     public val index: Float = 1.33f,
-    /** How cloudy it is, 0 clear to 1 opaque (milk). */
     public val turbidity: Float = 0f,
-    /** Whether a puddle of it burns (kerosene, oil, spirit). */
     public val flammable: Boolean = false,
+    public val density: Float = 1000f,
 ) {
+    /** A variation on this liquid: whatever you give is changed, the rest is kept. */
+    public fun copy(
+        name: String = this.name, color: Color = this.color, viscosity: Float = this.viscosity, index: Float = this.index, turbidity: Float = this.turbidity,
+        flammable: Boolean = this.flammable, density: Float = this.density,
+    ): Fluid = Fluid(name, color, viscosity, index, turbidity, flammable, density)
+
     public companion object {
-        public val Water: Fluid = Fluid("Water", Color(0xFF8FD0D8), 0f, 1.33f)
-        public val Tea: Fluid = Fluid("Tea", Color(0xFFB8641E), 0.02f, 1.34f, turbidity = 0.2f)
-        public val Coffee: Fluid = Fluid("Coffee", Color(0xFF3B2316), 0.03f, 1.34f, turbidity = 0.92f)
-        public val Wine: Fluid = Fluid("Wine", Color(0xFF7A1630), 0.04f, 1.35f, turbidity = 0.25f)
-        public val Milk: Fluid = Fluid("Milk", Color(0xFFF1EDE2), 0.05f, 1.35f, turbidity = 0.95f)
-        public val Oil: Fluid = Fluid("Oil", Color(0xFFD9A62B), 0.5f, 1.47f, turbidity = 0.1f, flammable = true)
-        public val Kerosene: Fluid = Fluid("Kerosene", Color(0xFFE8D58A), 0.1f, 1.44f, turbidity = 0.05f, flammable = true)
+        public val Water: Fluid = Fluid("Water", Color(0xFF8FD0D8), 0f, 1.33f, density = 1000f)
+        public val Tea: Fluid = Fluid("Tea", Color(0xFFB8641E), 0.02f, 1.34f, turbidity = 0.2f, density = 1001f)
+        public val Coffee: Fluid = Fluid("Coffee", Color(0xFF3B2316), 0.03f, 1.34f, turbidity = 0.92f, density = 1005f)
+        public val Wine: Fluid = Fluid("Wine", Color(0xFF7A1630), 0.04f, 1.35f, turbidity = 0.25f, density = 990f)
+        public val Milk: Fluid = Fluid("Milk", Color(0xFFF1EDE2), 0.05f, 1.35f, turbidity = 0.95f, density = 1030f)
+        public val Oil: Fluid = Fluid("Oil", Color(0xFFD9A62B), 0.5f, 1.47f, turbidity = 0.1f, flammable = true, density = 920f)
+        public val Kerosene: Fluid = Fluid("Kerosene", Color(0xFFE8D58A), 0.1f, 1.44f, turbidity = 0.05f, flammable = true, density = 800f)
+        public val Honey: Fluid = Fluid("Honey", Color(0xFFD28A1B), 0.95f, 1.49f, turbidity = 0.15f, density = 1420f)
+        public val Mercury: Fluid = Fluid("Mercury", Color(0xFFB9C0C8), 0.04f, 1.6f, turbidity = 1f, density = 13534f)
+
+        /** The liquids that come with the library. */
+        public val All: List<Fluid> = listOf(Water, Tea, Coffee, Wine, Milk, Oil, Kerosene, Honey, Mercury)
     }
 }
 
@@ -41,9 +56,13 @@ public class Fluid(
 public class LiquidVessel(
     public val width: Float,
     public val height: Float,
-    public val fluid: Fluid = Fluid.Water,
+    fluid: Fluid = Fluid.Water,
     fill: Float = 0.6f,
+    /** What the empty container weighs, in kg (a glass about 0.25 kg): against the liquid's weight it decides how hard it is to knock over. */
+    public val containerMass: Float = 0.12f + 18f * width * height,
 ) {
+    /** What is in it: change it to change the liquid (a pour of something else, a thicker coffee); the volume stays. */
+    public var fluid: Fluid = fluid
     public val body: TippingBody = TippingBody(width, height)
     public val surface: WaveSurface = WaveSurface(32)
 
@@ -101,6 +120,12 @@ public class LiquidVessel(
     /** Heats the liquid by [amount] degrees (a flame under it, a hot plate): it cannot pass the boil. */
     public fun heat(amount: Float) { temperature = (temperature + amount).coerceAtMost(100f) }
 
+    /** How much the liquid weighs, in kg: its density times its volume times the depth of the container (the cross-section is a slice as deep as it is wide). */
+    public val liquidMass: Float get() = fluid.density * volume * width
+
+    /** How thick it is right now: the fluid's viscosity, thinned by heat (it halves for every 25 degrees above 20, and thickens a little when cold). */
+    public val effectiveViscosity: Float get() = (fluid.viscosity * kotlin.math.exp(-(temperature - 20f) / 36f)).coerceIn(0f, 1f)
+
     /** How full it is, 0 to 1 of its upright capacity. */
     public val fill: Float get() = (volume / (width * height)).coerceIn(0f, 1f)
 
@@ -143,13 +168,15 @@ public class LiquidVessel(
 
     /** Moves everything on by [dt] seconds. */
     public fun step(dt: Float) {
+        // What it weighs, container and liquid, decides how it tips: a heavy liquid lowers the centre of mass.
+        body.setLoad(containerMass, liquidMass, if (width > 0f) volume / width else 0f)
         body.step(dt)
         // The liquid is pulled toward a surface that lies at the slope the sideways acceleration (and the container's own turning, felt at the middle of the liquid) says.
         val alpha = if (dt > 0f) (body.omega - lastOmega) / dt else 0f
         lastOmega = body.omega
         val a = lateral + alpha * height * 0.5f * fill
         surface.fit(width, (height * fill).coerceAtLeast(0.004f))
-        surface.damping *= 1f + 3f * fluid.viscosity
+        surface.damping *= 1f + 3f * effectiveViscosity
         surface.step(dt, tilt = (-a / 9.81f).coerceIn(-0.6f, 0.6f))
         lateral = 0f
 
@@ -166,7 +193,7 @@ public class LiquidVessel(
             val lip = Tilt.lipHeight(width, height, angle)
             val chord = Tilt.surfaceWidth(width, height, angle, lip).coerceAtLeast(width * 0.12f)
             val head = excess / chord
-            val flow = 0.6f * (2f / 3f) * sqrt(2f * 9.81f) * head.pow(1.5f) / (1f + 4f * fluid.viscosity)
+            val flow = 0.6f * (2f / 3f) * sqrt(2f * 9.81f) * head.pow(1.5f) / (1f + 4f * effectiveViscosity)
             val out = minOf(excess, flow * dt)
             volume -= out; spilled += out
             spillRate = if (dt > 0f) out / dt else 0f

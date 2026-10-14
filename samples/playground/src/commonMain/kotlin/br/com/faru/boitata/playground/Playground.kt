@@ -38,6 +38,7 @@ import br.com.faru.boitata.core.clock.BoitataScene
 import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.surface.PaneWeather
 import br.com.faru.boitata.core.surface.SurfaceClimate
+import br.com.faru.boitata.core.fluid.Fluid
 import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
 
@@ -296,6 +297,14 @@ private fun PondDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
 @Composable
 private fun LiquidsDemo(seconds: () -> Float) {
     val bench = remember { LiquidBench() }
+    val sel = bench.selected
+    val current = bench.fluid
+    // The sliders show the picked vessel's liquid, and move it when you drag them.
+    @Suppress("UNUSED_VARIABLE") val version = bench.fluidVersion
+    var viscosity by remember(sel, version) { mutableFloatStateOf(current.viscosity) }
+    var density by remember(sel, version) { mutableFloatStateOf(current.density / 1000f) }
+    var cloud by remember(sel, version) { mutableFloatStateOf(current.turbidity) }
+    var index by remember(sel, version) { mutableFloatStateOf(current.index) }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { LiquidsScene(seconds, bench) }
         Controls {
@@ -308,7 +317,14 @@ private fun LiquidsDemo(seconds: () -> Float) {
                 FilterChip(selected = false, onClick = { bench.light() }, label = { Text("Light the spill") })
                 FilterChip(selected = false, onClick = { bench.refill() }, label = { Text("Refill all") })
             }
-            Text("Tap a glass to pick it (and drop a ripple in). Hot liquids steam, boil and cool; pouring hot coffee mixes by volume and leaves foam. Drag it along the table and the liquid lags and sloshes. Pour more (it runs over the rim), knock it over (it pours out in a stream and makes a puddle that spreads), or drop something in. Spill over the end of the table and it runs off in drops to a puddle on the floor. Spilled kerosene burns: knock it over toward the flame, or light it. What is behind the glass shows through the liquid, magnified; the table mirrors it.", color = Color(0xFFB7BEC8))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (f in Fluid.All) FilterChip(selected = current.name == f.name, onClick = { bench.setFluid(f) }, label = { Text(f.name) })
+            }
+            Text("Tap a glass to pick it (and drop a ripple in). Drag it along the table and the liquid lags and sloshes. Hot liquids steam, boil and cool; pouring hot coffee mixes by volume and leaves foam. Knock it over: it pours out in a stream into a puddle that spreads, and a puddle that spreads past the end or the front of the table runs off in drops to the floor. Spilled kerosene burns. Choose the picked glass's liquid, or set its viscosity, density, cloudiness and refraction below.", color = Color(0xFFB7BEC8))
+            Labelled("Viscosity (water 0, honey 1)", viscosity, 0f..1f) { viscosity = it; bench.setFluid(bench.fluid.copy(viscosity = it)) }
+            Labelled("Density, thousand kg/m³ (water 1, mercury 13.5)", density, 0.5f..14f) { density = it; bench.setFluid(bench.fluid.copy(density = it * 1000f)) }
+            Labelled("Cloudiness", cloud, 0f..1f) { cloud = it; bench.setFluid(bench.fluid.copy(turbidity = it)) }
+            Labelled("Refraction index", index, 1f..1.7f) { index = it; bench.setFluid(bench.fluid.copy(index = it)) }
         }
     }
 }

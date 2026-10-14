@@ -25,8 +25,11 @@ public class Puddle(
     /** How much of it has burnt away, 0..1. */
     public var burnt: Float = 0f
 
+    /** How thick the liquid was when it spilled (0..1); the fluid's, thinned by the heat it had. */
+    public var viscosity: Float = fluid.viscosity
+
     /** How thick the settled film is, in meters. */
-    public val thickness: Float get() = 0.003f + 0.003f * fluid.viscosity
+    public val thickness: Float get() = 0.003f + 0.003f * viscosity
 
     /** The radius it is spreading toward. */
     public val settledRadius: Float get() = sqrt((volume * (1f - burnt)).coerceAtLeast(0f) / (PI.toFloat() * thickness))
@@ -39,7 +42,7 @@ public class Puddle(
 
     /** Spreads it on by [dt] seconds. */
     public fun step(dt: Float) {
-        val rate = 7f / (1f + 9f * fluid.viscosity)
+        val rate = 7f / (1f + 9f * viscosity)
         radius += (settledRadius - radius) * (1f - exp(-rate * dt))
         if (radius < 0f) radius = 0f
     }
