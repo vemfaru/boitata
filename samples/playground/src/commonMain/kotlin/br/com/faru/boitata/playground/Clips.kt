@@ -24,6 +24,7 @@ val Clips: List<Clip> = listOf(
     Clip("weather-snow", 6f, Wind.Breeze) { t -> WeatherScene(t, hour = 11f, kind = WeatherKind.Snow) },
     Clip("window-light", 8f, Wind.Breeze) { t -> WindowScene(t, hour = 7f + 11f * (t() / 8f).coerceIn(0f, 1f), cloud = 0f) },
     Clip("shadows", 8f, Wind.Breeze) { t -> ShadowScene({ Offset(0.5f + 0.38f * cos(t() * 0.8f), 0.45f + 0.25f * sin(t() * 0.8f)) }, 0.8f, seconds = t) },
+    Clip("window-dirty", 8f, Wind.Breeze) { t -> WindowScene(t, hour = 7f + 11f * (t() / 8f).coerceIn(0f, 1f), cloud = 0f, glass = WindowGlass.Dirty.optics) },
     Clip("moon-phases", 8f) { t -> WeatherScene(t, hour = 23f, kind = WeatherKind.Clear, moon = MoonPhase.All[t().toInt().coerceIn(0, 7)]) },
     Clip("burn", 10f, Wind(speed = 0.55f, direction = 1f, gustiness = 0.4f), stateful = true) { t -> BurnScene(t, timeScale = 3f) },
     Clip("lights", 10f, Wind.Breeze, stateful = true) { t -> LightsScene(t, hour = 15f + 9f * (t() / 10f).coerceIn(0f, 1f)) },

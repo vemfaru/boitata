@@ -85,3 +85,11 @@ A surface with `Optics.Paper()` (or `Frosted`, or tinted `Glass`) lets light thr
 - The shadows are drawn on the glow by `drawCastShadows(..., floor = false)`: a dark overlay keeps `1 - alpha` of the light under it, which is what an object in front of a lamp does to the paper behind.
 
 The playground's **Shadow theatre** tab is this: a paper screen in a frame, a lamp (candle, hurricane lamp or the Boitatá's fire) behind it, the characters and animals as puppets you drag between them, red or amber paper, and a Backstage view of the puppeteers' side.
+
+## Glass that blurs, bends and dirties
+
+`Optics` also says what a pane does to what is seen *through* it, not only to the light: `blur` (frosted or dirty), `distortion` (old hand-made glass), `haze` (a milky veil) and `tint` (stained glass). In the Window room:
+
+- **The view.** What is outside is recorded once into an offscreen layer, drawn again in strips shifted by a slow wave (`distortion`), and the result is blurred (`blur`) by the platform's blur effect, then veiled (`haze`) and speckled with dirt. Where the platform cannot blur (Android before 12) the view stays sharp. At Low quality only the haze and dirt are drawn. A clean pane costs nothing extra.
+- **The light.** The patch the window throws on the floor is tinted by the glass, dimmed by what it stops, and, when the glass scatters, drawn into a layer, blurred and added, so it lands wider and softer.
+- One setting drives both, so a dirty window looks dirty through the glass and in the light it lets in. The playground's Window tab has Clean, Dirty, Frosted, Old and Stained glass.
