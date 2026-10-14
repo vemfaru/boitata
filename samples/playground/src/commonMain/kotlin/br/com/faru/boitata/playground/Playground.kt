@@ -288,9 +288,10 @@ private fun LiquidsDemo(seconds: () -> Float) {
                 FilterChip(selected = false, onClick = { bench.pour() }, label = { Text("Pour") })
                 FilterChip(selected = false, onClick = { bench.drop() }, label = { Text("Drop in") })
                 FilterChip(selected = false, onClick = { bench.knock() }, label = { Text("Knock over") })
+                FilterChip(selected = false, onClick = { bench.light() }, label = { Text("Light the spill") })
                 FilterChip(selected = false, onClick = { bench.refill() }, label = { Text("Refill all") })
             }
-            Text("Tap a glass to pick it (and drop a ripple in). Drag it along the table and the liquid lags and sloshes. Pour more, knock it over, or drop something in. What is behind the glass shows through the liquid, magnified; the table mirrors it.", color = Color(0xFFB7BEC8))
+            Text("Tap a glass to pick it (and drop a ripple in). Drag it along the table and the liquid lags and sloshes. Pour more (it runs over the rim), knock it over (it pours out in a stream and makes a puddle that spreads), or drop something in. Spilled kerosene burns: slide it next to the flame and knock it over, or light it. What is behind the glass shows through the liquid, magnified; the table mirrors it.", color = Color(0xFFB7BEC8))
         }
     }
 }

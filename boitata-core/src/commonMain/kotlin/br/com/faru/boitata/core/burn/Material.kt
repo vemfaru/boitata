@@ -104,6 +104,9 @@ public class Material(
         /** The Boitatá's own flame: always burning, never burns down and rain cannot touch it. */
         public val Spirit: Material = Material("Spirit", ignitionHeat = 0.01f, burnSeconds = Float.POSITIVE_INFINITY, intensity = 1f, style = BurnStyle.None, waterproof = true)
 
+        /** A puddle of spilled kerosene or oil: lights at a spark or a flame near it, burns across its whole surface for a while, and is used up. */
+        public val SpilledOil: Material = Material("Spilled oil", ignitionHeat = 0.7f, burnSeconds = 16f, intensity = 0.8f, style = BurnStyle.None)
+
         /** A campfire kept fed: always burning. */
         public val Campfire: Material = Material("Campfire", ignitionHeat = 0.01f, burnSeconds = Float.POSITIVE_INFINITY, intensity = 1f, style = BurnStyle.Char)
     }

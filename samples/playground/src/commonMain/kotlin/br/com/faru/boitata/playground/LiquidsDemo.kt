@@ -24,6 +24,18 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntSize
+import br.com.faru.boitata.core.burn.BodyGeometry
+import br.com.faru.boitata.core.burn.BurnStatus
+import br.com.faru.boitata.core.burn.FireBody
+import br.com.faru.boitata.core.burn.FireWorld
+import br.com.faru.boitata.core.burn.Material
+import br.com.faru.boitata.core.fluid.Puddle
+import br.com.faru.boitata.core.fluid.Spill
+import br.com.faru.boitata.core.wind.Wind
+import br.com.faru.boitata.light.drawBurningBody
+import br.com.faru.boitata.light.drawPuddle
+import br.com.faru.boitata.light.drawSpillStream
+import androidx.compose.ui.graphics.drawscope.clipRect
 import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.core.clock.RunOnSceneClock
 import br.com.faru.boitata.core.clock.rememberSceneQuality
@@ -40,6 +52,7 @@ import kotlin.math.abs
 class BenchVessel(val vessel: LiquidVessel, val style: VesselStyle, var x: Float, val fill: Float) {
     internal var lastVelocity = 0f
     internal var lastX = x
+    internal var lastSpilled = 0f
 }
 
 /**
@@ -58,21 +71,66 @@ class LiquidBench {
     /** How many meters one share of the table's width is, set by the drawing, to turn a drag into an acceleration. */
     internal var metersPerShare = 1f
     internal var scriptT = -1f
+    internal var ppm = 1f
+    internal var tableY = 0f
+    internal var width = 1f
+    internal var height = 1f
+
+    /** The puddles that spilled liquid has made, and the fire that spreads through the ones that burn. */
+    val puddles = ArrayList<Puddle>()
+    internal val world = FireWorld()
+    private val bodies = HashMap<Puddle, FireBody>()
+    internal fun body(p: Puddle): FireBody? = bodies[p]
+    private var elapsed = 0f
+
+    init {
+        // A flame on the left of the bench: a spill that reaches it, if it burns, catches.
+        world.add(FireBody("flame", Material.Campfire) { BodyGeometry(width * 0.1f, tableY, height * 0.14f, height * 0.3f) })
+        world.ignite("flame")
+    }
+
+    /** Sets light to the spilled liquid, if it burns (the nearest puddle to the picked vessel). */
+    fun light() {
+        val v = vessels[selected]
+        val p = puddles.filter { it.fluid.flammable }.minByOrNull { abs(it.x - (width * v.x)) } ?: return
+        bodies[p]?.let { world.ignite(it.id) }
+    }
 
     fun select(i: Int) { selected = i.coerceIn(0, vessels.size - 1) }
     fun pour() { vessels[selected].vessel.pour(vessels[selected].vessel.width * vessels[selected].vessel.height * 0.14f) }
     fun drop() { vessels[selected].vessel.drop(0.3f + 0.4f * ((vessels[selected].vessel.surface.energy() * 7f) % 1f), 0.9f) }
-    fun knock() { val v = vessels[selected].vessel; v.knock(9f, if (vessels[selected].x < 0.5f) 1f else -1f) }
-    fun refill() { for (b in vessels) b.vessel.reset(b.fill) }
+    /** Tips the picked vessel over, toward the way you say (+1 right, -1 left), or toward the middle of the table by default. */
+    fun knock(direction: Float = if (vessels[selected].x < 0.5f) 1f else -1f) { vessels[selected].vessel.knock(9f, direction) }
+    fun refill() { for (b in vessels) { b.vessel.reset(b.fill); b.lastSpilled = 0f }; puddles.clear(); for (body in bodies.values) world.extinguish(body.id); bodies.clear() }
 
     internal fun step(dt: Float) {
+        // (called every frame by the scene)
         for (b in vessels) {
             // A drag moves the vessel; the liquid feels the change in its speed.
             val v = (b.x - b.lastX) * metersPerShare / dt
             b.vessel.accelerate(-(v - b.lastVelocity) / dt * 0.0f + (v - b.lastVelocity) / dt)
             b.lastVelocity = v; b.lastX = b.x
             b.vessel.step(dt)
+            // What ran over the lip lands on the table and joins a puddle there (or starts one).
+            val ran = b.vessel.spilled - b.lastSpilled
+            b.lastSpilled = b.vessel.spilled
+            if (ran > 0f && ppm > 1f) {
+                val v = b.vessel
+                val s = if (v.body.angle >= 0f) 1f else -1f
+                val landing = width * b.x + v.width * ppm / 2f + s * (v.lipX() + Spill.reach(v.lipHeight(), v.jetSpeed)) * ppm
+                val puddle = puddles.firstOrNull { it.fluid === v.fluid && abs(it.x - landing) < it.radius * ppm + 16f } ?: Puddle(landing, v.fluid).also { p ->
+                    puddles += p
+                    if (v.fluid.flammable) {
+                        val id = "puddle${puddles.size}-${elapsed}"
+                        bodies[p] = world.add(FireBody(id, Material.SpilledOil) { BodyGeometry(p.x, tableY, 2f * p.radius * ppm, height * 0.14f) })
+                    }
+                }
+                puddle.add(ran * v.width)
+            }
         }
+        for (p in puddles) { p.step(dt); bodies[p]?.let { p.burnt = it.consumed } }
+        elapsed += dt
+        world.step(dt, elapsed, Wind.Calm)
     }
 }
 
@@ -108,6 +166,7 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
     val tableY = h * TABLE
     val ppm = h * 2.6f
     bench.metersPerShare = w / ppm
+    bench.ppm = ppm; bench.tableY = tableY; bench.width = w; bench.height = h
     // Everything behind the glasses, recorded once: the lit wall, a lamp with a flame, and Maria Bonita behind the table, so there is something to see through the liquid.
     behind.record(size = IntSize(w.toInt(), h.toInt())) {
         drawRect(Brush.verticalGradient(0f to Color(0xFF3A2D26), 1f to Color(0xFF1A1411)), size = Size(w, tableY))
@@ -122,11 +181,15 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
     // The table: a dark top with a glossy sheen, and its front edge.
     drawRect(Brush.verticalGradient(0f to Color(0xFF3A2A1C), 1f to Color(0xFF1B130C), startY = tableY, endY = h), Offset(0f, tableY), Size(w, h - tableY))
     drawRect(Color(0xFFFFE2B0).copy(alpha = 0.06f), Offset(0f, tableY), Size(w, h * 0.02f))
+    // Puddles on the table, and the fire on the ones that burn.
+    clipRect(0f, tableY - h * 0.1f, w, h) { for (p in bench.puddles) drawPuddle(p.fluid.color, p.x, tableY + h * 0.03f, p.radius * ppm, p.burnt) }
+    for (p in bench.puddles) bench.body(p)?.let { body -> if (body.status == BurnStatus.Burning) drawBurningBody(body, body.geometry().let { g -> BodyGeometry(g.feetX, tableY + h * 0.03f, g.width, g.height) }, t, Wind.Calm, quality) }
     for ((i, b) in bench.vessels.withIndex()) {
         val px = w * b.x + b.vessel.width * ppm / 2f
         // Selected: a faint pool under it.
         if (i == bench.selected) drawOval(Color(0xFFFFE9B0).copy(alpha = 0.12f), Offset(px - b.vessel.width * ppm, tableY - 4f), Size(b.vessel.width * ppm * 2f, 14f))
         drawVessel(b.vessel, b.style, px, tableY + 6f, ppm, t, quality, behind = behind, mirrored = 0.22f)
+        drawSpillStream(b.vessel, px, tableY + 6f, ppm, t, quality)
     }
 }
 
@@ -136,7 +199,8 @@ fun scriptedBench(bench: LiquidBench, t: Float) {
     if (crossed(0.8f)) { bench.select(0); bench.drop() }
     if (crossed(1.6f)) { bench.select(1); bench.pour() }
     if (t in 2.2f..4.2f) bench.vessels[2].x = 0.62f + 0.12f * kotlin.math.sin((t - 2.2f) * 2.2f) * kotlin.math.min(1f, (t - 2.2f)) * kotlin.math.min(1f, 4.2f - t)
-    if (crossed(4.8f)) { bench.select(0); bench.knock() }
-    if (crossed(7.2f)) { bench.select(3); bench.knock() }
+    if (crossed(3.6f)) { bench.select(0); bench.knock() }
+    if (t in 4.0f..5.4f) bench.vessels[3].x = 0.82f - (0.82f - 0.26f) * ((t - 4.0f) / 1.4f).coerceIn(0f, 1f)
+    if (crossed(5.6f)) { bench.select(3); bench.knock(-1f) }
     bench.scriptT = t
 }

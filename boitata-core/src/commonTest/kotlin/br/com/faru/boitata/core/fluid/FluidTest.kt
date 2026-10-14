@@ -136,3 +136,41 @@ class VesselTest {
         assertTrue(glass.surface.energy() > 0f)
     }
 }
+
+class PuddleTest {
+    @Test
+    fun aGlassfulMakesAPuddleAboutFifteenCentimetresAcrossThatSpreadsFastAtFirst() {
+        val p = Puddle(0f, Fluid.Water, volume = 0.07f * 0.07f * 0.06f)         // a glass, 7 cm across and 6 cm of water
+        assertEquals(0.14f, p.settledRadius, 0.04f)
+        p.add(0f)
+        repeat(30) { p.step(1f / 60f) }
+        val half = p.radius
+        repeat(300) { p.step(1f / 60f) }
+        assertTrue(half in 0.02f..p.radius, "it had begun: $half")
+        assertEquals(p.settledRadius, p.radius, 0.005f, "and it settles")
+    }
+
+    @Test
+    fun oilSpreadsSlowerAndStaysThickerThanWater() {
+        fun after(f: Fluid, seconds: Float): Float { val p = Puddle(0f, f, 3e-4f); p.add(0f); repeat((seconds * 60).toInt()) { p.step(1f / 60f) }; return p.radius }
+        assertTrue(after(Fluid.Water, 0.3f) > after(Fluid.Oil, 0.3f), "slower")
+        assertTrue(Puddle(0f, Fluid.Oil, 3e-4f).settledRadius < Puddle(0f, Fluid.Water, 3e-4f).settledRadius, "thicker, so smaller")
+    }
+
+    @Test
+    fun aBurningPuddleShrinksAsItIsUsedUp() {
+        val p = Puddle(0f, Fluid.Kerosene, 3e-4f); p.add(0f); repeat(600) { p.step(1f / 60f) }
+        val whole = p.radius
+        p.burnt = 0.75f
+        repeat(600) { p.step(1f / 60f) }
+        assertTrue(p.radius < whole * 0.6f, "${p.radius} of $whole")
+    }
+
+    @Test
+    fun aStreamLandsFartherTheHigherTheLipAndTheFasterItLeaves() {
+        assertEquals(0f, Spill.fallTime(0f))
+        assertTrue(Spill.reach(0.2f, 1f) > Spill.reach(0.05f, 1f))
+        assertTrue(Spill.reach(0.1f, 2f) > Spill.reach(0.1f, 1f))
+        assertEquals(0.5f * 9.81f * Spill.fallTime(0.1f) * Spill.fallTime(0.1f), 0.1f, 1e-4f, "it falls the height of the lip")
+    }
+}

@@ -132,3 +132,53 @@ public fun DrawScope.drawVessel(
         drawRect(Color.White.copy(alpha = 0.35f), Offset(-wp * 0.88f, -hp * 0.88f), Size(wp * 0.05f, hp * 0.7f))
     }
 }
+
+/**
+ * The stream running over a vessel's lip while it spills: a parabola from the lip (the speed it leaves with, falling under gravity) to where it lands on the surface, [pixelsPerMeter] big, as thick as the flow says
+ * (`Spill.thickness`, a little exaggerated so it shows), with a bright thread down it and a splash where it lands. Draws nothing when nothing is spilling. The vessel's corner is at ([pivotX], [pivotY]) on the surface, as for [drawVessel].
+ */
+public fun DrawScope.drawSpillStream(vessel: LiquidVessel, pivotX: Float, pivotY: Float, pixelsPerMeter: Float, seconds: Float, quality: Quality = Quality.High) {
+    if (!vessel.spilling) return
+    val s = if (vessel.body.angle >= 0f) 1f else -1f
+    val ppm = pixelsPerMeter
+    val lipX = vessel.lipX(); val lipZ = vessel.lipHeight()
+    val speed = vessel.jetSpeed
+    val fall = br.com.faru.boitata.core.fluid.Spill.fallTime(lipZ)
+    val thick = (br.com.faru.boitata.core.fluid.Spill.thickness(vessel.spillRate, speed) * ppm * 9f).coerceIn(2f, 22f)
+    val color = vessel.fluid.color
+    val steps = if (quality == Quality.Low) 6 else 18
+    val path = Path()
+    for (k in 0..steps) {
+        val t = fall * k / steps
+        val x = pivotX + s * (lipX + speed * t) * ppm
+        val y = pivotY - (lipZ - 0.5f * 9.81f * t * t).coerceAtLeast(0f) * ppm
+        if (k == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    }
+    drawPath(path, color.copy(alpha = 0.8f), style = Stroke(thick, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+    drawPath(path, Color.White.copy(alpha = 0.35f), style = Stroke(thick * 0.3f, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+    // The splash where it lands: two rings opening and a few drops thrown up.
+    val landX = pivotX + s * (lipX + speed * fall) * ppm
+    for (r in 0..1) {
+        val u = br.com.faru.boitata.core.fx.cycle(seconds, 0.6f, r * 0.5f)
+        drawOval(color.copy(alpha = 0.5f * br.com.faru.boitata.core.fx.bump(u)), Offset(landX - thick * (1f + 3f * u), pivotY - thick * 0.3f * (1f + 3f * u)), Size(2f * thick * (1f + 3f * u), thick * 0.6f * (1f + 3f * u)), style = Stroke(1.6f))
+    }
+    val noise = br.com.faru.boitata.core.FastNoise(3L)
+    for (i in 0 until if (quality == Quality.Low) 2 else 6) {
+        val u = br.com.faru.boitata.core.fx.cycle(seconds, 0.5f + 0.3f * noise.at(i, 0), noise.at(i, 1))
+        val dx = (noise.at(i, 2) - 0.5f) * thick * 5f * u
+        drawCircle(color.copy(alpha = 0.8f * (1f - u)), 1.8f, Offset(landX + dx, pivotY - thick * 3f * u * (1f - u) * 4f))
+    }
+}
+
+/**
+ * A puddle on a surface: a flat ellipse of the liquid centred on ([centreX], [surfaceY]), [radius] pixels wide, glossy, with a bright rim. [burnt] (0..1) dims it as it is used up and leaves a dark stain behind.
+ */
+public fun DrawScope.drawPuddle(color: Color, centreX: Float, surfaceY: Float, radius: Float, burnt: Float = 0f) {
+    if (radius < 1.5f) return
+    val ry = radius * 0.16f
+    val top = Offset(centreX - radius, surfaceY - ry); val size = Size(2f * radius, 2f * ry)
+    if (burnt > 0.02f) drawOval(Color(0xFF0F0C0A).copy(alpha = 0.45f * burnt), top, size)
+    drawOval(color.copy(alpha = 0.5f * (1f - 0.8f * burnt)), top, size)
+    drawOval(Color.White.copy(alpha = 0.22f * (1f - burnt)), Offset(centreX - radius * 0.7f, surfaceY - ry * 0.7f), Size(radius * 1.4f, ry * 0.7f))
+    drawOval(Color.White.copy(alpha = 0.35f * (1f - burnt)), top, size, style = Stroke(1.4f))
+}
