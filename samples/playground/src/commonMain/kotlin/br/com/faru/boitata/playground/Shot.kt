@@ -259,7 +259,7 @@ internal fun ShotDemo(seconds: () -> Float, onShot: (() -> Unit)? = null) {
                 for ((label, v) in listOf("Slow motion 0.15x" to 0.15f, "Slow 0.5x" to 0.5f, "Real time" to 1f)) FilterChip(selected = speed == v, onClick = { anchor = (anchor + (seconds() - origin) * speed); origin = seconds(); speed = v }, label = { Text(label) })
                 FilterChip(selected = false, onClick = { origin = seconds(); anchor = 0f }, label = { Text("Fire again") })
             }
-            Text("The muzzle flash is a light: for a tenth of a second it throws every shadow flat against the wall. The smoke and the ash follow the wind (set it above). Slow it down to watch the flash, the shell, the smoke and the ash separately.", color = Color(0xFFB7BEC8))
+            Text("The muzzle flash is a light: for a tenth of a second it throws every shadow flat against the wall. The smoke and the ash follow the wind (set it above). Slow it down to watch the flash, the shell, the smoke and the ash separately.", color = controlText())
         }
     }
 }

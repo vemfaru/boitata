@@ -86,3 +86,12 @@ At each pause a drawer rises from the bottom of the screen, styled as a cordel b
 - **Language:** Portuguese and English, switched with a button.
 
 The chapter index is the booklet's cover ("folheto"): a list of chapters as bookmarks with a progress ribbon, and a "Oficina" door at the end that opens every tab freely.
+
+
+## Status
+
+Built: the director (cover, chapters, verse ribbon in two languages, pauses with the scene's controls and a ficha, the paper-burn transition from chapter 0 to 1), and one scene per chapter: the shadow theatre (0), the forest (1), the guardian's fire (2), the things that burn on a table (3), the festa (4), the chase (5), the lagoon (6), the shot with a synthesized gunshot (7), the frosted window at dawn (8).
+
+Also built: Maria wipes a heart into the frosted pane and takes her coffee at dawn (chapter 8), which then returns to the shadow screen where the puppets bow and the lamp is blown out ("Fim"); the theatre uses jointed cut-paper puppets (the hunter with swinging legs and arm, the jaguar with a flicking tail, a rippling Boitatá, the moon).
+
+Not yet: a separate dance cycle for Lampião and Maria on the festa floor (the couple strip is used), the Benzedrine strip (only planned, see benzedrine-coffee-plan.md), and the carved dials, stamps and gauges of the UI kit in the control panels (they reuse the standard controls on the paper drawer). Android and iOS audio sinks are still silent, so the gunshot only sounds on desktop and web.

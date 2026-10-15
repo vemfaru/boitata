@@ -18,7 +18,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.onSizeChanged
@@ -55,17 +57,64 @@ enum class TheatrePaper(val label: String, val tint: Color) {
     Red("Red paper", Color(0xFFFF6B5A)),
 }
 
+private val PuppetArt = listOf("puppet_cacador_body", "puppet_cacador_arm", "puppet_cacador_leg_1", "puppet_cacador_leg_2", "puppet_onca", "puppet_onca_tail", "puppet_moon", "puppet_boitata_head", "puppet_boitata_tail") + (1..5).map { "puppet_boitata_seg_$it" }
+
 /** The frame, paper, curtains and audience of the theatre (file names). */
-private val TheatreArt = listOf("theatre_frame_post", "theatre_frame_bar", "theatre_frame_corner", "theatre_frame_foot", "theatre_paper", "theatre_valance", "theatre_curtain_1", "theatre_curtain_2") +
+private val TheatreArt = PuppetArt + listOf("theatre_frame_post", "theatre_frame_bar", "theatre_frame_corner", "theatre_frame_foot", "theatre_paper", "theatre_valance", "theatre_curtain_1", "theatre_curtain_2") +
     (1..6).map { "theatre_audience_$it" }
 
-private val Puppets = listOf("lampiao" to 0.30f, "maria_bonita" to 0.30f, "cacador" to 0.30f, "onca" to 0.15f, "tamandua" to 0.13f, "capivara" to 0.12f)
+private val Puppets = listOf("lampiao" to 0.30f, "maria_bonita" to 0.30f, "cacador" to 0.30f, "onca" to 0.17f, "tamandua" to 0.13f, "capivara" to 0.12f, "boitata" to 0.15f, "moon" to 0.13f)
+
+/** The puppets cut in pieces and pinned at the joints (so they move as they are carried), and how wide each is against its height. */
+private val JointedAspect = mapOf("cacador" to 0.62f, "onca" to 1.6f, "boitata" to 3.8f, "moon" to 1f)
+private val JointedMaster = mapOf("cacador" to "puppet_cacador_body", "onca" to "puppet_onca", "boitata" to "puppet_boitata_head", "moon" to "puppet_moon")
+
+private fun DrawScope.drawCentred(image: ImageBitmap, cx: Float, cy: Float, size: Float, colour: Color, degrees: Float = 0f, pivot: Offset = Offset(cx, cy)) {
+    val k = size / maxOf(image.width, image.height)
+    withTransform({ rotate(degrees, pivot) }) { drawArt(image, Offset(cx - image.width * k / 2f, cy - image.height * k / 2f), k, colour) }
+}
+
+/** A cut-paper puppet drawn from its pieces at time [t]: feet at the origin, up negative, [height] tall. The legs swing, the tail flicks, the serpent's body ripples. */
+private fun jointedSilhouette(art: Sprites, id: String, height: Float, t: Float): DrawScope.(Color) -> Unit = { c ->
+    val h = height; val w = h * JointedAspect.getValue(id)
+    when (id) {
+        "moon" -> drawCentred(art.art("puppet_moon"), 0f, -h / 2f, h, c)
+        "onca" -> {
+            val body = art.art("puppet_onca"); val k = h / body.height
+            drawArt(body, Offset(-body.width * k / 2f, -h), k, c)
+            val tail = art.art("puppet_onca_tail"); val tk = h * 0.32f / tail.height
+            val root = Offset(-w / 2f + w * 0.03f, -h * 0.72f)
+            withTransform({ rotate(sin(t * 3f) * 18f, root) }) { drawArt(tail, Offset(root.x - tail.width * tk * 0.9f, root.y - tail.height * tk / 2f), tk, c) }
+        }
+        "cacador" -> {
+            val body = art.art("puppet_cacador_body"); val bk = h * 0.66f / body.height
+            val hip = Offset(0f, -h * 0.36f)
+            for ((i, leg) in listOf("puppet_cacador_leg_1", "puppet_cacador_leg_2").withIndex()) {
+                val img = art.art(leg); val lk = h * 0.38f / img.height
+                withTransform({ rotate((if (i == 0) 1f else -1f) * sin(t * 3f) * 22f, hip) }) { drawArt(img, Offset(hip.x - img.width * lk / 2f, hip.y), lk, c) }
+            }
+            drawArt(body, Offset(-body.width * bk / 2f, -h), bk, c)
+            val arm = art.art("puppet_cacador_arm"); val ak = h * 0.3f / arm.height
+            val shoulder = Offset(h * 0.04f, -h * 0.82f)
+            withTransform({ rotate(-20f + sin(t * 2f) * 8f, shoulder) }) { drawArt(arm, Offset(shoulder.x - arm.width * ak / 2f, shoulder.y), ak, c) }
+        }
+        "boitata" -> {
+            for (i in 6 downTo 0) {
+                val img = if (i == 6) art.art("puppet_boitata_tail") else art.art("puppet_boitata_seg_${i + 1 - if (i == 5) 1 else 0}".replace("seg_6", "seg_5"))
+                val cx = w / 2f - h * (0.62f + 0.43f * (i + 1)); val cy = -h * 0.5f + sin(t * 2.2f - (i + 1) * 0.9f) * h * 0.14f
+                drawCentred(img, cx, cy, h * (0.62f - 0.03f * i), c, degrees = cos(t * 2.2f - (i + 1) * 0.9f) * 14f)
+            }
+            drawCentred(art.art("puppet_boitata_head"), w / 2f - h * 0.5f, -h * 0.5f + sin(t * 2.2f) * h * 0.06f, h, c)
+        }
+    }
+}
 private val PuppetStart = mapOf(
     "lampiao" to (0.30f to 0.62f), "maria_bonita" to (0.50f to 0.74f), "cacador" to (0.70f to 0.55f),
-    "onca" to (0.22f to 0.9f), "tamandua" to (0.78f to 0.92f), "capivara" to (0.5f to 0.40f),
+    "onca" to (0.22f to 0.9f), "tamandua" to (0.78f to 0.92f), "capivara" to (0.5f to 0.40f), "boitata" to (0.5f to 0.30f), "moon" to (0.12f to 0.18f),
 )
 
 private class TheatreSetup(val stage: DepthStage, val rig: LightRig, val lamp: PointLight, val screen: Billboard) {
+    val baseStrength = lamp.strength
     val bodies = HashMap<String, Billboard>()
 }
 
@@ -78,9 +127,9 @@ private fun buildTheatre(art: Sprites, size: IntSize): TheatreSetup {
     val perspective = Perspective(frontEdgeY = bottom, backEdgeY = top, depth = 6f, eyeBack = 3f, eyeHeight = 2.5f, pitchDegrees = 28f, referenceY = bottom - 0.3f * (bottom - top))
     val stage = DepthStage(perspective, w * 0.14f, top, w * 0.86f, bottom)
     for ((id, share) in Puppets) {
-        val image = art.prop(id)
+        val aspect = JointedAspect[id] ?: art.prop(id).let { it.width.toFloat() / it.height }
         val (x, y) = PuppetStart.getValue(id)
-        stage.add(DepthItem(id, stage.groundLeft + (stage.groundRight - stage.groundLeft) * x, top + (bottom - top) * y, h * share, image.width.toFloat() / image.height))
+        stage.add(DepthItem(id, stage.groundLeft + (stage.groundRight - stage.groundLeft) * x, top + (bottom - top) * y, h * share, aspect))
     }
     stage.add(DepthItem("lamp", w * 0.5f, top + (bottom - top) * 0.04f, h * 0.05f, 1f))
     val rig = LightRig(ambient = 0.03f)
@@ -89,7 +138,7 @@ private fun buildTheatre(art: Sprites, size: IntSize): TheatreSetup {
     screen.maxShadowScale = 14f
     rig.add(screen)
     val setup = TheatreSetup(stage, rig, lamp, screen)
-    for ((id, _) in Puppets) setup.bodies[id] = Billboard(0f, 0f, 0f, 0f, owner = id, mask = art.mask(id))
+    for ((id, _) in Puppets) setup.bodies[id] = Billboard(0f, 0f, 0f, 0f, owner = id, mask = JointedMaster[id]?.let { art.art(it).toAlphaMask() } ?: art.mask(id))
     return setup
 }
 
@@ -107,6 +156,8 @@ fun ShadowTheatreScene(
     paper: TheatrePaper = TheatrePaper.White,
     backstage: Boolean = false,
     script: ((DepthStage, Float) -> Unit)? = null,
+    /** 0 with the lamp lit, up to 1 with it blown out: the paper goes dark. */
+    lampOut: () -> Float = { 0f },
 ) {
     val art = LocalSprites.current ?: return
     val loaded by produceState(false, art) { art.ensure(TheatreArt); value = true }
@@ -119,11 +170,11 @@ fun ShadowTheatreScene(
         SideEffect { script(setup.stage, now) }
     }
     Box(modifier.onSizeChanged { size = it }.let { if (setup != null) it.depthDrag(setup.stage) else it }) {
-        Spacer(Modifier.fillMaxSize().drawBehind { if (setup != null) drawTheatre(art, setup, seconds(), lamp, paper, backstage, quality()) })
+        Spacer(Modifier.fillMaxSize().drawBehind { if (setup != null) drawTheatre(art, setup, seconds(), lamp, paper, backstage, quality(), lampOut()) })
     }
 }
 
-private fun DrawScope.drawTheatre(art: Sprites, s: TheatreSetup, t: Float, kind: TheatreLamp, paper: TheatrePaper, backstage: Boolean, quality: Quality) {
+private fun DrawScope.drawTheatre(art: Sprites, s: TheatreSetup, t: Float, kind: TheatreLamp, paper: TheatrePaper, backstage: Boolean, quality: Quality, lampOut: Float = 0f) {
     val w = size.width; val h = size.height
     val stage = s.stage; val rig = s.rig; val screen = s.screen
     // Behind the screen: a dark stage, a curtain, boards.
@@ -132,17 +183,16 @@ private fun DrawScope.drawTheatre(art: Sprites, s: TheatreSetup, t: Float, kind:
     drawTiled(art.floor, Rect(0f, h * 0.5f, w, h), tile = w * 0.3f, tint = Color(0xFF1B1511))
 
     val orb = stage.item("lamp")
-    s.lamp.color = kind.color; s.lamp.flicker = kind.flicker; s.lamp.size = kind.size
+    s.lamp.color = kind.color; s.lamp.flicker = kind.flicker * (1f - lampOut); s.lamp.size = kind.size; s.lamp.strength = s.baseStrength * (1f - lampOut)
     s.lamp.x = orb.feetX; s.lamp.y = orb.feetY; s.lamp.height = h * 0.28f * stage.perspective.scale(orb.feetY) * (1f + 0.3f * orb.lift)
     screen.optics = Optics.Paper(paper.tint)
     rig.surfaces.removeAll { it !== screen }
     for ((id, _) in Puppets) {
         val item = stage.item(id)
-        val image = art.prop(id)
-        val height = stage.height(item); val half = height * item.aspect / 2f; val k = height / image.height
+        val height = stage.height(item); val half = height * item.aspect / 2f
         val body = s.bodies.getValue(id)
         body.footY = item.feetY; body.left = item.feetX - half; body.right = item.feetX + half; body.height = height
-        body.silhouette = { c -> drawArt(image, Offset(-image.width * k / 2f, -height), k, c) }
+        body.silhouette = if (id in JointedAspect) jointedSilhouette(art, id, height, t) else { val image = art.prop(id); val k = height / image.height; { c -> drawArt(image, Offset(-image.width * k / 2f, -height), k, c) } }
         rig.add(body)
     }
 
@@ -228,4 +278,6 @@ fun scriptedTheatre(stage: DepthStage, t: Float) {
     move("maria_bonita", 0.5f + 0.2f * cos(a), 0.7f)
     move("capivara", 0.2f, 0.5f)
     move("tamandua", 0.85f, 0.85f)
+    move("boitata", 0.5f + 0.28f * sin(a * 0.8f), 0.3f + 0.3f * (0.5f - 0.5f * cos(a * 0.8f)))
+    move("moon", 0.12f, 0.12f + 0.1f * sin(a))
 }

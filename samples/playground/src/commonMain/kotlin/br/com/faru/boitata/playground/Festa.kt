@@ -228,7 +228,7 @@ internal fun FestaDemo(seconds: () -> Float) {
                 FilterChip(selected = lanterns, onClick = { lanterns = !lanterns }, label = { Text("Lanterns") })
             }
             Labelled("Bonfire", bonfire, 0f..1.4f) { bonfire = it }
-            Text("Every flame is a light: the bonfire, three paper lanterns, the balloon and each rocket as it bursts. Colours mix on whoever stands in them, each light throws its own shadow, and a burst floods the square with its colour. Change the wind above: the flags, the balloon and the corn follow it.", color = Color(0xFFB7BEC8))
+            Text("Every flame is a light: the bonfire, three paper lanterns, the balloon and each rocket as it bursts. Colours mix on whoever stands in them, each light throws its own shadow, and a burst floods the square with its colour. Change the wind above: the flags, the balloon and the corn follow it.", color = controlText())
         }
     }
 }

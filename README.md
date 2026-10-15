@@ -273,6 +273,16 @@ fun MinimalRain() {
 
 All of these snippets are in [Minimal.kt](samples/playground/src/commonMain/kotlin/br/com/faru/boitata/playground/Minimal.kt) and are compiled with the rest of the project.
 
+## A story told with it
+
+The playground opens on **O Fogo que Guarda**, a cordel in nine chapters told as a shadow play at São João: the Boitatá, the hunter who burns the forest, Lampião and Maria Bonita. Each chapter plays its scene with the verse on a ribbon, then pauses and hands you the scene ("Mexa na cena") with a note on the physics behind its controls. Story and chapter list: [docs/story/boitata-story.md](docs/story/boitata-story.md).
+
+![The night of São João: a bonfire, lanterns, flags in the wind and a rocket bursting, every flame a light](docs/media/festa.gif)
+
+![The shot: the muzzle flash is a light that throws every shadow on the wall, then smoke and ash on the wind](docs/media/shot.gif)
+
+![The chase: the serpent follows the hunter's path through the depth layers and closes in](docs/media/chase.gif)
+
 ## Try the playground
 
 A demo app with live controls (hour, weather, light position, fire size) for every feature above.

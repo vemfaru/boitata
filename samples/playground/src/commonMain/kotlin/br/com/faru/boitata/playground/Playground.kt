@@ -98,15 +98,15 @@ fun PlaygroundApp() {
 private fun WindControls(wind: Wind, onChange: (Wind) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text("Wind", color = Color(0xFFB7BEC8))
+            Text("Wind", color = controlText())
             for ((name, preset) in listOf("Calm" to Wind.Calm, "Breeze" to Wind.Breeze, "Windy" to Wind.Windy, "Gale" to Wind.Gale)) {
                 FilterChip(selected = wind.speed == preset.speed && wind.gustiness == preset.gustiness, onClick = { onChange(preset.copy(direction = if (wind.direction == 0f) 1f else wind.direction)) }, label = { Text(name) })
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f)) { Text("Speed ${(wind.speed * 100).toInt()}%", color = Color(0xFFB7BEC8)); Slider(wind.speed, { onChange(wind.copy(speed = it)) }, valueRange = 0f..1f) }
-            Column(Modifier.weight(1f)) { Text(if (wind.direction < -0.05f) "Blowing left" else if (wind.direction > 0.05f) "Blowing right" else "No direction", color = Color(0xFFB7BEC8)); Slider(wind.direction, { onChange(wind.copy(direction = it)) }, valueRange = -1f..1f) }
-            Column(Modifier.weight(1f)) { Text("Gusts ${(wind.gustiness * 100).toInt()}%", color = Color(0xFFB7BEC8)); Slider(wind.gustiness, { onChange(wind.copy(gustiness = it)) }, valueRange = 0f..1f) }
+            Column(Modifier.weight(1f)) { Text("Speed ${(wind.speed * 100).toInt()}%", color = controlText()); Slider(wind.speed, { onChange(wind.copy(speed = it)) }, valueRange = 0f..1f) }
+            Column(Modifier.weight(1f)) { Text(if (wind.direction < -0.05f) "Blowing left" else if (wind.direction > 0.05f) "Blowing right" else "No direction", color = controlText()); Slider(wind.direction, { onChange(wind.copy(direction = it)) }, valueRange = -1f..1f) }
+            Column(Modifier.weight(1f)) { Text("Gusts ${(wind.gustiness * 100).toInt()}%", color = controlText()); Slider(wind.gustiness, { onChange(wind.copy(gustiness = it)) }, valueRange = 0f..1f) }
         }
     }
 }
@@ -115,21 +115,33 @@ private fun WindControls(wind: Wind, onChange: (Wind) -> Unit) {
 @Composable
 private fun MoonControls(phase: MoonPhase, southern: Boolean, onPhase: (MoonPhase) -> Unit, onHemisphere: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        Text("Moon", color = Color(0xFFB7BEC8))
+        Text("Moon", color = controlText())
         for (p in MoonPhase.All) FilterChip(selected = p === phase, onClick = { onPhase(p) }, label = { Text(p.label) })
         FilterChip(selected = southern, onClick = { onHemisphere(!southern) }, label = { Text(if (southern) "Southern sky" else "Northern sky") })
     }
 }
 
+/** True inside the story's pauses: the controls sit on the carved paper drawer and use dark ink. */
+internal val LocalPaperPanel = androidx.compose.runtime.compositionLocalOf { false }
+
+/** The colour of a control's explanation: pale on the plain panel, dark ink on the paper drawer. */
+@Composable
+internal fun controlText(): Color = if (LocalPaperPanel.current) Color(0xFF3A2414) else Color(0xFFB7BEC8)
+
 @Composable
 internal fun Controls(content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(Color(0xCC0B0D10)).padding(horizontal = 16.dp, vertical = 8.dp)) { content() }
+    val paper = LocalPaperPanel.current
+    val drawer = if (paper) LocalSprites.current?.art("ui_drawer") else null
+    Box(Modifier.fillMaxWidth()) {
+        if (drawer != null) androidx.compose.foundation.Image(drawer, null, Modifier.matchParentSize(), contentScale = androidx.compose.ui.layout.ContentScale.FillBounds)
+        Column(Modifier.fillMaxWidth().let { if (drawer == null) it.background(Color(0xCC0B0D10)) else it }.padding(horizontal = 28.dp, vertical = if (drawer == null) 8.dp else 14.dp)) { content() }
+    }
 }
 
 @Composable
 internal fun Labelled(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        Text(label, Modifier.padding(end = 12.dp).fillMaxWidth(0.22f), color = Color(0xFFB7BEC8))
+        Text(label, Modifier.padding(end = 12.dp).fillMaxWidth(0.22f), color = controlText())
         Slider(value, onChange, valueRange = range, modifier = Modifier.fillMaxWidth())
     }
 }
@@ -150,7 +162,7 @@ internal fun ForestDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, m
                 FilterChip(selected = hunter, onClick = { hunter = !hunter }, label = { Text("Hunter") })
                 FilterChip(selected = wildlife, onClick = { wildlife = !wildlife }, label = { Text("Wildlife") })
                 FilterChip(selected = false, onClick = { resetKey++ }, label = { Text("Start again") })
-                Text("The serpent's head is a fire that never burns down, not even in the rain. When it passes close, the hunter (flammable) catches and chars. The animals are not flammable and are never touched.", color = Color(0xFFB7BEC8))
+                Text("The serpent's head is a fire that never burns down, not even in the rain. When it passes close, the hunter (flammable) catches and chars. The animals are not flammable and are never touched.", color = controlText())
             }
             Labelled("Rain", rain, 0f..1f) { rain = it }; Labelled("Mist", fog, 0f..1f) { fog = it }
         }
@@ -199,7 +211,7 @@ internal fun WindowDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean
                 FilterChip(selected = warm, onClick = { warm = !warm }, label = { Text("Lamp by the glass") })
                 FilterChip(selected = false, onClick = { pane.clear() }, label = { Text("Clean the glass") })
             }
-            Text("Weather on the glass: fog forms where the pane is colder than the room's dew point, ice grows in from the edges below freezing, rain runs down in beads and leaves clear streaks, snow piles on the sill. Drag over the pane to wipe it; a lamp by the glass clears its corner; an open window keeps it clear.", color = Color(0xFFB7BEC8))
+            Text("Weather on the glass: fog forms where the pane is colder than the room's dew point, ice grows in from the edges below freezing, rain runs down in beads and leaves clear streaks, snow piles on the sill. Drag over the pane to wipe it; a lamp by the glass clears its corner; an open window keeps it clear.", color = controlText())
             Labelled("Outside, degrees", outside, -20f..25f) { outside = it; climate.outsideTemp = it }
             Labelled("Humidity in the room", humidity, 0.2f..0.95f) { humidity = it; climate.humidity = it }
             Labelled("Hour", hour, 0f..24f) { hour = it }; Labelled("Cloud", cloud, 0f..1f) { cloud = it }
@@ -219,7 +231,7 @@ private fun ShadowDemo(seconds: () -> Float) {
                 }
             },
         ) { ShadowScene({ light }, reach, seconds = seconds) }
-        Controls { Text("Drag the light", color = Color(0xFFB7BEC8)); Labelled("Reach", reach, 0.3f..1.4f) { reach = it } }
+        Controls { Text("Drag the light", color = controlText()); Labelled("Reach", reach, 0.3f..1.4f) { reach = it } }
     }
 }
 
@@ -227,7 +239,7 @@ private fun ShadowDemo(seconds: () -> Float) {
 private fun DepthDemo(seconds: () -> Float) {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { DepthScene(seconds) }
-        Controls { Text("Drag anything. Up sends it back, small and tucked behind what is nearer; down brings it forward, bigger. Lampião's lamp is the light: carry him about and every shadow swings. Tap a thing to switch whether the wind moves it (palms, plants and the pine do by default).", color = Color(0xFFB7BEC8)) }
+        Controls { Text("Drag anything. Up sends it back, small and tucked behind what is nearer; down brings it forward, bigger. Lampião's lamp is the light: carry him about and every shadow swings. Tap a thing to switch whether the wind moves it (palms, plants and the pine do by default).", color = controlText()) }
     }
 }
 
@@ -242,7 +254,7 @@ internal fun LightsDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean
                 for (k in LightKind.entries) FilterChip(selected = k in on, onClick = { on = if (k in on) on - k else on + k }, label = { Text(k.label) })
             }
             Labelled("Hour", hour, 0f..24f) { hour = it }
-            Text("Each light throws its own shadow, its own way: the sun and moon (far away) in parallel, long at dawn; the fire, candle and lamp (near) fanning out from them; the lantern only inside its cone. Drag the fire, the candle, the lantern post or Lampião (he carries the lamp) and watch every shadow swing. The animals wander on their own and cannot burn.", color = Color(0xFFB7BEC8))
+            Text("Each light throws its own shadow, its own way: the sun and moon (far away) in parallel, long at dawn; the fire, candle and lamp (near) fanning out from them; the lantern only inside its cone. Drag the fire, the candle, the lantern post or Lampião (he carries the lamp) and watch every shadow swing. The animals wander on their own and cannot burn.", color = controlText())
         }
     }
 }
@@ -260,7 +272,7 @@ internal fun LightStageDemo(seconds: () -> Float) {
                 FilterChip(selected = walls, onClick = { walls = !walls }, label = { Text("Walls") })
             }
             Labelled("Lamp height", height, 0.4f..2f) { height = it }
-            Text("Four lamps light the stage from four places at once. Drag a lamp (a glowing orb) and its shadows swing while the others stay; drag a person across and their shadows turn as they pass between the lamps. Lower the lamps for long shadows. Switch on Walls: shadows thrown backward climb the back wall (bigger the farther it is behind), and shadows thrown at the crate bend onto its face.", color = Color(0xFFB7BEC8))
+            Text("Four lamps light the stage from four places at once. Drag a lamp (a glowing orb) and its shadows swing while the others stay; drag a person across and their shadows turn as they pass between the lamps. Lower the lamps for long shadows. Switch on Walls: shadows thrown backward climb the back wall (bigger the farther it is behind), and shadows thrown at the crate bend onto its face.", color = controlText())
         }
     }
 }
@@ -278,7 +290,7 @@ internal fun ShadowTheatreDemo(seconds: () -> Float) {
                 for (p in TheatrePaper.entries) FilterChip(selected = p == paper, onClick = { paper = p }, label = { Text(p.label) })
                 FilterChip(selected = backstage, onClick = { backstage = !backstage }, label = { Text("Backstage") })
             }
-            Text("Teatro de Sombras: the lamp is behind the paper and the puppets are between them. Drag a puppet toward the lamp and its shadow grows huge and soft; press it against the paper and it is small and sharp. Drag the lamp to swing every shadow. The paper's colour is the light's; backstage shows the puppeteers' side.", color = Color(0xFFB7BEC8))
+            Text("Teatro de Sombras: the lamp is behind the paper and the puppets are between them. Drag a puppet toward the lamp and its shadow grows huge and soft; press it against the paper and it is small and sharp. Drag the lamp to swing every shadow. The paper's colour is the light's; backstage shows the puppeteers' side.", color = controlText())
         }
     }
 }
@@ -290,7 +302,7 @@ internal fun PondDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) 
         Box(Modifier.weight(1f)) { PondScene(seconds, hour = hour, moon = moon, southern = southern) }
         Controls {
             Labelled("Hour", hour, 0f..24f) { hour = it }
-            Text("Water behaves as water: everything at the edge is mirrored in it (faint, rippling, fading with depth), the moon and the lamps leave glitter, and whatever wades in is partly under water, looking nearer the surface than it is. Drag the people into the pond; the caiman and the capybara wade through it themselves.", color = Color(0xFFB7BEC8))
+            Text("Water behaves as water: everything at the edge is mirrored in it (faint, rippling, fading with depth), the moon and the lamps leave glitter, and whatever wades in is partly under water, looking nearer the surface than it is. Drag the people into the pond; the caiman and the capybara wade through it themselves.", color = controlText())
         }
     }
 }
@@ -321,7 +333,7 @@ internal fun LiquidsDemo(seconds: () -> Float) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (f in Fluid.All) FilterChip(selected = current.name == f.name, onClick = { bench.setFluid(f) }, label = { Text(f.name) })
             }
-            Text("Tap a glass to pick it (and drop a ripple in). Drag it along the table and the liquid lags and sloshes. Hot liquids steam, boil and cool; pouring hot coffee mixes by volume and leaves foam. Knock it over: it pours out in a stream into a puddle that spreads, and a puddle that spreads past the end or the front of the table runs off in drops to the floor. Spilled kerosene burns. Choose the picked glass's liquid, or set its viscosity, density, cloudiness and refraction below.", color = Color(0xFFB7BEC8))
+            Text("Tap a glass to pick it (and drop a ripple in). Drag it along the table and the liquid lags and sloshes. Hot liquids steam, boil and cool; pouring hot coffee mixes by volume and leaves foam. Knock it over: it pours out in a stream into a puddle that spreads, and a puddle that spreads past the end or the front of the table runs off in drops to the floor. Spilled kerosene burns. Choose the picked glass's liquid, or set its viscosity, density, cloudiness and refraction below.", color = controlText())
             Labelled("Viscosity (water 0, honey 1)", viscosity, 0f..1f) { viscosity = it; bench.setFluid(bench.fluid.copy(viscosity = it)) }
             Labelled("Density, thousand kg/m³ (water 1, mercury 13.5)", density, 0.5f..14f) { density = it; bench.setFluid(bench.fluid.copy(density = it * 1000f)) }
             Labelled("Cloudiness", cloud, 0f..1f) { cloud = it; bench.setFluid(bench.fluid.copy(turbidity = it)) }
@@ -341,7 +353,7 @@ internal fun BurnDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 FilterChip(selected = guardian, onClick = { guardian = !guardian }, label = { Text("Boitatá's fire") })
                 FilterChip(selected = false, onClick = { resetKey++ }, label = { Text("Start again") })
-                Text("Drag things to the fire. Downwind they warm, smoke, catch and char; upwind they stay safe. Dry grass first, a pine last. The Boitatá's fire spares every plant and puts out ordinary fires.", color = Color(0xFFB7BEC8))
+                Text("Drag things to the fire. Downwind they warm, smoke, catch and char; upwind they stay safe. Dry grass first, a pine last. The Boitatá's fire spares every plant and puts out ordinary fires.", color = controlText())
             }
             Labelled("Rain", rain, 0f..1f) { rain = it }
         }

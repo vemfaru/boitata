@@ -64,7 +64,7 @@ internal class Chapter(
     val play: @Composable (t: () -> Float, env: StoryEnv) -> Unit,
 )
 
-private val StoryArt = listOf("ui_cover", "ui_ribbon", "ui_ribbon_small", "ui_ficha", "ui_button", "ui_progress", "ui_icon_play", "ui_icon_pause", "ui_icon_skip", "ui_icon_replay", "ui_icon_language", "theatre_paper") +
+private val StoryArt = listOf("ui_cover", "ui_drawer", "ui_ribbon", "ui_ribbon_small", "ui_ficha", "ui_button", "ui_progress", "ui_icon_play", "ui_icon_pause", "ui_icon_skip", "ui_icon_replay", "ui_icon_language", "theatre_paper") +
     (0..8).flatMap { listOf("ui_bookmark_${it}_on", "ui_bookmark_${it}_off") }
 
 private fun bi(pt: String, en: String) = Bi(pt, en)
@@ -78,6 +78,54 @@ private fun FrostWindow(t: () -> Float, env: StoryEnv) {
     val pane = remember { PaneWeather() }
     val climate = remember { SurfaceClimate().also { WindowWeather.Frost.applyTo(it) } }
     WindowScene(t, hour = 6.2f, cloud = 0.3f, moon = env.moon, southern = env.southern, windowOpen = false, pane = pane, climate = climate, weatherSpeed = 6f)
+}
+
+/**
+ * Dawn in the house: the cold window frosts over while Maria wipes a heart into the pane with her hand (the glass clears where she wipes), then she takes her coffee. [t] is the chapter's time.
+ */
+@Composable
+private fun DawnWindow(t: () -> Float, env: StoryEnv) {
+    val art = LocalSprites.current ?: return
+    val loaded by produceState(false, art) { art.ensure(listOf("pose_maria_wipe", "pose_maria_coffee")); value = true }
+    val pane = remember { PaneWeather() }
+    val climate = remember { SurfaceClimate().also { WindowWeather.Frost.applyTo(it) } }
+    androidx.compose.runtime.LaunchedEffect(pane) {
+        snapshotFlow { t() }.collect { now ->
+            // From the fourth second to the tenth her hand traces a heart on the glass.
+            if (now in 4f..10f) {
+                val a = (now - 4f) / 6f * 2f * kotlin.math.PI.toFloat()
+                val hx = 16f * kotlin.math.sin(a).let { it * it * it }
+                val hy = 13f * kotlin.math.cos(a) - 5f * kotlin.math.cos(2f * a) - 2f * kotlin.math.cos(3f * a) - kotlin.math.cos(4f * a)
+                pane.wipe((0.5f + hx / 38f).coerceIn(0f, 1f), (0.46f - hy / 40f).coerceIn(0f, 1f), 0.07f)
+            }
+        }
+    }
+    Box(Modifier.fillMaxSize()) {
+        WindowScene(t, hour = 6.2f, cloud = 0.3f, moon = env.moon, southern = env.southern, windowOpen = false, pane = pane, climate = climate, weatherSpeed = 8f)
+        if (loaded) Spacer(Modifier.fillMaxSize().drawBehind {
+            val now = t()
+            val pose = art.art(if (now < 10.5f) "pose_maria_wipe" else "pose_maria_coffee")
+            val height = size.height * 0.78f; val k = height / pose.height
+            val x = size.width * 0.42f
+            drawArt(pose, Offset(x - pose.width * k / 2f, size.height - height + size.height * 0.02f), k, Color(0xFFD9B27A).copy(alpha = 0.95f), alpha = ((now - 1.5f) / 1.2f).coerceIn(0f, 1f))
+        })
+    }
+}
+
+/** The end: the puppets bow, the lamp is blown out, and the paper goes dark. */
+@Composable
+private fun TheatreEnding(t: () -> Float) {
+    Box(Modifier.fillMaxSize()) {
+        ShadowTheatreScene(t, script = ::scriptedTheatre, lampOut = { ((t() - 15f) / 2.5f).coerceIn(0f, 1f) })
+        androidx.compose.material3.Text("Fim", Modifier.align(Alignment.Center).graphicsLayer { alpha = ((t() - 17f) / 2f).coerceIn(0f, 1f) }, color = Color(0xFFF2D9A8), fontSize = 64.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** Dawn first, then the shadow screen again for the ending. */
+@Composable
+private fun DawnAndEnd(t: () -> Float, env: StoryEnv) {
+    val ending by remember { androidx.compose.runtime.derivedStateOf { t() >= 12f } }
+    if (!ending) DawnWindow(t, env) else TheatreEnding({ t() - 12f })
 }
 
 internal val Chapters: List<Chapter> = listOf(
@@ -115,8 +163,8 @@ internal val Chapters: List<Chapter> = listOf(
         story = { t, env -> ShotScene(t, onShot = { if (env.sound) env.sink.play(Gunshot.render(0.06f), gain = 0.9f) }) }, play = { t, env -> ShotDemo(t) }),
     Chapter(bi("Madrugada", "Dawn"),
         listOf(bi("Amanheceu na serra fria,", "Dawn broke on the cold highlands,"), bi("geada no vidro, no chão;", "frost on the glass, on the ground;"), bi("o fogo bom da fogueira", "the good fire of the bonfire"), bi("e o fogo bom do coração.", "and the good fire of the heart.")),
-        18f, note("Glass colder than the dew point fogs; below freezing the fog turns to frost that grows in from the edges.", "O vidro mais frio que o ponto de orvalho embaça; abaixo de zero vira geada que cresce das bordas."),
-        story = { t, env -> FrostWindow(t, env) }, play = { t, env -> WindowDemo(t, env.moon, env.southern) }),
+        30f, note("Glass colder than the dew point fogs; below freezing the fog turns to frost that grows in from the edges.", "O vidro mais frio que o ponto de orvalho embaça; abaixo de zero vira geada que cresce das bordas."),
+        story = { t, env -> DawnAndEnd(t, env) }, play = { t, env -> WindowDemo(t, env.moon, env.southern) }),
 )
 
 private enum class Mode { Cover, Story, Pause }
@@ -156,7 +204,13 @@ internal fun StoryApp(seconds: () -> Float, sink: AudioSink, sound: Boolean, moo
                     Ribbon(art, Chapters[chapter], local, portuguese)
                 }
             }
-            Mode.Pause -> key(chapter) { Chapters[chapter].play(local, env) }
+            Mode.Pause -> key(chapter) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalPaperPanel provides true) {
+                    androidx.compose.material3.MaterialTheme(colorScheme = androidx.compose.material3.lightColorScheme(primary = Color(0xFFB4350F), onPrimary = Color(0xFFFFF1D6), secondaryContainer = Color(0xFFE8C98F), onSecondaryContainer = Color(0xFF2A1A0E), surface = Color(0xFFF2E3BF), onSurface = Color(0xFF2A1A0E), onSurfaceVariant = Color(0xFF3A2414), outline = Color(0xFF6B4A2E))) {
+                        Chapters[chapter].play(local, env)
+                    }
+                }
+            }
         }
         if (mode != Mode.Cover) TopBar(art, chapter, mode == Mode.Pause, portuguese, local,
             onCover = { mode = Mode.Cover }, onChapter = { go(it) }, onNext = { if (chapter < Chapters.lastIndex) go(chapter + 1, burn = chapter == 0) else mode = Mode.Cover },

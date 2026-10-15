@@ -182,7 +182,7 @@ internal fun ChaseDemo(seconds: () -> Float) {
                 FilterChip(selected = false, onClick = { origin = seconds(); anchor = 0f }, label = { Text("Run again") })
             }
             Labelled("Rain", rain, 0f..1f) { rain = it }
-            Text("The picture does not move: the size and height of each thing at its depth do all the work. The serpent follows the hunter's own path through the layers, then circles in; the animals bolt out of its way.", color = Color(0xFFB7BEC8))
+            Text("The picture does not move: the size and height of each thing at its depth do all the work. The serpent follows the hunter's own path through the layers, then circles in; the animals bolt out of its way.", color = controlText())
         }
     }
 }
