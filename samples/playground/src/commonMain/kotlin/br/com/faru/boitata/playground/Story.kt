@@ -104,7 +104,7 @@ internal val Chapters: List<Chapter> = listOf(
     Chapter(bi("A Fuga", "The Flight"),
         listOf(bi("Correu mata, correu rio,", "He ran through forest, through river,"), bi("mas o fogo ia ao lado;", "but the fire ran beside him;"), bi("quem acendeu o que é mau", "who lit what is evil"), bi("sempre acaba cercado.", "always ends up surrounded.")),
         18f, note("The serpent circles in depth: far things are small and high, near things large and low, and the camera never moves.", "A serpente circula na profundidade: o longe é pequeno e alto, o perto grande e baixo, e a câmera não se move."),
-        story = { t, env -> ForestScene(t, rain = 0.5f, fog = 0.6f, moon = env.moon, southern = env.southern, hunter = true, wildlife = true, timeScale = 2f) }, play = { t, env -> ForestDemo(t, env.sink, env.sound, env.moon, env.southern) }),
+        story = { t, _ -> ChaseScene(t) }, play = { t, _ -> ChaseDemo(t) }),
     Chapter(bi("A Lagoa", "The Lagoon"),
         listOf(bi("Entrou na lagoa escura", "He entered the dark lagoon"), bi("e a lagoa o refletiu;", "and the lagoon reflected him;"), bi("o fogo que ele acendera", "the fire he had lit"), bi("na água também se viu.", "was seen in the water too.")),
         18f, note("Water mirrors in proportion to its Fresnel reflectance, and what wades in looks nearer the surface than it is (Snell's law).", "A água reflete conforme a refletância de Fresnel, e o que entra parece mais perto da superfície do que está (lei de Snell)."),
