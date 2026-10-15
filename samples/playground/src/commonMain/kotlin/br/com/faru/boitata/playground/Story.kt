@@ -96,7 +96,7 @@ internal val Chapters: List<Chapter> = listOf(
     Chapter(bi("O Caçador", "The Hunter"),
         listOf(bi("Veio um caçador de longe", "A hunter came from afar,"), bi("com fome de recompensa;", "hungry for reward;"), bi("pôs fogo no matagal", "he set the scrub alight"), bi("sem pensar na consequência.", "without thinking of the consequence.")),
         18f, note("Fire spreads downwind, from what is burning to what is dry beside it; rain wets things and puts it out. Dry grass catches first, a pine last.", "O fogo avança a favor do vento, do que queima para o que está seco ao lado; a chuva molha e apaga. O capim seco pega primeiro, o pinheiro por último."),
-        story = { t, env -> BurnScene(t, guardian = false, timeScale = 3f, sink = env.sink, sound = env.sound) }, play = { t, env -> BurnDemo(t, env.sink, env.sound) }),
+        story = { t, _ -> BurnPropsScene(t) }, play = { t, env -> BurnDemo(t, env.sink, env.sound) }),
     Chapter(bi("A Noite de São João", "Saint John's Night"),
         listOf(bi("Era noite de São João,", "It was Saint John's night,"), bi("fogueira, balão e canção;", "bonfire, balloon and song;"), bi("Lampião e Maria Bonita", "Lampião and Maria Bonita"), bi("dançavam de coração.", "danced heart to heart.")),
         18f, note("Several lights at once: each throws its own shadows, and a shadow lands on whatever is behind it, bending onto walls.", "Várias luzes ao mesmo tempo: cada uma lança suas sombras, e a sombra cai no que estiver atrás, dobrando nas paredes."),
