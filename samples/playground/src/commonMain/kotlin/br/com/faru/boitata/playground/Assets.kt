@@ -55,6 +55,15 @@ class Sprites(
     /** The room's dressing (curtains, rod, rug, shelf, lamp, stove), by name without the room_ prefix. */
     val room: Map<String, ImageBitmap> = emptyMap(),
 ) {
+    /** Pictures loaded on demand by a scene (see [ensure]), by file name. */
+    private val extra = HashMap<String, ImageBitmap>()
+
+    /** Loads the pictures called [names] (file names without .png) if they are not loaded yet; a scene calls this once before it draws. */
+    suspend fun ensure(names: List<String>) { for (n in names) if (n !in extra) extra[n] = bitmap(n) }
+
+    /** A picture loaded with [ensure]. */
+    fun art(name: String): ImageBitmap = extra.getValue(name)
+
     fun prop(name: String): ImageBitmap = props.getValue(name)
 
     private val masks = HashMap<String, AlphaMask>()

@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -17,6 +18,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.onSizeChanged
@@ -52,6 +54,10 @@ enum class TheatrePaper(val label: String, val tint: Color) {
     Amber("Amber paper", Color(0xFFFFC66B)),
     Red("Red paper", Color(0xFFFF6B5A)),
 }
+
+/** The frame, paper, curtains and audience of the theatre (file names). */
+private val TheatreArt = listOf("theatre_frame_post", "theatre_frame_bar", "theatre_frame_corner", "theatre_frame_foot", "theatre_paper", "theatre_valance", "theatre_curtain_1", "theatre_curtain_2") +
+    (1..6).map { "theatre_audience_$it" }
 
 private val Puppets = listOf("lampiao" to 0.30f, "maria_bonita" to 0.30f, "cacador" to 0.30f, "onca" to 0.15f, "tamandua" to 0.13f, "capivara" to 0.12f)
 private val PuppetStart = mapOf(
@@ -103,6 +109,8 @@ fun ShadowTheatreScene(
     script: ((DepthStage, Float) -> Unit)? = null,
 ) {
     val art = LocalSprites.current ?: return
+    val loaded by produceState(false, art) { art.ensure(TheatreArt); value = true }
+    if (!loaded) return
     val quality = rememberSceneQuality()
     var size by remember { mutableStateOf(IntSize.Zero) }
     val setup = remember(size, art) { if (size.width == 0) null else buildTheatre(art, size) }
@@ -167,13 +175,45 @@ private fun DrawScope.drawTheatre(art: Sprites, s: TheatreSetup, t: Float, kind:
         val body = s.bodies.getValue(item.id)
         drawCastShadows(rig, item.feetX, item.feetY, body.height, t, 1f, quality, ignore = item.id, floor = false, silhouette = body.silhouette!!)
     }
-    // The frame: two posts, a top bar and a lower bar, in dark wood.
-    val wood = Color(0xFF1A110B); val post = w * 0.018f
-    drawRect(wood, Offset(sheet.left - post, sheet.top - post), Size(post, sheet.height + 2f * post))
-    drawRect(wood, Offset(sheet.right, sheet.top - post), Size(post, sheet.height + 2f * post))
-    drawRect(wood, Offset(sheet.left - post, sheet.top - post), Size(sheet.width + 2f * post, post))
-    drawRect(wood, Offset(sheet.left - post, sheet.bottom), Size(sheet.width + 2f * post, post * 2f))
-    drawRect(Color(0xFF0B0907), Offset(0f, sheet.bottom + post * 2f), Size(w, h))
+    // The paper's fibres, over the glow.
+    run {
+        val paperArt = art.art("theatre_paper"); val tile = sheet.width * 0.5f
+        clipRect(sheet.left, sheet.top, sheet.right, sheet.bottom) {
+            var y = sheet.top
+            while (y < sheet.bottom) { var x = sheet.left; while (x < sheet.right) { drawArt(paperArt, Offset(x, y), tile / paperArt.width, Color(0xFF3A2A18).copy(alpha = if (backstage) 0.06f else 0.15f)); x += tile }; y += tile }
+        }
+    }
+    // The frame: two carved posts, a top bar and a lower bar, corners and feet, in dark wood.
+    val wood = Color(0xFF3A2616); val postImg = art.art("theatre_frame_post"); val barImg = art.art("theatre_frame_bar")
+    val post = w * 0.03f; val framed = sheet.height + 2f * post
+    drawStretchedArt(postImg, Rect(sheet.left - post, sheet.top - post, sheet.left, sheet.top - post + framed), wood)
+    drawStretchedArt(postImg, Rect(sheet.right, sheet.top - post, sheet.right + post, sheet.top - post + framed), wood)
+    drawStretchedArt(barImg, Rect(sheet.left - post, sheet.top - post, sheet.right + post, sheet.top), wood)
+    drawStretchedArt(barImg, Rect(sheet.left - post, sheet.bottom, sheet.right + post, sheet.bottom + post), wood)
+    val corner = art.art("theatre_frame_corner")
+    for ((cx, cy) in listOf(sheet.left - post to sheet.top - post, sheet.right - post * 0.2f to sheet.top - post, sheet.left - post to sheet.bottom - post * 0.2f, sheet.right - post * 0.2f to sheet.bottom - post * 0.2f))
+        drawStretchedArt(corner, Rect(cx, cy, cx + post * 1.2f, cy + post * 1.2f), wood)
+    val foot = art.art("theatre_frame_foot"); val footW = post * 3.2f; val footH = footW * foot.height / foot.width
+    drawStretchedArt(foot, Rect(sheet.left - post * 2.1f, sheet.bottom + post - footH * 0.3f, sheet.left - post * 2.1f + footW, sheet.bottom + post + footH * 0.7f), wood)
+    drawStretchedArt(foot, Rect(sheet.right + post * 2.1f - footW, sheet.bottom + post - footH * 0.3f, sheet.right + post * 2.1f, sheet.bottom + post + footH * 0.7f), wood)
+    // The curtains at the sides, and the valance across the top.
+    val cloth = Color(0xFF5A1F1A)
+    val cur = art.art("theatre_curtain_1"); val curH = h * 0.86f; val curW = curH * cur.width / cur.height
+    drawArt(cur, Offset(-curW * 0.45f, h * 0.06f), curH / cur.height, cloth)
+    val cur2 = art.art("theatre_curtain_2")
+    drawArt(cur2, Offset(w - curW * 0.55f, h * 0.06f), curH / cur2.height, cloth)
+    drawStretchedArt(art.art("theatre_valance"), Rect(0f, 0f, w, h * 0.17f), cloth)
+    // The front of the audience: the backs of heads at the bottom edge, dark against the glow of the sheet.
+    val heads = (1..6)
+    for ((k, i) in heads.withIndex()) {
+        val head = art.art("theatre_audience_$i"); val hh = h * (0.2f + 0.03f * ((k * 7) % 3)); val hw = hh * head.width / head.height
+        drawArt(head, Offset(w * (0.06f + k * 0.17f) - hw / 2f, h - hh * 0.72f), hh / head.height, Color(0xFF060507))
+    }
+}
+
+/** Draws [image] stretched to fill [target], painted [tint]. */
+private fun DrawScope.drawStretchedArt(image: androidx.compose.ui.graphics.ImageBitmap, target: Rect, tint: Color) {
+    drawArt(image, target.topLeft, 1f, tint, scaleX = target.width / image.width, scaleY = target.height / image.height)
 }
 
 /** What a recording shows: the lamp drifts a little, the jaguar walks across right behind the paper (small and sharp), and the hunter and Lampião move toward and away from the lamp (huge and soft). */
