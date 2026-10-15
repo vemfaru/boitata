@@ -49,6 +49,8 @@ val Clips: List<Clip> = listOf(
     Clip("story-theatre", 17.5f, Wind.Calm, stateful = true) { t -> StoryApp(t, remember { createAudioSink() }, false, MoonPhase.Full, true, {}, startAt = 0) },
     Clip("story-forest", 12f, Wind.Breeze, stateful = true) { t -> StoryApp(t, remember { createAudioSink() }, false, MoonPhase.Full, true, {}, startAt = 1) },
     Clip("story-pause", 2f, Wind.Calm, stateful = true) { t -> StoryApp(t, remember { createAudioSink() }, false, MoonPhase.Full, true, {}, startAt = 3, startPaused = true) },
+    Clip("festa", 14f, Wind.Breeze, stateful = true) { t -> FestaScene(t) },
+    Clip("shot", 16f, Wind.Breeze, stateful = true) { t -> ShotScene(t) },
     Clip("depth", 8f, Wind.Windy, stateful = true) { t -> DepthScene(t, script = ::scriptedDrag) },
     Clip("fire-campfire", 5f, Wind.Windy) { t -> FireScene(t, 0.9f, FireKind.Campfire) },
     Clip("fire-boitata", 5f, Wind.Breeze) { t -> FireScene(t, 0.9f, FireKind.Boitata) },

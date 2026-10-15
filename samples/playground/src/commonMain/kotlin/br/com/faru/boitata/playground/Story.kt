@@ -44,6 +44,7 @@ import br.com.faru.boitata.core.FastNoise
 import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.surface.PaneWeather
 import br.com.faru.boitata.core.surface.SurfaceClimate
+import br.com.faru.boitata.synth.Gunshot
 import kotlinx.coroutines.flow.first
 import kotlin.math.hypot
 
@@ -99,7 +100,7 @@ internal val Chapters: List<Chapter> = listOf(
     Chapter(bi("A Noite de São João", "Saint John's Night"),
         listOf(bi("Era noite de São João,", "It was Saint John's night,"), bi("fogueira, balão e canção;", "bonfire, balloon and song;"), bi("Lampião e Maria Bonita", "Lampião and Maria Bonita"), bi("dançavam de coração.", "danced heart to heart.")),
         18f, note("Several lights at once: each throws its own shadows, and a shadow lands on whatever is behind it, bending onto walls.", "Várias luzes ao mesmo tempo: cada uma lança suas sombras, e a sombra cai no que estiver atrás, dobrando nas paredes."),
-        story = { t, _ -> LightStageScene(t, walls = true, script = ::scriptedLamps) }, play = { t, _ -> LightStageDemo(t) }),
+        story = { t, _ -> FestaScene(t) }, play = { t, _ -> FestaDemo(t) }),
     Chapter(bi("A Fuga", "The Flight"),
         listOf(bi("Correu mata, correu rio,", "He ran through forest, through river,"), bi("mas o fogo ia ao lado;", "but the fire ran beside him;"), bi("quem acendeu o que é mau", "who lit what is evil"), bi("sempre acaba cercado.", "always ends up surrounded.")),
         18f, note("The serpent circles in depth: far things are small and high, near things large and low, and the camera never moves.", "A serpente circula na profundidade: o longe é pequeno e alto, o perto grande e baixo, e a câmera não se move."),
@@ -111,7 +112,7 @@ internal val Chapters: List<Chapter> = listOf(
     Chapter(bi("O Tiro", "The Shot"),
         listOf(bi("Quando a farda começou", "When his coat began"), bi("a arder sem piedade,", "to burn without mercy,"), bi("Lampião firmou a mira", "Lampião steadied his aim"), bi("e calou a crueldade.", "and silenced the cruelty.")),
         16f, note("A person is a material too: cloth chars, the body ends as ash that the wind carries away.", "Uma pessoa também é um material: o pano chamusca, o corpo vira cinza que o vento leva."),
-        story = { t, env -> ForestScene(t, rain = 0f, fog = 0.4f, hour = 23f, moon = env.moon, southern = env.southern, hunter = true, wildlife = false, timeScale = 3f) }, play = { t, env -> ForestDemo(t, env.sink, env.sound, env.moon, env.southern) }),
+        story = { t, env -> ShotScene(t, onShot = { if (env.sound) env.sink.play(Gunshot.render(0.06f), gain = 0.9f) }) }, play = { t, env -> ShotDemo(t) }),
     Chapter(bi("Madrugada", "Dawn"),
         listOf(bi("Amanheceu na serra fria,", "Dawn broke on the cold highlands,"), bi("geada no vidro, no chão;", "frost on the glass, on the ground;"), bi("o fogo bom da fogueira", "the good fire of the bonfire"), bi("e o fogo bom do coração.", "and the good fire of the heart.")),
         18f, note("Glass colder than the dew point fogs; below freezing the fog turns to frost that grows in from the edges.", "O vidro mais frio que o ponto de orvalho embaça; abaixo de zero vira geada que cresce das bordas."),

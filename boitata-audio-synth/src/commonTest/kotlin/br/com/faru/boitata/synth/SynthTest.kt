@@ -70,4 +70,14 @@ class SynthTest {
         assertTrue(Ambience.rain(density = 1f).rms >= Ambience.rain(density = 0.1f).rms)
         assertTrue(crossingRate(Ambience.wind()) < crossingRate(Ambience.rain()) * 0.5, "wind is the lowest of the beds")
     }
+
+    @Test
+    fun aGunshotIsTheSameEveryTimeAndQuieterFarAway() {
+        val a = Gunshot.render(0.05f, 3L); val b = Gunshot.render(0.05f, 3L); val far = Gunshot.render(2f, 3L)
+        assertTrue(a.samples.contentEquals(b.samples))
+        assertTrue(a.peak <= 1f && a.rms > 0.005f)
+        fun opening(p: PcmBuffer): Float { val m = p.sampleRate / 10; return kotlin.math.sqrt((0 until m).sumOf { (p.samples[it] * p.samples[it]).toDouble() } / m).toFloat() }
+        assertTrue(opening(far) < opening(a), "the crack is quieter from far away")
+        assertTrue(far.seconds > a.seconds)
+    }
 }

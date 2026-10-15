@@ -127,7 +127,7 @@ internal fun Controls(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Labelled(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+internal fun Labelled(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Text(label, Modifier.padding(end = 12.dp).fillMaxWidth(0.22f), color = Color(0xFFB7BEC8))
         Slider(value, onChange, valueRange = range, modifier = Modifier.fillMaxWidth())
