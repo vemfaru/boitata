@@ -3,6 +3,7 @@ package br.com.faru.boitata.playground
 import br.com.faru.boitata.core.surface.PaneWeather
 import br.com.faru.boitata.core.surface.SurfaceClimate
 import androidx.compose.runtime.Composable
+import br.com.faru.boitata.audio.createAudioSink
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import br.com.faru.boitata.core.sky.MoonPhase
@@ -44,6 +45,10 @@ val Clips: List<Clip> = listOf(
     Clip("shadow-theatre", 12f, Wind.Calm, stateful = true) { t -> ShadowTheatreScene(t, script = ::scriptedTheatre) },
     Clip("pond", 10f, Wind.Breeze, stateful = true) { t -> PondScene(t, hour = 21f) },
     Clip("liquids", 16f, Wind.Calm, stateful = true) { t -> LiquidsScene(t, remember { LiquidBench() }, script = ::scriptedBench) },
+    Clip("story-cover", 2f, Wind.Calm) { t -> StoryApp(t, remember { createAudioSink() }, false, MoonPhase.Full, true, {}) },
+    Clip("story-theatre", 17.5f, Wind.Calm, stateful = true) { t -> StoryApp(t, remember { createAudioSink() }, false, MoonPhase.Full, true, {}, startAt = 0) },
+    Clip("story-forest", 12f, Wind.Breeze, stateful = true) { t -> StoryApp(t, remember { createAudioSink() }, false, MoonPhase.Full, true, {}, startAt = 1) },
+    Clip("story-pause", 2f, Wind.Calm, stateful = true) { t -> StoryApp(t, remember { createAudioSink() }, false, MoonPhase.Full, true, {}, startAt = 3, startPaused = true) },
     Clip("depth", 8f, Wind.Windy, stateful = true) { t -> DepthScene(t, script = ::scriptedDrag) },
     Clip("fire-campfire", 5f, Wind.Windy) { t -> FireScene(t, 0.9f, FireKind.Campfire) },
     Clip("fire-boitata", 5f, Wind.Breeze) { t -> FireScene(t, 0.9f, FireKind.Boitata) },

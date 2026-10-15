@@ -43,13 +43,13 @@ import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
 
 /** The demos, in the order of the tabs. */
-enum class Demo(val label: String) { Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Pond("Pond"), Liquids("Liquids"), Burn("Burn"), Fire("Fire") }
+enum class Demo(val label: String) { Story("O Fogo que Guarda"), Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Pond("Pond"), Liquids("Liquids"), Burn("Burn"), Fire("Fire") }
 
 /** The whole playground: pick a demo, play with its controls. The same scenes are what the README's GIFs are rendered from. */
 @Composable
 fun PlaygroundApp() {
     MaterialTheme(colorScheme = darkColorScheme(background = Color(0xFF0B0D10), surface = Color(0xFF14181D), primary = Color(0xFFF2A83B))) {
-        var demo by remember { mutableStateOf(Demo.Forest) }
+        var demo by remember { mutableStateOf(Demo.Story) }
         var sound by remember { mutableStateOf(false) }
         // The wind and the moon are the whole playground's: set them once and every scene that has wind or a moon follows.
         var wind by remember { mutableStateOf(Wind.Breeze) }
@@ -71,6 +71,7 @@ fun PlaygroundApp() {
                 ProvideSprites { sprites ->
                 CompositionLocalProvider(LocalSprites provides sprites) {
                 when (demo) {
+                    Demo.Story -> StoryApp(seconds, sink, sound, moon, southern, onWorkshop = { demo = Demo.Forest })
                     Demo.Forest -> ForestDemo(seconds, sink, sound, moon, southern)
                     Demo.Weather -> WeatherDemo(seconds, sink, sound, moon, southern)
                     Demo.Window -> WindowDemo(seconds, moon, southern)
@@ -121,7 +122,7 @@ private fun MoonControls(phase: MoonPhase, southern: Boolean, onPhase: (MoonPhas
 }
 
 @Composable
-private fun Controls(content: @Composable () -> Unit) {
+internal fun Controls(content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().background(Color(0xCC0B0D10)).padding(horizontal = 16.dp, vertical = 8.dp)) { content() }
 }
 
@@ -134,7 +135,7 @@ private fun Labelled(label: String, value: Float, range: ClosedFloatingPointRang
 }
 
 @Composable
-private fun ForestDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, moon: MoonPhase, southern: Boolean) {
+internal fun ForestDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, moon: MoonPhase, southern: Boolean) {
     var rain by remember { mutableFloatStateOf(0f) }
     var fog by remember { mutableFloatStateOf(0.35f) }
     var hunter by remember { mutableStateOf(true) }
@@ -157,7 +158,7 @@ private fun ForestDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, mo
 }
 
 @Composable
-private fun WeatherDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, moon: MoonPhase, southern: Boolean) {
+internal fun WeatherDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, moon: MoonPhase, southern: Boolean) {
     var hour by remember { mutableFloatStateOf(14f) }
     var kind by remember { mutableStateOf(WeatherKind.Rain) }
     val storm = remember { StormModel(seed = 17L, intensity = 1f) }
@@ -175,7 +176,7 @@ private fun WeatherDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean, m
 }
 
 @Composable
-private fun WindowDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
+internal fun WindowDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
     var hour by remember { mutableFloatStateOf(16.5f) }
     var cloud by remember { mutableFloatStateOf(0f) }
     var open by remember { mutableStateOf(true) }
@@ -231,7 +232,7 @@ private fun DepthDemo(seconds: () -> Float) {
 }
 
 @Composable
-private fun LightsDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
+internal fun LightsDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
     var hour by remember { mutableFloatStateOf(19f) }
     var on by remember { mutableStateOf(LightKind.entries.toSet()) }
     Column(Modifier.fillMaxSize()) {
@@ -247,7 +248,7 @@ private fun LightsDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean)
 }
 
 @Composable
-private fun LightStageDemo(seconds: () -> Float) {
+internal fun LightStageDemo(seconds: () -> Float) {
     var on by remember { mutableStateOf(StageLamp.entries.toSet()) }
     var height by remember { mutableFloatStateOf(0.65f) }
     var walls by remember { mutableStateOf(false) }
@@ -265,7 +266,7 @@ private fun LightStageDemo(seconds: () -> Float) {
 }
 
 @Composable
-private fun ShadowTheatreDemo(seconds: () -> Float) {
+internal fun ShadowTheatreDemo(seconds: () -> Float) {
     var lamp by remember { mutableStateOf(TheatreLamp.Hurricane) }
     var paper by remember { mutableStateOf(TheatrePaper.White) }
     var backstage by remember { mutableStateOf(false) }
@@ -283,7 +284,7 @@ private fun ShadowTheatreDemo(seconds: () -> Float) {
 }
 
 @Composable
-private fun PondDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
+internal fun PondDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
     var hour by remember { mutableFloatStateOf(22f) }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { PondScene(seconds, hour = hour, moon = moon, southern = southern) }
@@ -295,7 +296,7 @@ private fun PondDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) {
 }
 
 @Composable
-private fun LiquidsDemo(seconds: () -> Float) {
+internal fun LiquidsDemo(seconds: () -> Float) {
     val bench = remember { LiquidBench() }
     val sel = bench.selected
     val current = bench.fluid
@@ -330,7 +331,7 @@ private fun LiquidsDemo(seconds: () -> Float) {
 }
 
 @Composable
-private fun BurnDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
+internal fun BurnDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
     var rain by remember { mutableFloatStateOf(0f) }
     var guardian by remember { mutableStateOf(false) }
     var resetKey by remember { mutableStateOf(0) }
@@ -348,7 +349,7 @@ private fun BurnDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
 }
 
 @Composable
-private fun FireDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
+internal fun FireDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
     var intensity by remember { mutableFloatStateOf(0.9f) }
     var kind by remember { mutableStateOf(FireKind.Campfire) }
     Column(Modifier.fillMaxSize()) {
