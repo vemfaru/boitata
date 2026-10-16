@@ -36,6 +36,9 @@ data class SceneCamera(val x: Float, val y: Float, val width: Float, val height:
  * `1.dp` is one world unit at the camera's scale, so text and images rasterise sharp. Moving between cameras animates through a
  * graphics layer (no relayout per frame, [cameraSpec] sets how it eases); the density follows the camera being moved to.
  *
+ * [density] fixes the world's pixels per unit for every camera (the layer then scales it to the camera): images are decoded once at that
+ * density instead of once per camera. Null follows the camera being moved to.
+ *
  * [overlay] is drawn in window space on top of the world (screen chrome).
  */
 @Composable
@@ -46,6 +49,7 @@ fun SceneViewport(
     cameraSpec: AnimationSpec<Float>,
     modifier: Modifier = Modifier,
     background: Color = Color.Black,
+    density: Float? = null,
     overlay: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -58,7 +62,7 @@ fun SceneViewport(
         val y by animateFloatAsState(camera.y, cameraSpec, label = "cameraY")
         val cw by animateFloatAsState(camera.width, cameraSpec, label = "cameraWidth")
         val ch by animateFloatAsState(camera.height, cameraSpec, label = "cameraHeight")
-        val target = fit(camera.width, camera.height)
+        val target = density ?: fit(camera.width, camera.height)
 
         CompositionLocalProvider(LocalDensity provides Density(target, 1f), LocalCameraCenter provides { androidx.compose.ui.geometry.Offset(x + cw / 2f, y + ch / 2f) }) {
             Box(
