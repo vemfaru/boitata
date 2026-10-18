@@ -75,6 +75,9 @@ public class Still(public val width: Int, public val height: Int, private val by
     /** How opaque the pixel at ([x], [y]) is, 0..255. */
     public fun alpha(x: Int, y: Int): Int = bytes[(y * width + x) * 4 + 3].toInt() and 0xFF
 
+    /** How light the pixel at ([x], [y]) is, 0 black to 255 white (the mean of its colour channels). */
+    public fun luma(x: Int, y: Int): Int { val i = (y * width + x) * 4; return ((bytes[i].toInt() and 0xFF) + (bytes[i + 1].toInt() and 0xFF) + (bytes[i + 2].toInt() and 0xFF)) / 3 }
+
     /** The mean x of the opaque pixels in rows [fromRow] until [toRow], or null if there are none. */
     public fun meanX(fromRow: Int = 0, toRow: Int = height, threshold: Int = 40): Double? {
         var sum = 0.0; var n = 0

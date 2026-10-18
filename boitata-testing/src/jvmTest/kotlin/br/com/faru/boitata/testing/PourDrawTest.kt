@@ -80,3 +80,22 @@ class SipDrawTest {
         assertEquals(0, none.count(1))
     }
 }
+
+/** The soil in a pot is darker wet than dry, and a pot with plants' soil shows it through its opening. */
+class PotDrawTest {
+    private fun render(moisture: Float) = renderStill(width = 300, height = 300) {
+        Spacer(Modifier.fillMaxSize().drawBehind {
+            drawVessel(
+                LiquidVessel(0.14f, 0.13f, Fluid.Water, 0f), VesselStyle(br.com.faru.boitata.light.VesselShape.Pot, glass = androidx.compose.ui.graphics.Color(0xFFB8643A), soil = br.com.faru.boitata.light.SoilLook(moisture)),
+                250f, 280f, 1000f, 0f, Quality.High,
+            )
+        })
+    }
+
+    @Test
+    fun wetSoilIsDarkerThanDryAndAnEmptyPotStillHasItsOpening() {
+        val dry = render(0f); val wet = render(1f)
+        assertTrue(wet.luma(180, 148) < dry.luma(180, 148) - 30, "${wet.luma(180, 148)} vs ${dry.luma(180, 148)}")
+        assertTrue(dry.count(30) > 3000, "the pot is drawn")
+    }
+}

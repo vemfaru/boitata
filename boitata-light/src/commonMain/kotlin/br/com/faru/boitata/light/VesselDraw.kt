@@ -27,14 +27,19 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /** How a container looks: a tumbler narrows toward its foot, a bottle has a neck above its body, a jug has a handle. The liquid and the physics are those of the plain box either way (the neck and handle are only drawn). */
-public enum class VesselShape { Tumbler, Bottle, Jug, Mug, Jar }
+public enum class VesselShape { Tumbler, Bottle, Jug, Mug, Jar, Pot }
 
 /** What the container is made of, for drawing: [glass] tints the walls, [ink] outlines them (the woodcut's black line). */
 public class VesselStyle(
     public val shape: VesselShape = VesselShape.Tumbler, public val glass: Color = Color(0xFFDCEBEA), public val ink: Color = Color(0xFF14110F),
     /** Drawn art in place of the plain outline, if the container has some. */
     public val art: VesselArt? = null,
+    /** What the opening of an opaque container (a mug, a pot) shows inside, if it is soil rather than the dark of an empty cup. */
+    public val soil: SoilLook? = null,
 )
+
+/** How the soil in a pot looks: [moisture] 0 dust to 1 soaked darkens it, and [contamination] 0 clean to 1 poisoned greys it. */
+public class SoilLook(public val moisture: Float, public val contamination: Float = 0f)
 
 /**
  * A container drawn by hand, in layers: the [back] (the far wall, behind the liquid), the [front] (the near wall and its carved lines, over it) and a [shine], all one picture size. [body] is the part of those pictures,
@@ -114,7 +119,7 @@ public fun DrawScope.drawVessel(
         }
     }
 
-    val ceramic = style.shape == VesselShape.Mug
+    val ceramic = style.shape == VesselShape.Mug || style.shape == VesselShape.Pot
     val art = style.art
     // The far wall of a drawn glass, behind the liquid.
     if (art?.back != null) withTransform({ translate(pivotX, pivotY); scale(s, 1f, Offset.Zero); rotate(a * 180f / PI.toFloat(), Offset.Zero) }) { drawArtLayer(art, art.back, w * ppm, h * ppm, art.tint.copy(alpha = 0.45f)) }
@@ -165,7 +170,7 @@ public fun DrawScope.drawVessel(
             if (ceramic && art.opening != null) drawArtOpening(art, art.opening, vessel, wp, hp)
             return@withTransform
         }
-        val taper = when (style.shape) { VesselShape.Tumbler -> 0.07f; VesselShape.Bottle -> 0.02f; VesselShape.Jug -> 0.03f; VesselShape.Mug -> 0.05f; VesselShape.Jar -> 0.02f }
+        val taper = when (style.shape) { VesselShape.Tumbler -> 0.07f; VesselShape.Bottle -> 0.02f; VesselShape.Jug -> 0.03f; VesselShape.Mug -> 0.05f; VesselShape.Jar -> 0.02f; VesselShape.Pot -> 0.2f }
         val topLeft = -wp; val bottomLeft = -wp * (1f - taper)
         val outline = Path().apply { moveTo(topLeft, -hp); lineTo(bottomLeft, 0f); lineTo(0f - wp * taper * 0f, 0f); lineTo(0f, -hp) }
         if (ceramic) drawPath(outline, style.glass) else drawPath(outline, style.glass.copy(alpha = 0.16f))
@@ -180,6 +185,10 @@ public fun DrawScope.drawVessel(
             }
             VesselShape.Jug -> drawArc(style.ink, -80f, 160f, false, Offset(0f, -hp * 0.85f), Size(wp * 0.34f, hp * 0.6f), style = Stroke(3f))
             VesselShape.Tumbler -> Unit
+            VesselShape.Pot -> {
+                // A thick lip around the top.
+                drawRect(style.ink.copy(alpha = 0.55f), Offset(-wp * 1.06f, -hp), Size(wp * 1.12f, hp * 0.11f), style = Stroke(2f))
+            }
             VesselShape.Jar -> {
                 // A screw lid, a little wider than the neck, and a label band.
                 drawRect(style.ink.copy(alpha = 0.85f), Offset(-wp * 1.03f, -hp * 1.1f), Size(wp * 1.06f, hp * 0.1f))
@@ -192,7 +201,9 @@ public fun DrawScope.drawVessel(
             // The opening seen from above: the rim, the dark inside, and the surface of what is in it a little way down.
             val rimTop = -hp - wp * 0.09f
             drawOval(style.glass, Offset(-wp, rimTop), Size(wp, wp * 0.18f))
-            drawOval(Color(0xFF241B14), Offset(-wp * 0.93f, rimTop + wp * 0.015f), Size(wp * 0.86f, wp * 0.15f))
+            val insideColor = style.soil?.let { lerp(lerp(Color(0xFFB08A5A), Color(0xFF3A2414), it.moisture.coerceIn(0f, 1f)), Color(0xFF5A5F52), 0.5f * it.contamination.coerceIn(0f, 1f)) } ?: Color(0xFF241B14)
+            drawOval(insideColor, Offset(-wp * 0.93f, rimTop + wp * 0.015f), Size(wp * 0.86f, wp * 0.15f))
+            if (style.soil != null) for (k in 0 until 9) drawCircle(Color.Black.copy(alpha = 0.18f), wp * 0.012f, Offset(-wp * (0.2f + 0.6f * ((k * 0.37f) % 1f)), rimTop + wp * (0.05f + 0.09f * ((k * 0.61f) % 1f))))
             if (!vessel.empty) {
                 val depth = (1f - vessel.fill) * hp * 0.28f
                 val surface = Path().apply { addOval(Rect(-wp * 0.93f, rimTop + wp * 0.015f, -wp * 0.07f, rimTop + wp * 0.165f)) }
