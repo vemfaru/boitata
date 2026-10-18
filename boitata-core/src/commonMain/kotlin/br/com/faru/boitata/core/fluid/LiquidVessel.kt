@@ -105,6 +105,19 @@ public class LiquidVessel(
     private var lateral = 0f
     private var lastOmega = 0f
 
+    /** What clings to the lip after it has poured or spilled, as an area in m^2: beads form there and run off one at a time (see [takeDribbleDrop]). It comes out of [volume], so nothing is made. */
+    public var dribble: Float = 0f
+        private set
+    private var dribbleTimer = 0f
+    private var pendingDrop = 0f
+    private var wasSpilling = false
+
+    /** How much clings to the lip when a spill stops, as a share of the container's cross-section. */
+    private val dribbleShare = 0.006f
+
+    /** The drop that has just left the lip, as an area in m^2 (0 if none has since you last asked): the caller lets it fall, or run down the side. Ask once a step. */
+    public fun takeDribbleDrop(): Float { val d = pendingDrop; pendingDrop = 0f; return d }
+
     /** The foot it stands on (see [VesselBase]); change it for a mug's ring foot or a bottle's whole base. */
     public var base: VesselBase = VesselBase(width * 0.45f)
 
@@ -234,7 +247,7 @@ public class LiquidVessel(
     /** Puts the container back upright, still, and filled to [fill] (0..1): a refill, a fresh start. */
     public fun reset(fill: Float, temperature: Float = 20f) {
         this.temperature = temperature; foam = 0f; bubbles = 0
-        bottomWet = 0f; bottomFluid = null; lift = 0f; landHeight = 0f; body.release()
+        bottomWet = 0f; bottomFluid = null; dribble = 0f; pendingDrop = 0f; wasSpilling = false; lift = 0f; landHeight = 0f; body.release()
         body.angle = 0f; body.omega = 0f; surface.reset(); spilled = 0f; spillRate = 0f; jetSpeed = 0f; lateral = 0f; lastOmega = 0f
         volume = width * height * fill.coerceIn(0f, 1f)
     }
@@ -273,7 +286,9 @@ public class LiquidVessel(
             val chord = Tilt.surfaceWidth(width, height, angle, lip).coerceAtLeast(width * 0.12f)
             val head = excess / chord
             val flow = 0.6f * (2f / 3f) * sqrt(2f * 9.81f) * head.pow(1.5f) / (1f + 4f * effectiveViscosity)
-            val out = minOf(excess, flow * dt)
+            // A weir's flow dies away slowly as the level nears the brim; a real glass stops spilling once it is level, so the last film runs off at once.
+            val thin = 1f / (1f + 4f * effectiveViscosity)
+            val out = if (excess < width * height * 0.002f * thin) excess else minOf(excess, maxOf(flow, excess * 6f * thin) * dt)
             volume -= out; spilled += out
             // What runs over the lip runs down the outside, to the foot.
             wetBottom(fluid, out / (width * height) * 8f)
@@ -283,6 +298,19 @@ public class LiquidVessel(
             surface.impulse(0.9f, 0.01f, 0.1f)
             if (volume <= width * height * 0.003f) { spilled += volume; volume = 0f }
         } else { spillRate = 0f; jetSpeed = 0f }
+
+        // When a spill stops, a little clings to the lip; it forms beads that let go one after another.
+        if (wasSpilling && spillRate <= 0f && volume > 0f) { val c = minOf(volume, dribbleShare * width * height); volume -= c; dribble += c; dribbleTimer = 0.25f }
+        wasSpilling = spillRate > 0f
+        if (dribble > 0f) {
+            dribbleTimer -= dt
+            if (dribbleTimer <= 0f) {
+                val d = minOf(dribble, 0.0007f * width * height)
+                dribble -= d; pendingDrop += d
+                dribbleTimer = 0.35f + 0.25f * (1f - minOf(1f, dribble / (dribbleShare * width * height)))
+                if (dribble < 1e-9f) dribble = 0f
+            }
+        }
     }
 
     private fun moveBubbles(dt: Float) {
@@ -310,4 +338,23 @@ public class LiquidVessel(
     public fun lipHeight(): Float = Tilt.lipHeight(width, height, abs(body.angle))
 
     private companion object { const val MAX_BUBBLES = 40 }
+}
+
+/**
+ * Drinks from a container while a mouth is held to it: a gulp ([LiquidVessel.sip]) at once and then one every [interval] seconds, for as long as you call [step] and there is something safe to drink.
+ * [step] returns what was taken this step (an area in m^2, 0 between gulps).
+ */
+public class Sipper(private val interval: Float = 0.55f) {
+    private var wait = 0f
+
+    public fun step(vessel: LiquidVessel, dt: Float, share: Float = 0.08f): Float {
+        if (!vessel.sippable) { wait = 0f; return 0f }
+        wait -= dt
+        if (wait > 0f) return 0f
+        wait = interval
+        return vessel.sip(share)
+    }
+
+    /** Starts afresh: the next [step] gulps at once. */
+    public fun reset() { wait = 0f }
 }

@@ -2,6 +2,7 @@ package br.com.faru.boitata.core.pour
 
 import br.com.faru.boitata.core.fluid.Fluid
 import br.com.faru.boitata.core.fluid.LiquidVessel
+import br.com.faru.boitata.core.fluid.Sipper
 import br.com.faru.boitata.core.fluid.PourSide
 import br.com.faru.boitata.core.fluid.Tilt
 import kotlin.math.abs
@@ -13,12 +14,17 @@ class PourJobTest {
     private fun jar(fill: Float = 0.85f) = LiquidVessel(0.075f, 0.15f, Fluid.Coffee, fill)
     private fun mug(fill: Float = 0.2f) = LiquidVessel(0.11f, 0.09f, Fluid.Milk, fill)
 
+    /** Beads that have let go of a lip, in m^3 (what the bench lets fall): a vessel's dribble leaves its volume and comes back here. */
+    private var beads = 0f
+
     /** Runs the job to its end (or a minute), like the bench: the vessels step, then the job. Returns the volume (m^3) that missed the target. */
     private fun run(job: PourJob, source: LiquidVessel, target: LiquidVessel, seconds: Float = 60f): Float {
         var missed = 0f
         var t = 0f
+        beads = 0f
         while (!job.done && t < seconds) {
             source.step(1f / 60f); target.step(1f / 60f); job.step(1f / 60f)
+            beads += source.takeDribbleDrop() * source.width + target.takeDribbleDrop() * target.width
             missed += job.missed
             t += 1f / 60f
         }
@@ -43,7 +49,7 @@ class PourJobTest {
         val total = j.volume * j.width + m.volume * m.width
         val job = PourJob(j, m, 0.3f, 0.6f)
         val missed = run(job, j, m)
-        val after = j.volume * j.width + m.volume * m.width + (j.spilled - j.spilled) + missed
+        val after = j.volume * j.width + m.volume * m.width + missed + j.dribble * j.width + m.dribble * m.width + beads
         // The mug may have run over too (its own spill), which it counts in m.spilled.
         assertEquals(total, after + m.spilled * m.width, 1e-6f)
     }
@@ -189,5 +195,70 @@ class PourJobTest {
         job.stop()
         run(job, j, m)
         assertTrue(job.done && !j.empty, "stopped with some left")
+    }
+
+    @Test
+    fun aVesselThatHasPouredDribblesAndTheDribbleRunsOut() {
+        val j = jar(0.6f); val m = mug(0.1f)
+        val job = PourJob(j, m, 0.3f, 0.6f)
+        run(job, j, m)
+        assertTrue(j.dribble > 0f || beads > 0f, "something clung to the lip")
+        var drops = 0
+        repeat(60 * 12) { j.step(1f / 60f); if (j.takeDribbleDrop() > 0f) drops++ }
+        assertTrue(drops >= 3, "beads let go one after another: $drops")
+        assertEquals(0f, j.dribble)
+    }
+
+    @Test
+    fun aVesselThatNeverSpilledNeverDribbles() {
+        val v = jar(0.5f)
+        var drops = 0f
+        repeat(600) { v.step(1f / 60f); drops += v.takeDribbleDrop() }
+        assertEquals(0f, drops); assertEquals(0f, v.dribble)
+    }
+
+    @Test
+    fun keepingOnPouringIntoAFullMugMakesItRunOverAndItStopsOnceTheHandLetsGoAndItIsLevel() {
+        val j = jar(0.95f); val m = mug(0.9f)
+        val job = PourJob(j, m, 0.3f, 0.6f, level = PourLevel.UntilStopped)
+        val total = j.volume * j.width + m.volume * m.width
+        var t = 0f
+        var overflowed = false
+        while (t < 40f && !job.done) {
+            j.step(1f / 60f); m.step(1f / 60f); job.step(1f / 60f)
+            if (m.spilling) overflowed = true
+            if (t > 6f && !job.done) job.stop()
+            t += 1f / 60f
+        }
+        assertTrue(overflowed, "a full mug that keeps being poured into runs over")
+        repeat(600) { j.step(1f / 60f); m.step(1f / 60f) }
+        assertTrue(!m.spilling, "and stops once it is level")
+        assertTrue(m.volume <= m.width * m.height + 1e-6f, "level with the brim, not above: ${m.volume}")
+        assertTrue(m.spilled > 0f)
+        assertTrue(j.volume * j.width + m.volume * m.width + m.spilled * m.width <= total + 1e-6f)
+    }
+
+    @Test
+    fun aGlassThatIsOverfilledSpillsTheExcessAtOnceWhenNearlyLevel() {
+        val m = mug(1f)
+        m.pour(m.width * m.height * 0.03f)
+        repeat(60 * 3) { m.step(1f / 60f) }
+        assertTrue(!m.spilling)
+        assertTrue(m.volume <= m.width * m.height + 1e-6f)
+    }
+
+    @Test
+    fun sippingGulpsAtOnceThenAtTheIntervalAndStopsWhenEmpty() {
+        val glass = LiquidVessel(0.07f, 0.1f, Fluid.Coffee, 0.5f)
+        val sipper = Sipper(interval = 0.5f)
+        val first = sipper.step(glass, 1f / 60f)
+        assertTrue(first > 0f, "the first gulp is at once")
+        var gulps = 0
+        repeat(120) { if (sipper.step(glass, 1f / 60f) > 0f) gulps++ }
+        assertTrue(gulps in 3..5, "about one every half second over two seconds: $gulps")
+        repeat(60 * 20) { sipper.step(glass, 1f / 60f) }
+        assertTrue(glass.empty)
+        assertEquals(0f, sipper.step(glass, 1f / 60f))
+        assertEquals(0f, Sipper().step(LiquidVessel(0.07f, 0.1f, Fluid.Kerosene, 0.5f), 1f / 60f), "not safe to drink")
     }
 }

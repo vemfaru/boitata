@@ -151,6 +151,14 @@ public fun DrawScope.drawVessel(
     // The glass, in the container's own frame: outline in ink, the rim as a flat ellipse, a highlight along the wall, the thick base.
     withTransform({ translate(pivotX, pivotY); scale(s, 1f, Offset.Zero); rotate(a * 180f / PI.toFloat(), Offset.Zero) }) {
         val wp = w * ppm; val hp = h * ppm
+        // What clings to the lip after a pour: a bead that runs down the outside as the dribble lets go.
+        if (vessel.dribble > 0f) {
+            val left = (vessel.dribble / (w * h * 0.006f)).coerceIn(0f, 1f)
+            val run = hp * 0.85f * (1f - left)
+            val c = vessel.fluid.color
+            drawLine(c.copy(alpha = 0.5f), Offset(1.5f, -hp), Offset(1.5f, -hp + run), 2.4f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawCircle(c.copy(alpha = 0.9f), 2.4f + 1.6f * left, Offset(1.5f, -hp + run))
+        }
         if (art != null) {
             drawArtLayer(art, art.front, wp, hp, art.tint)
             art.shine?.let { drawArtLayer(art, it, wp, hp, Color.White.copy(alpha = 0.55f)) }

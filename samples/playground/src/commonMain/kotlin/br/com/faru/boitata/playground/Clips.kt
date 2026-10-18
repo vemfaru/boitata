@@ -44,7 +44,7 @@ val Clips: List<Clip> = listOf(
     Clip("light-walls", 10f, Wind.Breeze, stateful = true) { t -> LightStageScene(t, walls = true, script = ::scriptedLamps) },
     Clip("shadow-theatre", 12f, Wind.Calm, stateful = true) { t -> ShadowTheatreScene(t, script = ::scriptedTheatre) },
     Clip("pond", 10f, Wind.Breeze, stateful = true) { t -> PondScene(t, hour = 21f) },
-    Clip("liquids", 23f, Wind.Calm, stateful = true) { t -> LiquidsScene(t, remember { LiquidBench() }, script = ::scriptedBench) },
+    Clip("liquids", 28f, Wind.Calm, stateful = true) { t -> LiquidsScene(t, remember { LiquidBench() }, script = ::scriptedBench) },
     Clip("story-cover", 2f, Wind.Calm) { t -> StoryApp(t, remember { createAudioSink() }, false, MoonPhase.Full, true, {}) },
     Clip("story-theatre", 17.5f, Wind.Calm, stateful = true) { t -> StoryApp(t, remember { createAudioSink() }, false, MoonPhase.Full, true, {}, startAt = 0) },
     Clip("story-forest", 12f, Wind.Breeze, stateful = true) { t -> StoryApp(t, remember { createAudioSink() }, false, MoonPhase.Full, true, {}, startAt = 1) },

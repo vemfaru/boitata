@@ -9,8 +9,8 @@ import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 
-/** Something a container can be told to do, as a menu offers it: [id] says which, [label] is what to show, [enabled] false greys it out (nothing to pour, nowhere to pour it). */
-public class VesselAction(public val id: String, public val label: String, public val enabled: Boolean = true)
+/** Something a container can be told to do, as a menu offers it: [id] says which, [label] is what to show, [enabled] false greys it out (nothing to pour, nowhere to pour it). A [hold] action goes on for as long as it is held down (sipping, pouring) and stops when let go; any other is done by a tap. */
+public class VesselAction(public val id: String, public val label: String, public val enabled: Boolean = true, public val hold: Boolean = false)
 
 /**
  * A hand pouring one container into another: it slides [source] beside [target], lifts it over the rim, tips it (see `TippingBody.hold`) until the liquid runs over the lip at a steady rate, keeps the stream on the
@@ -84,6 +84,7 @@ public class PourJob(public val source: LiquidVessel, public val target: LiquidV
 
         when (phase) {
             Phase.Approach -> {
+                if (stopRequested) { phase = Phase.Return; return }
                 val beside = targetX - dir * (target.width / 2f + source.width / 2f + 0.025f)
                 // To get to the far side it has to go over the target: lift first, then cross.
                 val crossing = (x - targetX) * (beside - targetX) < 0f

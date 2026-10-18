@@ -46,6 +46,11 @@ import br.com.faru.boitata.core.stain.VesselBase
 import androidx.compose.runtime.mutableStateOf
 import br.com.faru.boitata.core.fluid.PourSide
 import br.com.faru.boitata.core.pour.PourLevel
+import br.com.faru.boitata.core.sip.Drinker
+import br.com.faru.boitata.core.sip.SipJob
+import br.com.faru.boitata.core.sip.SipPose
+import br.com.faru.boitata.light.drawSipOverlay
+import br.com.faru.boitata.light.drawVesselAt
 import br.com.faru.boitata.light.SpillPart
 import br.com.faru.boitata.light.drawSpillStream
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -72,6 +77,8 @@ class BenchVessel(
 ) {
     internal val baseFluid: Fluid = vessel.fluid
     internal var job: PourJob? = null
+    internal var sip: SipJob? = null
+    internal var drops = 0
     internal var lastVelocity = 0f
     internal var lastX = x
     internal var lastSpilled = 0f
@@ -122,16 +129,16 @@ class LiquidBench {
 
     /** What the picked vessel can be told to do: heat it, pour it into each vessel it can reach, drop something in, knock it over. */
     fun actionsFor(i: Int): List<VesselAction> {
-        val b = vessels[i]; val busy = b.job != null
+        val b = vessels[i]; val busy = b.job != null || b.sip != null
         return buildList {
             add(VesselAction("heat", "Heat", enabled = !busy))
-            if (b.vessel.fluid.potable) add(VesselAction("sip", "Sip", enabled = !busy && b.vessel.sippable))
+            if (b.vessel.fluid.potable) add(VesselAction("sip", "Hold to sip", enabled = !busy && b.vessel.sippable, hold = true))
             for (j in b.destinations) {
                 val t = vessels[j]
                 val ready = !busy && !b.vessel.empty && t.job == null && abs(t.vessel.body.angle) < 0.1f && ppm > 1f
                 add(VesselAction("pour:$j:shot", "Pour a shot into ${t.label}", enabled = ready && t.vessel.fill < 0.9f))
                 add(VesselAction("pour:$j:top", "Top up ${t.label}", enabled = ready && t.vessel.fill < 0.9f))
-                add(VesselAction("pour:$j:hold", "Pour into ${t.label} until stopped", enabled = ready))
+                add(VesselAction("pour:$j:hold", "Hold to pour into ${t.label}", enabled = ready, hold = true))
             }
             if (busy) add(VesselAction("stop", "Stop pouring"))
             add(VesselAction("drop", "Drop in", enabled = !busy))
@@ -146,6 +153,41 @@ class LiquidBench {
     }
 
     fun closeWheel() { wheelFor = -1 }
+
+    /** An action that goes on while it is held down is pressed ([down]) or let go: sipping takes a gulp now and one every half second after, pouring goes on until it is let go (and runs over if the destination fills). */
+    fun hold(i: Int, action: VesselAction, down: Boolean) {
+        select(i)
+        if (down) {
+            when {
+                action.id == "sip" -> holdSip(true)
+                action.id.startsWith("pour:") -> { val (to, _) = action.id.removePrefix("pour:").split(":"); pourInto(i, to.toInt(), PourLevel.UntilStopped) }
+            }
+        } else {
+            holdSip(false)
+            vessels[i].job?.stop()
+            wheelFor = -1
+        }
+    }
+
+    /** Starts ([down]) or stops sipping from the picked vessel: a gulp now and another every half second while it is held. */
+    fun holdSip(down: Boolean) {
+        if (down) {
+            val b = vessels[selected]
+            if (b.sip != null || b.job != null || !b.vessel.sippable || ppm <= 1f) return
+            // It comes up from where it stands, seen as [drinker] sees it.
+            b.sip = SipJob(b.vessel, drinker, SipPose(width * b.x, tableY + 6f, 1f, 0f), ppm, width, height)
+            sipping = selected; sipActive = true
+        } else { vessels.getOrNull(sipping)?.sip?.release(); sipping = -1 }
+    }
+
+    /** Who is sipping, and so how it is seen (first person for [Drinker.You]). */
+    var drinker by mutableStateOf(Drinker.You)
+
+    /** Whether someone is sipping right now (the wheel steps aside for it). */
+    var sipActive by mutableStateOf(false)
+        private set
+
+    private var sipping = -1
 
     /** Does what the wheel's [action] says to vessel [i]. */
     fun act(i: Int, action: VesselAction) {
@@ -184,6 +226,9 @@ class LiquidBench {
     val puddles = ArrayList<Puddle>()
     val floorPuddles = ArrayList<Puddle>()
     internal val drips = Drips()
+
+    /** Drops falling from a lip that has just poured, onto the table. */
+    internal val tableDrips = Drips()
     internal val world = FireWorld()
     private val bodies = HashMap<Puddle, FireBody>()
     internal fun body(p: Puddle): FireBody? = bodies[p]
@@ -228,26 +273,45 @@ class LiquidBench {
     /** Tips the picked vessel over, toward the way you say (+1 right, -1 left), or toward the middle of the table by default. */
     fun knock(direction: Float = vessels[selected].vessel.pourSide.let { side -> if (side == PourSide.Left) -1f else if (side == PourSide.Right) 1f else if (vessels[selected].x < 0.5f) 1f else -1f }) { vessels[selected].vessel.knock(9f, direction) }
     fun refill() {
-        for (b in vessels) { b.job?.let { b.x = it.homeX / metersPerShare }; b.job = null; b.vessel.reset(b.fill, b.temperature); b.vessel.fluid = b.baseFluid; b.lastSpilled = 0f }
+        for (b in vessels) { b.job?.let { b.x = it.homeX / metersPerShare }; b.job = null; b.sip = null; b.vessel.reset(b.fill, b.temperature); b.vessel.fluid = b.baseFluid; b.lastSpilled = 0f }
         wheelFor = -1
-        puddles.clear(); floorPuddles.clear(); drips.clear(); stains.clear()
+        puddles.clear(); floorPuddles.clear(); drips.clear(); tableDrips.clear(); stains.clear(); sipping = -1; sipActive = false
         for (body in bodies.values) world.extinguish(body.id); bodies.clear()
     }
 
     private fun puddleAt(list: ArrayList<Puddle>, x: Float, fluid: Fluid): Puddle = list.firstOrNull { it.fluid === fluid && abs(it.x - x) < it.radius * ppm + 16f } ?: Puddle(x, fluid).also { list += it }
 
     /** [volume] (m^3) of [ves]'s liquid lands at pixel [landing]: on the table, joining a puddle there or starting one; beyond an end of the table, on the floor. */
-    private fun landOnTable(ves: LiquidVessel, landing: Float, volume: Float) {
-        if (landing < width * tableLeft || landing > width * tableRight) { puddleAt(floorPuddles, landing, ves.fluid).add(volume); return }
-        val puddle = puddles.firstOrNull { it.fluid === ves.fluid && abs(it.x - landing) < it.radius * ppm + 16f } ?: Puddle(landing, ves.fluid).also { p ->
-            p.viscosity = ves.effectiveViscosity
+    private fun landOnTable(ves: LiquidVessel, landing: Float, volume: Float) = landOnTable(ves.fluid, ves.effectiveViscosity, landing, volume)
+
+    private fun landOnTable(fluid: Fluid, viscosity: Float, landing: Float, volume: Float) {
+        if (landing < width * tableLeft || landing > width * tableRight) { puddleAt(floorPuddles, landing, fluid).add(volume); return }
+        val puddle = puddles.firstOrNull { it.fluid === fluid && abs(it.x - landing) < it.radius * ppm + 16f } ?: Puddle(landing, fluid).also { p ->
+            p.viscosity = viscosity
             puddles += p
-            if (ves.fluid.flammable) {
+            if (fluid.flammable) {
                 val id = "puddle${puddles.size}-${elapsed}"
                 bodies[p] = world.add(FireBody(id, Material.SpilledOil) { BodyGeometry(p.x, tableY, 2f * p.radius * ppm, height * 0.14f) })
             }
         }
         puddle.add(volume)
+    }
+
+    /**
+     * A bead lets go of the lip of [b] ([area] m^2 of its liquid). Over the mouth of another container it falls in; from a tipped or lifted vessel it falls to the table; from one standing home it runs down the side
+     * to the foot (which wets it, so it can leave a ring) and every other bead lets go beside the foot.
+     */
+    private fun dribbleDrop(b: BenchVessel, area: Float) {
+        val ves = b.vessel; val volume = area * ves.width
+        val s = if (ves.body.angle >= 0f) 1f else -1f
+        val pivot = pivotPx(b, width, ppm)
+        val x = pivot + s * ves.lipX() * ppm
+        val tilted = abs(ves.body.angle) > 0.25f || ves.lift > 0.005f
+        for (o in vessels) if (o !== b && abs(o.vessel.body.angle) < 0.1f && abs(x - width * o.x) < o.vessel.width * ppm * 0.45f && tilted) { o.vessel.receive(ves.fluid, volume / o.vessel.width, ves.temperature); return }
+        if (tilted) { tableDrips.emit(x, tableY + 6f - (ves.lipHeight() + ves.lift) * ppm, volume, ves.fluid); return }
+        ves.wetBottom(ves.fluid, area / (ves.width * ves.height) * 40f)
+        b.drops++
+        if (b.drops % 2 == 0) tableDrips.emit(pivot + s * 3f, tableY - 10f, volume, ves.fluid)
     }
 
     internal fun step(dt: Float) {
@@ -259,6 +323,8 @@ class LiquidBench {
             b.vessel.accelerate((v - b.lastVelocity) / dt)
             b.lastVelocity = v; b.lastX = b.x
             b.vessel.step(dt)
+            b.sip?.let { it.step(dt); if (it.done) { b.sip = null; sipActive = vessels.any { v -> v.sip != null } } }
+            b.vessel.takeDribbleDrop().let { if (it > 0f && ppm > 1f) dribbleDrop(b, it) }
             // A foot standing in a puddle gets wet; a wet one set down leaves its ring, and one that stands a while seeps a little more.
             if (ppm > 1f && b.vessel.lift < 0.002f) {
                 val centre = width * b.x
@@ -311,6 +377,7 @@ class LiquidBench {
             }
         }
         // The drops fall to the floor and join a puddle there.
+        tableDrips.step(dt, tableY + 6f, height * 4.5f) { x, volume, tag -> (tag as? Fluid ?: Fluid.Water).let { landOnTable(it, it.viscosity, x, volume) } }
         drips.step(dt, floorY, height * 4.5f) { x, volume, tag -> puddleAt(floorPuddles, x, tag as? Fluid ?: Fluid.Water).add(volume) }
         for (p in floorPuddles) p.step(dt)
         stains.step(dt)
@@ -341,7 +408,7 @@ fun LiquidsScene(seconds: () -> Float, bench: LiquidBench, modifier: Modifier = 
         Spacer(Modifier.fillMaxSize().drawBehind { drawBench(art, bench, behind, seconds(), quality()) })
         // The wheel of things the picked vessel can do, hanging from its top.
         val open = bench.wheelFor
-        if (open >= 0) VesselWheel(bench.actionsFor(open), bench.wheelAnchor, onAction = { bench.act(open, it) }, onDismiss = { bench.closeWheel() })
+        if (open >= 0) VesselWheel(bench.actionsFor(open), bench.wheelAnchor, onAction = { bench.act(open, it) }, onDismiss = { bench.closeWheel() }, onHold = { a, down -> bench.hold(open, a, down) }, hidden = bench.sipActive)
     }
 }
 
@@ -391,12 +458,13 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
     for (p in bench.puddles) bench.body(p)?.let { body -> if (body.status == BurnStatus.Burning) drawBurningBody(body, body.geometry().let { g -> BodyGeometry(g.feetX, tableY + h * 0.02f, g.width, g.height) }, t, Wind.Calm, quality) }
     // The mirror image of each vessel in the glossy top.
     clipRect(left, tableY, right, topFront) {
-        for (b in bench.vessels) drawVessel(b.vessel, styleOf(art, b), pivotPx(b, w, ppm), tableY + 6f, ppm, t, quality, behind = behind, mirrored = 0.22f, mirrorOnly = true)
+        for (b in bench.vessels) if (b.sip == null) drawVessel(b.vessel, styleOf(art, b), pivotPx(b, w, ppm), tableY + 6f, ppm, t, quality, behind = behind, mirrored = 0.22f, mirrorOnly = true)
     }
     // A container being poured into is drawn after the one pouring, so the stream runs behind its glass and into its liquid, and the splash is drawn over the liquid it lands on.
     val pouringInto = bench.vessels.mapNotNull { it.job?.target }
     val order = bench.vessels.withIndex().sortedBy { (_, b) -> if (pouringInto.any { it === b.vessel }) 2 else if (b.job != null) 1 else 0 }
     for ((i, b) in order) {
+        if (b.sip != null) continue
         val style = styleOf(art, b)
         val px = pivotPx(b, w, ppm)
         bench.anchorX[i] = w * b.x; bench.anchorY[i] = tableY + 6f - (b.vessel.height * 1.15f + b.vessel.lift) * ppm
@@ -412,10 +480,15 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
         for (src in bench.vessels) if (src.job?.target === b.vessel) drawSpillStream(src.vessel, pivotPx(src, w, ppm), tableY + 6f, ppm, t, quality, SpillPart.Splash)
     }
     // Drops falling off the table's edge.
-    val drips = bench.drips
-    for (k in 0 until drips.count) {
+    for (drips in listOf(bench.drips, bench.tableDrips)) for (k in 0 until drips.count) {
         drawLine(Color(0xFFCFE6E6).copy(alpha = 0.55f), Offset(drips.x[k], drips.y[k] - 9f), Offset(drips.x[k], drips.y[k]), 2.2f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
         drawCircle(Color(0xFFE8F3F3).copy(alpha = 0.8f), 2.6f, Offset(drips.x[k], drips.y[k]))
+    }
+    // Someone sipping: the scene dims and the container is brought up to the eye, over everything.
+    for (b in bench.vessels) b.sip?.let { job ->
+        val view = job.drinker.viewpoint
+        drawSipOverlay(job.progress, view.dim, view.vignette)
+        drawVesselAt(b.vessel, styleOf(art, b), job.pose, ppm, t, quality)
     }
 }
 
@@ -432,6 +505,8 @@ fun scriptedBench(bench: LiquidBench, t: Float) {
     if (crossed(14.8f)) { bench.select(4); bench.knock(1f) }
     if (crossed(15.5f)) bench.vessels[2].vessel.wetBottom(Fluid.Coffee, 1f)
     if (t in 19.5f..20.6f) bench.vessels[2].x = 0.56f + 0.035f * ((t - 19.5f) / 1.1f).coerceIn(0f, 1f)
+    if (crossed(21.5f)) { bench.select(2); bench.holdSip(true) }
+    if (crossed(26f)) bench.holdSip(false)
     bench.scriptT = t
 }
 
