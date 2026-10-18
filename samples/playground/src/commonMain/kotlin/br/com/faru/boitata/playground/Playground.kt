@@ -357,6 +357,8 @@ internal fun LiquidsDemo(seconds: () -> Float) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (m in SurfaceMaterial.All) FilterChip(selected = bench.surface === m, onClick = { bench.surface = m }, label = { Text(m.name) })
                 FilterChip(selected = false, onClick = { bench.wipe() }, label = { Text("Wipe stains") })
+                FilterChip(selected = false, onClick = { bench.waitHours(1f) }, label = { Text("Wait an hour") })
+                FilterChip(selected = false, onClick = { bench.waitHours(12f) }, label = { Text("Wait half a day") })
                 Text("Who sips:", color = controlText())
                 for (d in Drinker.All) FilterChip(selected = bench.drinker === d, onClick = { bench.drinker = d }, label = { Text("${d.name} (${d.viewpoint.name})") })
             }

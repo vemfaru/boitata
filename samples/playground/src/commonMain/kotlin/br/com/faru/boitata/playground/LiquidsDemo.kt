@@ -47,6 +47,13 @@ import androidx.compose.runtime.mutableStateOf
 import br.com.faru.boitata.core.fluid.PourSide
 import br.com.faru.boitata.core.pour.PourLevel
 import br.com.faru.boitata.core.sip.Drinker
+import br.com.faru.boitata.plants.PlantEnvironment
+import br.com.faru.boitata.plants.PlantPatch
+import br.com.faru.boitata.plants.PlantSpecies
+import br.com.faru.boitata.plants.Planter
+import br.com.faru.boitata.plants.Soil
+import br.com.faru.boitata.plants.drawPlant
+import br.com.faru.boitata.light.SoilLook
 import br.com.faru.boitata.core.sip.SipJob
 import br.com.faru.boitata.core.sip.SipPose
 import br.com.faru.boitata.light.drawSipOverlay
@@ -74,6 +81,8 @@ class BenchVessel(
     val vessel: LiquidVessel, val style: VesselStyle, var x: Float, val fill: Float, val temperature: Float = 20f, val art: String? = null,
     /** What the wheel calls it, and the vessels (by index on the bench) it can be poured into. */
     val label: String = "", val destinations: List<Int> = emptyList(),
+    /** A pot of soil and plants, if this container is one: what is poured into it soaks in and the plants answer. */
+    val planter: Planter? = null,
 ) {
     internal val baseFluid: Fluid = vessel.fluid
     internal var job: PourJob? = null
@@ -91,13 +100,19 @@ class BenchVessel(
  * Spilled liquid makes a puddle that spreads over the table; where it reaches an end of the table it runs off in drops that fall to the floor and make a puddle there.
  */
 class LiquidBench {
+    private val fernPot = Planter(LiquidVessel(0.14f, 0.13f, Fluid.Water, 0f), PlantPatch(Soil.Loam, listOf(PlantSpecies.Fern), 0.1f))
+
     val vessels: List<BenchVessel> = listOf(
-        BenchVessel(LiquidVessel(0.07f, 0.10f, Fluid.Kerosene, 0.75f), VesselStyle(VesselShape.Tumbler, glass = Color(0xFFE9E3C8)), 0.16f, 0.75f, art = "kerosene", label = "Kerosene glass", destinations = listOf(3)),
-        BenchVessel(LiquidVessel(0.09f, 0.17f, Fluid.Wine, 0.55f, pourSide = PourSide.Right), VesselStyle(VesselShape.Bottle, glass = Color(0xFFBFD8C4)), 0.29f, 0.55f, art = "bottle", label = "Wine bottle", destinations = listOf(3)),
-        BenchVessel(LiquidVessel(0.11f, 0.09f, Fluid.Coffee, 0.78f), VesselStyle(VesselShape.Mug, glass = Color(0xFFEFE6D2)), 0.56f, 0.78f, temperature = 84f, art = "mug", label = "Mug"),
-        BenchVessel(LiquidVessel(0.074f, 0.10f, Fluid.Water, 0.6f), VesselStyle(VesselShape.Tumbler), 0.70f, 0.6f, art = "tumbler", label = "Tumbler"),
-        BenchVessel(LiquidVessel(0.10f, 0.14f, Fluid.Milk, 0.7f, pourSide = PourSide.Left), VesselStyle(VesselShape.Jug), 0.84f, 0.7f, art = "jug", label = "Milk jug", destinations = listOf(2)),
-        BenchVessel(LiquidVessel(0.075f, 0.15f, Fluid.Coffee, 0.85f), VesselStyle(VesselShape.Jar, glass = Color(0xFFD9CFB8)), 0.42f, 0.85f, temperature = 70f, label = "Coffee jar", destinations = listOf(2)),
+        BenchVessel(LiquidVessel(0.07f, 0.10f, Fluid.Kerosene, 0.75f), VesselStyle(VesselShape.Tumbler, glass = Color(0xFFE9E3C8)), 0.145f, 0.75f, art = "kerosene", label = "Kerosene glass", destinations = listOf(3, 6)),
+        BenchVessel(LiquidVessel(0.09f, 0.17f, Fluid.Wine, 0.55f, pourSide = PourSide.Right), VesselStyle(VesselShape.Bottle, glass = Color(0xFFBFD8C4)), 0.2485f, 0.55f, art = "bottle", label = "Wine bottle", destinations = listOf(3, 6)),
+        BenchVessel(LiquidVessel(0.11f, 0.09f, Fluid.Coffee, 0.78f), VesselStyle(VesselShape.Mug, glass = Color(0xFFEFE6D2)), 0.47f, 0.78f, temperature = 84f, art = "mug", label = "Mug"),
+        BenchVessel(LiquidVessel(0.074f, 0.10f, Fluid.Water, 0.6f), VesselStyle(VesselShape.Tumbler), 0.585f, 0.6f, art = "tumbler", label = "Tumbler", destinations = listOf(6)),
+        BenchVessel(LiquidVessel(0.10f, 0.14f, Fluid.Milk, 0.7f, pourSide = PourSide.Left), VesselStyle(VesselShape.Jug), 0.86f, 0.7f, art = "jug", label = "Milk jug", destinations = listOf(2, 6)),
+        BenchVessel(LiquidVessel(0.075f, 0.15f, Fluid.Coffee, 0.85f), VesselStyle(VesselShape.Jar, glass = Color(0xFFD9CFB8)), 0.354f, 0.85f, temperature = 70f, label = "Coffee jar", destinations = listOf(2, 6)),
+        // A pot of soil with a thirsty fern in it: what is poured in stands on the soil and soaks in, and the fern answers.
+        BenchVessel(
+            fernPot.pot, VesselStyle(VesselShape.Pot, glass = Color(0xFFB8643A)), 0.716f, 0f, label = "Fern pot", planter = fernPot,
+        ),
     )
     var selected by mutableIntStateOf(2)
 
@@ -136,9 +151,15 @@ class LiquidBench {
             for (j in b.destinations) {
                 val t = vessels[j]
                 val ready = !busy && !b.vessel.empty && t.job == null && abs(t.vessel.body.angle) < 0.1f && ppm > 1f
-                add(VesselAction("pour:$j:shot", "Pour a shot into ${t.label}", enabled = ready && t.vessel.fill < 0.9f))
-                add(VesselAction("pour:$j:top", "Top up ${t.label}", enabled = ready && t.vessel.fill < 0.9f))
-                add(VesselAction("pour:$j:hold", "Hold to pour into ${t.label}", enabled = ready, hold = true))
+                if (t.planter != null) {
+                    // A plant is watered: a measure, or for as long as you hold.
+                    add(VesselAction("pour:$j:top", "Water the ${t.label}", enabled = ready && t.vessel.fill < 0.9f))
+                    add(VesselAction("pour:$j:hold", "Hold to water the ${t.label}", enabled = ready, hold = true))
+                } else {
+                    add(VesselAction("pour:$j:shot", "Pour a shot into ${t.label}", enabled = ready && t.vessel.fill < 0.9f))
+                    add(VesselAction("pour:$j:top", "Top up ${t.label}", enabled = ready && t.vessel.fill < 0.9f))
+                    add(VesselAction("pour:$j:hold", "Hold to pour into ${t.label}", enabled = ready, hold = true))
+                }
             }
             if (busy) add(VesselAction("stop", "Stop pouring"))
             add(VesselAction("drop", "Drop in", enabled = !busy))
@@ -242,8 +263,9 @@ class LiquidBench {
     fun wipe() { stains.clear() }
 
     init {
+        fernPot.reset(0.1f, 0.2f)
         // Feet: a tumbler and a bottle stand on a thin rim, a mug on a ring foot, a jug on its whole base.
-        val feet = listOf(VesselBase(0.0315f, 0.12f), VesselBase(0.04f, 0.2f), VesselBase(0.045f, 0.3f), VesselBase(0.033f, 0.12f), VesselBase(0.045f))
+        val feet = listOf(VesselBase(0.0315f, 0.12f), VesselBase(0.04f, 0.2f), VesselBase(0.045f, 0.3f), VesselBase(0.033f, 0.12f), VesselBase(0.045f), VesselBase(0.03f, 0.1f), VesselBase(0.055f))
         for ((b, foot) in vessels.zip(feet)) b.vessel.base = foot
         // A flame on the left of the bench: a spill that reaches it, if it burns, catches.
         world.add(FireBody("flame", Material.Campfire) { BodyGeometry(width * 0.1f, tableY, height * 0.14f, height * 0.3f) })
@@ -273,7 +295,7 @@ class LiquidBench {
     /** Tips the picked vessel over, toward the way you say (+1 right, -1 left), or toward the middle of the table by default. */
     fun knock(direction: Float = vessels[selected].vessel.pourSide.let { side -> if (side == PourSide.Left) -1f else if (side == PourSide.Right) 1f else if (vessels[selected].x < 0.5f) 1f else -1f }) { vessels[selected].vessel.knock(9f, direction) }
     fun refill() {
-        for (b in vessels) { b.job?.let { b.x = it.homeX / metersPerShare }; b.job = null; b.sip = null; b.vessel.reset(b.fill, b.temperature); b.vessel.fluid = b.baseFluid; b.lastSpilled = 0f }
+        for (b in vessels) { b.job?.let { b.x = it.homeX / metersPerShare }; b.job = null; b.sip = null; b.vessel.reset(b.fill, b.temperature); b.vessel.fluid = b.baseFluid; b.planter?.reset(0.1f, 0.2f); b.lastSpilled = 0f }
         wheelFor = -1
         puddles.clear(); floorPuddles.clear(); drips.clear(); tableDrips.clear(); stains.clear(); sipping = -1; sipActive = false
         for (body in bodies.values) world.extinguish(body.id); bodies.clear()
@@ -314,6 +336,25 @@ class LiquidBench {
         if (b.drops % 2 == 0) tableDrips.emit(pivot + s * 3f, tableY - 10f, volume, ves.fluid)
     }
 
+    /** The plants' day: how bright, hot and windy it is where the pot stands (indoors by a window), and how fast the hours go (an hour in about a minute of watching). */
+    private val indoors = PlantEnvironment(daylight = 1f, light = 0.35f, lightSide = 0.2f, rain = 0f, heat = 0.2f, wind = 0f)
+    private val plantHoursPerSecond = 1f / 60f
+
+    /** Lets the pot soak up what stands in it, the plants live on, and what runs out of the hole in the bottom run onto the table. */
+    private fun tendPlanter(b: BenchVessel, planter: Planter, dt: Float) {
+        planter.step(dt)
+        planter.patch.step(indoors, dt * plantHoursPerSecond)
+        val out = planter.takeDrained()
+        if (out > 0f && ppm > 1f) {
+            val pot = b.vessel
+            pot.wetBottom(Fluid.Water, out / (pot.width * pot.height) * 40f)
+            landOnTable(Fluid.Water, 0f, width * b.x + pot.width * ppm * 0.5f + 6f, out * pot.width)
+        }
+    }
+
+    /** Lets [hours] go by for the plants in every pot at once: a thirsty fern wilts, a watered one perks up. */
+    fun waitHours(hours: Float) { for (b in vessels) b.planter?.let { p -> repeat(4) { p.patch.step(indoors, hours / 4f) } } }
+
     internal fun step(dt: Float) {
         for (b in vessels) {
             // A hand pouring it carries it along the table.
@@ -323,6 +364,7 @@ class LiquidBench {
             b.vessel.accelerate((v - b.lastVelocity) / dt)
             b.lastVelocity = v; b.lastX = b.x
             b.vessel.step(dt)
+            b.planter?.let { tendPlanter(b, it, dt) }
             b.sip?.let { it.step(dt); if (it.done) { b.sip = null; sipActive = vessels.any { v -> v.sip != null } } }
             b.vessel.takeDribbleDrop().let { if (it > 0f && ppm > 1f) dribbleDrop(b, it) }
             // A foot standing in a puddle gets wet; a wet one set down leaves its ring, and one that stands a while seeps a little more.
@@ -412,7 +454,7 @@ fun LiquidsScene(seconds: () -> Float, bench: LiquidBench, modifier: Modifier = 
     }
 }
 
-private fun styleOf(art: Sprites, b: BenchVessel): VesselStyle = b.art?.let { art.vessels[it] }?.let { VesselStyle(b.style.shape, b.style.glass, b.style.ink, art = it) } ?: b.style
+private fun styleOf(art: Sprites, b: BenchVessel): VesselStyle = b.planter?.let { VesselStyle(b.style.shape, b.style.glass, b.style.ink, soil = SoilLook(it.patch.wet.moisture, it.patch.wet.contamination)) } ?: b.art?.let { art.vessels[it] }?.let { VesselStyle(b.style.shape, b.style.glass, b.style.ink, art = it) } ?: b.style
 
 /** Where the corner a vessel tips on is, in pixels: half a width from its middle, toward the way it leans. */
 private fun pivotPx(b: BenchVessel, canvasWidth: Float, ppm: Float): Float = canvasWidth * b.x + (if (b.vessel.body.angle >= 0f) 1f else -1f) * b.vessel.width * ppm / 2f
@@ -424,7 +466,7 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
     // The layout: a wall behind, a table with ends whose top slopes away toward the back, an apron in front, and the floor under it.
     val topBack = h * 0.56f; val topFront = h * 0.72f; val tableY = h * 0.645f; val apron = h * 0.8f; val floorLine = h * 0.86f; val floorY = h * 0.93f
     val left = w * bench.tableLeft; val right = w * bench.tableRight
-    val ppm = h * 2.0f
+    val ppm = h * 1.8f
     bench.metersPerShare = w / ppm
     bench.ppm = ppm; bench.tableY = tableY; bench.floorY = floorY; bench.width = w; bench.height = h
     // Everything behind the glasses, recorded once: the lit wall and floor, a flame, and Maria Bonita behind the table, so there is something to see through the liquid.
@@ -474,6 +516,7 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
         // (kept to the table's top: past its ends there is nothing for the light to land on)
         clipRect(left, topBack, right, topFront) { drawCaustic(b.vessel, px, tableY + 8f, ppm, t, fromLeft = b.x > 0.12f, quality = quality) }
         drawVessel(b.vessel, style, px, tableY + 6f, ppm, t, quality, behind = behind)
+        b.planter?.let { drawFernIn(it, w * b.x, tableY + 6f - b.vessel.height * ppm * 0.98f + b.vessel.width * ppm * 0.02f, b.vessel.height * ppm, t) }
         // A stream into another container is drawn before it (see above); any other spill, whole.
         drawSpillStream(b.vessel, px, tableY + 6f, ppm, t, quality, if (b.job != null) SpillPart.Stream else SpillPart.Whole)
         // Over this container's liquid: the splash of whoever is pouring into it.
@@ -493,24 +536,56 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
 }
 
 /**
- * What a recording shows: the coffee jar's wheel opens and the jar pours into the mug (it slides over, lifts, tips, pours and goes home), the kerosene is tipped toward the flame, the jug of milk is slid to the end of
- * the table and knocked over (it runs off in drops), then the mug, its foot wet with coffee, is set to stand a while and slid aside, which leaves the ring of its foot on the wood.
+ * What a recording shows: the coffee jar's wheel opens and the jar pours into the mug (it slides over, lifts, tips, pours and goes home), the tumbler waters the thirsty fern and half a day goes by, the kerosene is tipped
+ * toward the flame, the jug of milk is knocked over, then the mug, its foot wet with coffee, is set to stand a while and slid aside, which leaves the ring of its foot on the wood, and is sipped from in first person.
  */
 fun scriptedBench(bench: LiquidBench, t: Float) {
     fun crossed(at: Float) = bench.scriptT < at && t >= at
     if (crossed(0.4f)) bench.toggleWheel(5)
     if (crossed(1.8f)) bench.act(5, bench.actionsFor(5).first { it.id == "pour:2:top" })
-    if (crossed(12f)) { bench.select(0); bench.knock(-1f) }
-    if (t in 13f..14.4f) bench.vessels[4].x = 0.84f + 0.02f * ((t - 13f) / 1.4f).coerceIn(0f, 1f)
-    if (crossed(14.8f)) { bench.select(4); bench.knock(1f) }
-    if (crossed(15.5f)) bench.vessels[2].vessel.wetBottom(Fluid.Coffee, 1f)
-    if (t in 19.5f..20.6f) bench.vessels[2].x = 0.56f + 0.035f * ((t - 19.5f) / 1.1f).coerceIn(0f, 1f)
-    if (crossed(21.5f)) { bench.select(2); bench.holdSip(true) }
-    if (crossed(26f)) bench.holdSip(false)
+    // The tumbler of water waters the thirsty fern, and half a day goes by.
+    if (crossed(11f)) bench.act(3, bench.actionsFor(3).first { it.id == "pour:6:top" })
+    if (crossed(17.5f)) bench.waitHours(12f)
+    if (crossed(19f)) { bench.select(0); bench.knock(-1f) }
+    if (crossed(21f)) { bench.select(4); bench.knock(1f) }
+    if (crossed(22.5f)) bench.vessels[2].vessel.wetBottom(Fluid.Coffee, 1f)
+    if (t in 24f..25.1f) bench.vessels[2].x = 0.47f + 0.035f * ((t - 24f) / 1.1f).coerceIn(0f, 1f)
+    if (crossed(26.2f)) { bench.select(2); bench.holdSip(true) }
+    if (crossed(29.5f)) bench.holdSip(false)
     bench.scriptT = t
 }
 
 /** Draws [image] stretched to fill [target], painted [tint]. */
 private fun DrawScope.drawStretched(image: androidx.compose.ui.graphics.ImageBitmap, target: Rect, tint: Color) {
     drawArt(image, target.topLeft, 1f, tint, scaleX = target.width / image.width, scaleY = target.height / image.height)
+}
+
+/** The fern in a pot, growing out of the soil at ([feetX], [feetY]): as grown, thirsty or well as the plant is; [potHeight] is how tall the pot is on screen. */
+@OptIn(br.com.faru.boitata.core.AdvancedBoitataApi::class)
+private fun DrawScope.drawFernIn(planter: Planter, feetX: Float, feetY: Float, potHeight: Float, t: Float) {
+    val plant = planter.patch.plants[0]
+    val species = planter.patch.species[0]
+    val bend = 0.04f * kotlin.math.sin(t * 0.9f)
+    drawPlant(plant, species, 1f, feetX, feetY, bend) {
+        val green = androidx.compose.ui.graphics.lerp(Color(0xFF3E7A36), Color(0xFF8A7A3A), plant.stress.coerceIn(0f, 1f))
+        for (k in -3..3) {
+            val angle = k * 0.34f
+            val len = potHeight * (1.25f - 0.1f * kotlin.math.abs(k))
+            val tipX = feetX + kotlin.math.sin(angle) * len * 0.8f
+            val tipY = feetY - kotlin.math.cos(angle) * len
+            val frond = androidx.compose.ui.graphics.Path().apply {
+                moveTo(feetX, feetY)
+                quadraticTo(feetX + kotlin.math.sin(angle) * len * 0.25f, feetY - len * 0.65f, tipX, tipY)
+            }
+            drawPath(frond, green, style = androidx.compose.ui.graphics.drawscope.Stroke(2.4f, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+            // Leaflets in pairs down the frond.
+            for (j in 1..6) {
+                val u = j / 7f
+                val px = feetX + (tipX - feetX) * u * (1f - 0.1f * u); val py = feetY + (tipY - feetY) * u
+                val leaf = potHeight * 0.16f * (1f - u * 0.6f)
+                drawLine(green, Offset(px, py), Offset(px - leaf, py - leaf * 0.5f), 1.8f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(green, Offset(px, py), Offset(px + leaf, py - leaf * 0.5f), 1.8f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+        }
+    }
 }
