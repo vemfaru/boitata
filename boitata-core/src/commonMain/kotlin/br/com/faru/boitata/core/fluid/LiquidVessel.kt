@@ -120,6 +120,17 @@ public class LiquidVessel(
     /** The drop that has just left the lip, as an area in m^2 (0 if none has since you last asked): the caller lets it fall, or run down the side. Ask once a step. */
     public fun takeDribbleDrop(): Float { val d = pendingDrop; pendingDrop = 0f; return d }
 
+    /** Who hears what happens with this container (a stream, a gulp, a thud): `null` to hear nothing. */
+    public var events: LiquidEvents? = null
+
+    /** How glassy it sounds when set down or knocked over: 0 dull (a clay pot) to 1 glassy. */
+    public var materialTone: Float = 0.7f
+
+    /** Tells [events] that [kind] happened, [strength] 0..1 (see [LiquidCue]). */
+    public fun emit(kind: LiquidCueKind, strength: Float = 1f, tone: Float = materialTone) { events?.onCue(LiquidCue(kind, strength.coerceIn(0f, 1f), this, tone)) }
+
+    private var wasLying = false
+
     /** The foot it stands on (see [VesselBase]); change it for a mug's ring foot or a bottle's whole base. */
     public var base: VesselBase = VesselBase(width * 0.45f)
 
@@ -306,6 +317,13 @@ public class LiquidVessel(
             surface.impulse(0.9f, 0.01f, 0.1f)
             if (volume <= width * height * 0.003f) { spilled += volume; volume = 0f }
         } else { spillRate = 0f; jetSpeed = 0f }
+
+        // What can be heard: the stream over the lip, a boil, and the thud of lying down.
+        if (spillRate > 0f) emit(LiquidCueKind.Stream, (spillRate / (width * height * 0.5f)).coerceIn(0.05f, 1f))
+        if (!empty && boil > 0.05f) emit(LiquidCueKind.Boil, boil)
+        val lying = body.lying
+        if (lying && !wasLying) emit(LiquidCueKind.Knock, 0.9f)
+        wasLying = lying
 
         // When a spill stops, a little clings to the lip; it forms beads that let go one after another.
         if (wasSpilling && spillRate <= 0f && volume > 0f) { val c = minOf(volume, dribbleShare * width * height); volume -= c; dribble += c; dribbleTimer = 0.25f }

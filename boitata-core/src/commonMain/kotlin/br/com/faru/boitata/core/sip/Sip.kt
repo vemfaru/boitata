@@ -105,7 +105,7 @@ public class SipJob(
             }
             Phase.Drink -> {
                 val took = sipper.step(vessel, dt)
-                if (took > 0f) { gulps++; taken += took; gulp = 1f }
+                if (took > 0f) { gulps++; taken += took; gulp = 1f; vessel.emit(br.com.faru.boitata.core.fluid.LiquidCueKind.Gulp) }
                 if (!held || !vessel.sippable) phase = Phase.Lower
             }
             Phase.Lower -> {
