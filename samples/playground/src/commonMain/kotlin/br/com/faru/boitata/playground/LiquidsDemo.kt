@@ -47,6 +47,9 @@ import androidx.compose.runtime.mutableStateOf
 import br.com.faru.boitata.core.fluid.PourSide
 import br.com.faru.boitata.core.pour.PourLevel
 import br.com.faru.boitata.core.sip.Drinker
+import br.com.faru.boitata.core.fluid.LiquidCue
+import br.com.faru.boitata.core.fluid.LiquidCueKind
+import br.com.faru.boitata.core.fluid.LiquidEvents
 import br.com.faru.boitata.plants.PlantEnvironment
 import br.com.faru.boitata.plants.PlantPatch
 import br.com.faru.boitata.plants.PlantSpecies
@@ -270,6 +273,7 @@ class LiquidBench {
         // A flame on the left of the bench: a spill that reaches it, if it burns, catches.
         world.add(FireBody("flame", Material.Campfire) { BodyGeometry(width * 0.1f, tableY, height * 0.14f, height * 0.3f) })
         world.ignite("flame")
+        for ((b, tone) in vessels.zip(listOf(0.85f, 0.8f, 0.35f, 0.85f, 0.4f, 0.75f, 0.2f))) b.vessel.materialTone = tone
         for (b in vessels) b.vessel.also { it.coolingSeconds = 150f; if (b.temperature > 25f) it.heatTo(b.temperature) }
     }
 
@@ -336,6 +340,13 @@ class LiquidBench {
         if (b.drops % 2 == 0) tableDrips.emit(pivot + s * 3f, tableY - 10f, volume, ves.fluid)
     }
 
+    /** Who hears the bench: every container tells it what it does (a stream, a gulp, a thud), and the bench adds the drops that land and the containers set down. */
+    var events: LiquidEvents? = null
+        set(value) { field = value; for (b in vessels) b.vessel.events = value }
+
+    /** Where a container is across the scene, -1 left to 1 right, for the stereo position of its sounds. */
+    fun panOf(vessel: LiquidVessel?): Float = vessels.firstOrNull { it.vessel === vessel }?.let { ((it.x - 0.5f) * 1.6f).coerceIn(-1f, 1f) } ?: 0f
+
     /** The plants' day: how bright, hot and windy it is where the pot stands (indoors by a window), and how fast the hours go (an hour in about a minute of watching). */
     private val indoors = PlantEnvironment(daylight = 1f, light = 0.35f, lightSide = 0.2f, rain = 0f, heat = 0.2f, wind = 0f)
     private val plantHoursPerSecond = 1f / 60f
@@ -372,7 +383,7 @@ class LiquidBench {
                 val centre = width * b.x
                 for (p in puddles) if (abs(p.x - centre) < p.radius * ppm) b.vessel.wetBottom(p.fluid, dt * 0.8f)
                 val atX = centre / ppm
-                if (b.setDown.step(v, dt)) stains.touch(b.vessel, atX, 0f, surface, 0.8f)
+                if (b.setDown.step(v, dt)) { stains.touch(b.vessel, atX, 0f, surface, 0.8f); b.vessel.emit(LiquidCueKind.SetDown, 0.6f) }
                 else if (abs(v) < 0.03f) stains.touch(b.vessel, atX, 0f, surface, dt * 0.15f)
             }
             b.job?.let { job ->
@@ -419,8 +430,8 @@ class LiquidBench {
             }
         }
         // The drops fall to the floor and join a puddle there.
-        tableDrips.step(dt, tableY + 6f, height * 4.5f) { x, volume, tag -> (tag as? Fluid ?: Fluid.Water).let { landOnTable(it, it.viscosity, x, volume) } }
-        drips.step(dt, floorY, height * 4.5f) { x, volume, tag -> puddleAt(floorPuddles, x, tag as? Fluid ?: Fluid.Water).add(volume) }
+        tableDrips.step(dt, tableY + 6f, height * 4.5f) { x, volume, tag -> events?.onCue(LiquidCue(LiquidCueKind.Drip, 0.4f, null, 0.5f)); (tag as? Fluid ?: Fluid.Water).let { landOnTable(it, it.viscosity, x, volume) } }
+        drips.step(dt, floorY, height * 4.5f) { x, volume, tag -> events?.onCue(LiquidCue(LiquidCueKind.Drip, 0.8f, null, 0.5f)); puddleAt(floorPuddles, x, tag as? Fluid ?: Fluid.Water).add(volume) }
         for (p in floorPuddles) p.step(dt)
         stains.step(dt)
         elapsed += dt

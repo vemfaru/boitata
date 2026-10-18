@@ -125,4 +125,17 @@ class PlanterTest {
         assertTrue(p.patch.wet.moisture > before + 0.15f, "${p.patch.wet.moisture} vs $before")
         assertTrue(job.delivered > 0f)
     }
+
+    @Test
+    fun soakingIsHeardAsItGoesOnAndStopsWhenNothingStands() {
+        val p = planter()
+        val levels = mutableListOf<Float>()
+        p.pot.events = br.com.faru.boitata.core.fluid.LiquidEvents { if (it.kind == br.com.faru.boitata.core.fluid.LiquidCueKind.Soak) levels += it.strength }
+        p.pot.pour(p.pot.width * p.pot.height * 0.1f)
+        run(p, 40f)
+        assertTrue(levels.isNotEmpty() && levels.max() > 0f)
+        val count = levels.size
+        run(p, 20f)
+        assertEquals(count, levels.size, "quiet once nothing is left standing")
+    }
 }

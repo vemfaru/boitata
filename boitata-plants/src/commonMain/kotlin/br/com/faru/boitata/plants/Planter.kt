@@ -59,6 +59,9 @@ public class Planter(public val pot: LiquidVessel, public val patch: PlantPatch,
             val rate = (0.1f + 0.6f * patch.soil.drainage) * (1f - wet.moisture)
             val soak = min(standing, standing * (1f - exp(-rate * dt)) + 1e-9f)
             pot.drain(soak)
+            // Heard while it soaks in at a rate you can hear, not for the last few drops.
+            val heard = soak / dt / (pot.width * pot.height * 0.1f)
+            if (heard > 0.02f) pot.emit(br.com.faru.boitata.core.fluid.LiquidCueKind.Soak, heard.coerceAtMost(1f))
             wet.moisture = (wet.moisture + soak * effect.hydrates / poreArea).coerceIn(0f, 1f)
             wet.contamination = (wet.contamination + soak / poreArea * effect.toxicity * 1.5f).coerceIn(0f, 1f)
         }

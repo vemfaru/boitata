@@ -19,8 +19,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableIntStateOf
 import br.com.faru.boitata.audio.AudioSink
 import br.com.faru.boitata.audio.BoitataAudio
+import br.com.faru.boitata.audio.LiquidAudio
+import br.com.faru.boitata.audio.LiquidAudioPlayer
 import br.com.faru.boitata.audio.createAudioSink
 import br.com.faru.boitata.core.sky.SkyWeather
 import br.com.faru.boitata.core.sky.StormModel
@@ -43,6 +46,7 @@ import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.surface.PaneWeather
 import br.com.faru.boitata.core.surface.SurfaceClimate
 import br.com.faru.boitata.core.fluid.Fluid
+import br.com.faru.boitata.core.fluid.LiquidCueKind
 import br.com.faru.boitata.core.stain.SurfaceMaterial
 import br.com.faru.boitata.core.sip.Drinker
 import br.com.faru.boitata.core.sky.DayClock
@@ -96,7 +100,7 @@ fun PlaygroundApp() {
                     Demo.Stage -> LightStageDemo(seconds)
                     Demo.Theatre -> ShadowTheatreDemo(seconds)
                     Demo.Pond -> PondDemo(seconds, moon, southern)
-                    Demo.Liquids -> LiquidsDemo(seconds)
+                    Demo.Liquids -> LiquidsDemo(seconds, sink, sound)
                     Demo.Burn -> BurnDemo(seconds, sink, sound)
                     Demo.Fire -> FireDemo(seconds, sink, sound)
                 }
@@ -324,8 +328,12 @@ internal fun PondDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) 
 }
 
 @Composable
-internal fun LiquidsDemo(seconds: () -> Float) {
+internal fun LiquidsDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
     val bench = remember { LiquidBench() }
+    // What happens on the bench is heard: every container tells the player, which plays it where the container stands.
+    val player = remember(sink) { LiquidAudioPlayer(sink, panOf = { bench.panOf(it) }) }
+    DisposableEffect(bench, player) { bench.events = player; onDispose { bench.events = null } }
+    var soundVersion by remember { mutableIntStateOf(0) }
     val sel = bench.selected
     val current = bench.fluid
     // The sliders show the picked vessel's liquid, and move it when you drag them.
@@ -335,7 +343,7 @@ internal fun LiquidsDemo(seconds: () -> Float) {
     var cloud by remember(sel, version) { mutableFloatStateOf(current.turbidity) }
     var index by remember(sel, version) { mutableFloatStateOf(current.index) }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { LiquidsScene(seconds, bench) }
+        Box(Modifier.weight(1f)) { LiquidsScene(seconds, bench); LiquidAudio(player, sound) }
         Controls {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = false, onClick = { bench.pour() }, label = { Text("Pour") })
@@ -361,6 +369,13 @@ internal fun LiquidsDemo(seconds: () -> Float) {
                 FilterChip(selected = false, onClick = { bench.waitHours(12f) }, label = { Text("Wait half a day") })
                 Text("Who sips:", color = controlText())
                 for (d in Drinker.All) FilterChip(selected = bench.drinker === d, onClick = { bench.drinker = d }, label = { Text("${d.name} (${d.viewpoint.name})") })
+            }
+            // Which sound goes with which thing that happens: tap to hear it or mute it (needs Sound on, up in the corner).
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Sounds:", color = controlText())
+                @Suppress("UNUSED_VARIABLE") val shown = soundVersion
+                for ((kind, name) in listOf(LiquidCueKind.Stream to "Pour", LiquidCueKind.Splash to "Splash", LiquidCueKind.Gulp to "Gulp", LiquidCueKind.Drip to "Drip", LiquidCueKind.SetDown to "Set down", LiquidCueKind.Knock to "Knock over", LiquidCueKind.Boil to "Boil", LiquidCueKind.Soak to "Soak"))
+                    FilterChip(selected = !player.map.isMuted(kind), onClick = { player.map.setMuted(kind, !player.map.isMuted(kind)); soundVersion++ }, label = { Text(name) })
             }
             Text("Tap a glass to pick it (and drop a ripple in). Drag it along the table and the liquid lags and sloshes. Hot liquids steam, boil and cool; pouring hot coffee mixes by volume and leaves foam. Knock it over: it pours out in a stream into a puddle that spreads, and a puddle that spreads past the end or the front of the table runs off in drops to the floor. Spilled kerosene burns. Choose the picked glass's liquid, or set its viscosity, density, cloudiness and refraction below.", color = controlText())
             Labelled("Viscosity (water 0, honey 1)", viscosity, 0f..1f) { viscosity = it; bench.setFluid(bench.fluid.copy(viscosity = it)) }

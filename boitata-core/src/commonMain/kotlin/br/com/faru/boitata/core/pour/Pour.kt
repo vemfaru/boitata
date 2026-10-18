@@ -79,6 +79,7 @@ public class PourJob(public val source: LiquidVessel, public val target: LiquidV
                 val amount = ran * source.width
                 target.receive(source.fluid, amount / target.width, source.temperature, at = (0.5f + (land - targetX) / target.width).coerceIn(0.05f, 0.95f))
                 delivered += amount
+                target.emit(br.com.faru.boitata.core.fluid.LiquidCueKind.Splash, (amount / target.width / (target.width * target.height) * 40f).coerceIn(0.1f, 1f))
             } else { missed = ran * source.width; missX = land }
         }
 
