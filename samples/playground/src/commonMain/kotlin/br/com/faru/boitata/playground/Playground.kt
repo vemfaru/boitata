@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -44,11 +45,14 @@ import br.com.faru.boitata.core.surface.SurfaceClimate
 import br.com.faru.boitata.core.fluid.Fluid
 import br.com.faru.boitata.core.stain.SurfaceMaterial
 import br.com.faru.boitata.core.sip.Drinker
+import br.com.faru.boitata.core.sky.DayClock
 import br.com.faru.boitata.core.sky.MoonPhase
+import br.com.faru.boitata.core.sky.rememberSmoothMoon
+import br.com.faru.boitata.plants.rememberRunningDay
 import br.com.faru.boitata.core.wind.Wind
 
 /** The demos, in the order of the tabs. */
-enum class Demo(val label: String) { Story("O Fogo que Guarda"), Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Pond("Pond"), Liquids("Liquids"), Burn("Burn"), Fire("Fire") }
+enum class Demo(val label: String) { Story("O Fogo que Guarda"), Forest("Boitatá"), Weather("Weather"), Garden("Garden"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Pond("Pond"), Liquids("Liquids"), Burn("Burn"), Fire("Fire") }
 
 /** The whole playground: pick a demo, play with its controls. The same scenes are what the README's GIFs are rendered from. */
 @Composable
@@ -58,12 +62,17 @@ fun PlaygroundApp() {
         var sound by remember { mutableStateOf(false) }
         // The wind and the moon are the whole playground's: set them once and every scene that has wind or a moon follows.
         var wind by remember { mutableStateOf(Wind.Breeze) }
-        var moon by remember { mutableStateOf(MoonPhase.Full) }
+        // The moon follows the calendar unless a phase was picked by hand; either way it eases into the new phase instead of jumping.
+        var pickedMoon by remember { mutableStateOf<MoonPhase?>(null) }
         var southern by remember { mutableStateOf(true) }
         val sink = remember { createAudioSink() }
         DisposableEffect(sink) { onDispose { sink.release() } }
         BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B0D10)), wind = wind) {
         val seconds = rememberSceneSeconds()
+        val calendar = rememberRunningDay(DayClock.at(7f), hoursPerSecond = 0.5f)
+        val calendarStep by remember { derivedStateOf { (MoonPhase.of(calendar.clock).age * 240f).toInt() } }
+        val calendarMoon = remember(calendarStep) { MoonPhase.ofAge(calendarStep / 240f) }
+        val moon = rememberSmoothMoon(pickedMoon ?: calendarMoon)
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (d in Demo.entries) FilterChip(selected = d == demo, onClick = { demo = d }, label = { Text(d.label) })
@@ -71,7 +80,7 @@ fun PlaygroundApp() {
                 FilterChip(selected = sound, onClick = { sound = !sound; if (sound) sink.unlock() }, label = { Text(if (sound) "Sound on" else "Sound off") })
             }
             WindControls(wind) { wind = it }
-            MoonControls(moon, southern, onPhase = { moon = it }, onHemisphere = { southern = it })
+            MoonControls(pickedMoon, moon, southern, onPhase = { pickedMoon = it }, onHemisphere = { southern = it })
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 ProvideSprites { sprites ->
                 CompositionLocalProvider(LocalSprites provides sprites) {
@@ -79,6 +88,7 @@ fun PlaygroundApp() {
                     Demo.Story -> StoryApp(seconds, sink, sound, moon, southern, onWorkshop = { demo = Demo.Forest })
                     Demo.Forest -> ForestDemo(seconds, sink, sound, moon, southern)
                     Demo.Weather -> WeatherDemo(seconds, sink, sound, moon, southern)
+                    Demo.Garden -> GardenDemo(seconds, moon, southern, calendar)
                     Demo.Window -> WindowDemo(seconds, moon, southern)
                     Demo.Shadows -> ShadowDemo(seconds)
                     Demo.Depth -> DepthDemo(seconds)
@@ -118,10 +128,11 @@ private fun WindControls(wind: Wind, onChange: (Wind) -> Unit) {
 
 /** Which moon, and from which hemisphere: it sets which side is lit. */
 @Composable
-private fun MoonControls(phase: MoonPhase, southern: Boolean, onPhase: (MoonPhase) -> Unit, onHemisphere: (Boolean) -> Unit) {
+private fun MoonControls(picked: MoonPhase?, shown: MoonPhase, southern: Boolean, onPhase: (MoonPhase?) -> Unit, onHemisphere: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Text("Moon", color = controlText())
-        for (p in MoonPhase.All) FilterChip(selected = p === phase, onClick = { onPhase(p) }, label = { Text(p.label) })
+        FilterChip(selected = picked == null, onClick = { onPhase(null) }, label = { Text(if (picked == null) "Calendar: ${shown.label}" else "Calendar") })
+        for (p in MoonPhase.All) FilterChip(selected = p === picked, onClick = { onPhase(p) }, label = { Text(p.label) })
         FilterChip(selected = southern, onClick = { onHemisphere(!southern) }, label = { Text(if (southern) "Southern sky" else "Northern sky") })
     }
 }
@@ -328,15 +339,15 @@ internal fun LiquidsDemo(seconds: () -> Float) {
         Controls {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = false, onClick = { bench.pour() }, label = { Text("Pour") })
-                FilterChip(selected = false, onClick = { bench.pourHot() }, label = { Text("Pour hot coffee") })
-                FilterChip(selected = false, onClick = { bench.heat() }, label = { Text("Heat it") })
-                FilterChip(selected = false, onClick = { bench.drop() }, label = { Text("Drop in") })
-                FilterChip(selected = false, onClick = { bench.knock() }, label = { Text("Knock over") })
                 // Held down, it keeps sipping: a gulp at once and another every half second.
                 val sipSource = remember { MutableInteractionSource() }
                 val sipHeld by sipSource.collectIsPressedAsState()
                 LaunchedEffect(sipHeld) { bench.holdSip(sipHeld) }
                 FilterChip(selected = sipHeld, onClick = {}, interactionSource = sipSource, label = { Text("Hold to sip") })
+                FilterChip(selected = false, onClick = { bench.pourHot() }, label = { Text("Pour hot coffee") })
+                FilterChip(selected = false, onClick = { bench.heat() }, label = { Text("Heat it") })
+                FilterChip(selected = false, onClick = { bench.drop() }, label = { Text("Drop in") })
+                FilterChip(selected = false, onClick = { bench.knock() }, label = { Text("Knock over") })
                 FilterChip(selected = false, onClick = { bench.light() }, label = { Text("Light the spill") })
                 FilterChip(selected = false, onClick = { bench.refill() }, label = { Text("Refill all") })
             }

@@ -8,6 +8,7 @@ boitata-light ───> boitata-core
       └──────────> boitata-scene
 
 boitata-weather ─> boitata-core
+boitata-plants  ─> boitata-core
 ```
 
 
