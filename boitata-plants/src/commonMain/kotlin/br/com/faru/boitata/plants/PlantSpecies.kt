@@ -21,9 +21,16 @@ public class PlantSpecies(
     public val phototropism: Float,
     /** How fast it grows when everything is right, as a share of full height per day. */
     public val growthPerDay: Float = 0.1f,
+    /** How tall it stands above the soil when fully grown and healthy, in metres. What a shelf above it has to leave free; see [fit]. */
+    public val matureHeight: Float = 0.5f,
+    /** How wide its crown spreads when fully grown, in metres; it may overhang its pot and the edge of what it stands on. */
+    public val spread: Float = 0.4f,
+    /** How far its stems hang below the pot's rim, in metres: 0 for an upright plant, more for ivy and pothos. */
+    public val hang: Float = 0f,
 ) {
     init {
         require(lightNeed in 0f..1f && waterNeed in 0f..1f && heatTolerance in 0f..1f) { "needs are 0..1" }
+        require(matureHeight > 0f && spread > 0f && hang >= 0f) { "a plant has a size" }
     }
 
     /** How it answers the wind now, given how full of water it is ([turgor] 0..1) and how wet its leaves are ([wetLeaves] 0..1). A thirsty plant is floppier; wet leaves are heavier. */
@@ -31,12 +38,12 @@ public class PlantSpecies(
         WindResponse.anchored((stiffness * (0.6f + 0.4f * turgor.coerceIn(0f, 1f)) * (1f - 0.2f * wetLeaves.coerceIn(0f, 1f))).coerceIn(0.02f, 1f))
 
     public companion object {
-        public val Fern: PlantSpecies = PlantSpecies(0.25f, 0.8f, 0.2f, 0.12f, 0.8f, 0.5f, 0.08f)
-        public val Grass: PlantSpecies = PlantSpecies(0.7f, 0.45f, 0.5f, 0.12f, 0.5f, 0.2f, 0.2f)
-        public val Flower: PlantSpecies = PlantSpecies(0.75f, 0.55f, 0.35f, 0.2f, 0.7f, 1f, 0.12f)
-        public val Succulent: PlantSpecies = PlantSpecies(0.9f, 0.1f, 0.95f, 0.3f, 0.1f, 0.2f, 0.03f)
-        public val Palm: PlantSpecies = PlantSpecies(0.85f, 0.5f, 0.75f, 0.3f, 0.4f, 0.3f, 0.04f)
-        public val Pine: PlantSpecies = PlantSpecies(0.6f, 0.35f, 0.6f, 0.55f, 0.05f, 0.1f, 0.03f)
+        public val Fern: PlantSpecies = PlantSpecies(0.25f, 0.8f, 0.2f, 0.12f, 0.8f, 0.5f, 0.08f, matureHeight = 0.5f, spread = 0.7f)
+        public val Grass: PlantSpecies = PlantSpecies(0.7f, 0.45f, 0.5f, 0.12f, 0.5f, 0.2f, 0.2f, matureHeight = 0.3f, spread = 0.3f)
+        public val Flower: PlantSpecies = PlantSpecies(0.75f, 0.55f, 0.35f, 0.2f, 0.7f, 1f, 0.12f, matureHeight = 0.4f, spread = 0.3f)
+        public val Succulent: PlantSpecies = PlantSpecies(0.9f, 0.1f, 0.95f, 0.3f, 0.1f, 0.2f, 0.03f, matureHeight = 0.2f, spread = 0.2f)
+        public val Palm: PlantSpecies = PlantSpecies(0.85f, 0.5f, 0.75f, 0.3f, 0.4f, 0.3f, 0.04f, matureHeight = 1.5f, spread = 1.2f)
+        public val Pine: PlantSpecies = PlantSpecies(0.6f, 0.35f, 0.6f, 0.55f, 0.05f, 0.1f, 0.03f, matureHeight = 2f, spread = 1.2f)
     }
 }
 
