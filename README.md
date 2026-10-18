@@ -171,9 +171,9 @@ More in [docs/lighting.md](docs/lighting.md). The playground's **Lights** and **
 
 ### Water, glass and weather
 
-![A bench of glasses: a spilled glass of kerosene runs to the flame and burns](docs/media/liquids.gif)
+![A bench of glasses: a jar of coffee pours into a mug, a spilled glass of kerosene runs to the flame and burns, a wet mug leaves its ring on the wood](docs/media/liquids.gif)
 
-Liquids slosh, ripple, magnify what is behind them, throw a coloured shadow and a caustic, and spill when the container tips over (a stream, a spreading puddle, kerosene that burns). Ponds mirror what stands at their edge and refract what wades in. Windows fog up, frost over and run with rain, and you can wipe them:
+Liquids slosh, ripple, magnify what is behind them, throw a coloured shadow and a caustic, and spill when the container tips over (a stream, a spreading puddle, kerosene that burns), and a wet glass set down leaves the ring of its foot, darkest on bare wood (coffee and wine stay, water dries away). Ponds mirror what stands at their edge and refract what wades in. Windows fog up, frost over and run with rain, and you can wipe them:
 
 ![A frosted window](docs/media/window-frost.gif)
 

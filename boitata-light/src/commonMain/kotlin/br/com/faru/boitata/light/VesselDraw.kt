@@ -27,7 +27,7 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /** How a container looks: a tumbler narrows toward its foot, a bottle has a neck above its body, a jug has a handle. The liquid and the physics are those of the plain box either way (the neck and handle are only drawn). */
-public enum class VesselShape { Tumbler, Bottle, Jug, Mug }
+public enum class VesselShape { Tumbler, Bottle, Jug, Mug, Jar }
 
 /** What the container is made of, for drawing: [glass] tints the walls, [ink] outlines them (the woodcut's black line). */
 public class VesselStyle(
@@ -47,7 +47,7 @@ public class VesselArt(
 )
 
 /**
- * Draws a [LiquidVessel] with its corner (the point it tips on) at ([pivotX], [pivotY]) on the floor, [pixelsPerMeter] big: the glass, the liquid at its level with the surface rippling as the simulation says, a
+ * Draws a [LiquidVessel] with its corner (the point it tips on) at ([pivotX], [floorY]) on the floor (raised by `LiquidVessel.lift` while a hand holds it up), [pixelsPerMeter] big: the glass, the liquid at its level with the surface rippling as the simulation says, a
  * lit highlight along the walls and the opening seen from a little above. It is drawn tipped by the vessel's angle, the liquid staying level in the world as it does.
  * A hot liquid steams (wisps that rise from the surface and sway, thicker the hotter) and, near the boil, bubbles rise through it and burst; foam from a pour floats on top. A [VesselShape.Mug] is opaque
  * ceramic: only the surface of what is in it is seen, through the opening.
@@ -56,17 +56,19 @@ public class VesselArt(
  * is for: a layer the scene has recorded of everything behind the table. Where there is no liquid the glass is clear. [mirrored] draws the vessel flipped about the floor, faint, for a glossy table.
  */
 public fun DrawScope.drawVessel(
-    vessel: LiquidVessel, style: VesselStyle, pivotX: Float, pivotY: Float, pixelsPerMeter: Float, seconds: Float, quality: Quality = Quality.High,
+    vessel: LiquidVessel, style: VesselStyle, pivotX: Float, floorY: Float, pixelsPerMeter: Float, seconds: Float, quality: Quality = Quality.High,
     behind: GraphicsLayer? = null, mirrored: Float = 0f, mirrorOnly: Boolean = false,
 ) {
     if (mirrored > 0.01f) {
         drawIntoCanvas { canvas ->
-            canvas.saveLayer(Rect(0f, pivotY, size.width, size.height), Paint().apply { alpha = mirrored })
-            withTransform({ translate(0f, 2f * pivotY); scale(1f, -1f, Offset.Zero) }) { drawVessel(vessel, style, pivotX, pivotY, pixelsPerMeter, seconds, quality, behind, 0f) }
+            canvas.saveLayer(Rect(0f, floorY, size.width, size.height), Paint().apply { alpha = mirrored })
+            withTransform({ translate(0f, 2f * floorY); scale(1f, -1f, Offset.Zero) }) { drawVessel(vessel, style, pivotX, floorY, pixelsPerMeter, seconds, quality, behind, 0f) }
             canvas.restore()
         }
         if (mirrorOnly) return
     }
+    // A hand holding it up lifts it off the surface it stands on.
+    val pivotY = floorY - vessel.lift * pixelsPerMeter
     val body = vessel.body
     val s = if (body.angle >= 0f) 1f else -1f
     val a = abs(body.angle)
@@ -149,13 +151,21 @@ public fun DrawScope.drawVessel(
     // The glass, in the container's own frame: outline in ink, the rim as a flat ellipse, a highlight along the wall, the thick base.
     withTransform({ translate(pivotX, pivotY); scale(s, 1f, Offset.Zero); rotate(a * 180f / PI.toFloat(), Offset.Zero) }) {
         val wp = w * ppm; val hp = h * ppm
+        // What clings to the lip after a pour: a bead that runs down the outside as the dribble lets go.
+        if (vessel.dribble > 0f) {
+            val left = (vessel.dribble / (w * h * 0.006f)).coerceIn(0f, 1f)
+            val run = hp * 0.85f * (1f - left)
+            val c = vessel.fluid.color
+            drawLine(c.copy(alpha = 0.5f), Offset(1.5f, -hp), Offset(1.5f, -hp + run), 2.4f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawCircle(c.copy(alpha = 0.9f), 2.4f + 1.6f * left, Offset(1.5f, -hp + run))
+        }
         if (art != null) {
             drawArtLayer(art, art.front, wp, hp, art.tint)
             art.shine?.let { drawArtLayer(art, it, wp, hp, Color.White.copy(alpha = 0.55f)) }
             if (ceramic && art.opening != null) drawArtOpening(art, art.opening, vessel, wp, hp)
             return@withTransform
         }
-        val taper = when (style.shape) { VesselShape.Tumbler -> 0.07f; VesselShape.Bottle -> 0.02f; VesselShape.Jug -> 0.03f; VesselShape.Mug -> 0.05f }
+        val taper = when (style.shape) { VesselShape.Tumbler -> 0.07f; VesselShape.Bottle -> 0.02f; VesselShape.Jug -> 0.03f; VesselShape.Mug -> 0.05f; VesselShape.Jar -> 0.02f }
         val topLeft = -wp; val bottomLeft = -wp * (1f - taper)
         val outline = Path().apply { moveTo(topLeft, -hp); lineTo(bottomLeft, 0f); lineTo(0f - wp * taper * 0f, 0f); lineTo(0f, -hp) }
         if (ceramic) drawPath(outline, style.glass) else drawPath(outline, style.glass.copy(alpha = 0.16f))
@@ -170,6 +180,11 @@ public fun DrawScope.drawVessel(
             }
             VesselShape.Jug -> drawArc(style.ink, -80f, 160f, false, Offset(0f, -hp * 0.85f), Size(wp * 0.34f, hp * 0.6f), style = Stroke(3f))
             VesselShape.Tumbler -> Unit
+            VesselShape.Jar -> {
+                // A screw lid, a little wider than the neck, and a label band.
+                drawRect(style.ink.copy(alpha = 0.85f), Offset(-wp * 1.03f, -hp * 1.1f), Size(wp * 1.06f, hp * 0.1f))
+                drawRect(style.ink.copy(alpha = 0.55f), Offset(-wp * 0.98f, -hp * 0.62f), Size(wp * 0.96f, hp * 0.22f), style = Stroke(1.8f))
+            }
             VesselShape.Mug -> drawArc(style.ink, -90f, 180f, false, Offset(0f, -hp * 0.78f), Size(wp * 0.38f, hp * 0.55f), style = Stroke(5f))
         }
         drawPath(outline, style.ink, style = Stroke(2.6f))
@@ -218,16 +233,22 @@ public fun DrawScope.drawVessel(
 }
 
 /**
+ * Which part of a spill [drawSpillStream] draws. Pouring into a container is drawn in two goes so the container can sit between them: the [Stream] first, then the container (so the stream is seen through its
+ * glass and the liquid hides its end), then the [Splash] on top of the liquid it lands on.
+ */
+public enum class SpillPart { Whole, Stream, Splash }
+
+/**
  * The stream running over a vessel's lip while it spills: a parabola from the lip (the speed it leaves with, falling under gravity) to where it lands on the surface, [pixelsPerMeter] big, as thick as the flow says
  * (`Spill.thickness`, a little exaggerated so it shows), with a bright thread down it and a splash where it lands. Draws nothing when nothing is spilling. The vessel's corner is at ([pivotX], [pivotY]) on the surface, as for [drawVessel].
  */
-public fun DrawScope.drawSpillStream(vessel: LiquidVessel, pivotX: Float, pivotY: Float, pixelsPerMeter: Float, seconds: Float, quality: Quality = Quality.High) {
+public fun DrawScope.drawSpillStream(vessel: LiquidVessel, pivotX: Float, pivotY: Float, pixelsPerMeter: Float, seconds: Float, quality: Quality = Quality.High, part: SpillPart = SpillPart.Whole) {
     if (!vessel.spilling) return
     val s = if (vessel.body.angle >= 0f) 1f else -1f
     val ppm = pixelsPerMeter
-    val lipX = vessel.lipX(); val lipZ = vessel.lipHeight()
+    val lipX = vessel.lipX(); val lipZ = vessel.lipHeight() + vessel.lift; val landZ = vessel.landHeight
     val speed = vessel.jetSpeed
-    val fall = br.com.faru.boitata.core.fluid.Spill.fallTime(lipZ)
+    val fall = br.com.faru.boitata.core.fluid.Spill.fallTime(lipZ - landZ)
     val thick = (br.com.faru.boitata.core.fluid.Spill.thickness(vessel.spillRate, speed) * ppm * 9f).coerceIn(2f, 22f)
     val color = vessel.fluid.color
     val steps = if (quality == Quality.Low) 6 else 18
@@ -235,22 +256,26 @@ public fun DrawScope.drawSpillStream(vessel: LiquidVessel, pivotX: Float, pivotY
     for (k in 0..steps) {
         val t = fall * k / steps
         val x = pivotX + s * (lipX + speed * t) * ppm
-        val y = pivotY - (lipZ - 0.5f * 9.81f * t * t).coerceAtLeast(0f) * ppm
+        val y = pivotY - (lipZ - 0.5f * 9.81f * t * t).coerceAtLeast(landZ) * ppm
         if (k == 0) path.moveTo(x, y) else path.lineTo(x, y)
     }
-    drawPath(path, color.copy(alpha = 0.8f), style = Stroke(thick, cap = androidx.compose.ui.graphics.StrokeCap.Round))
-    drawPath(path, Color.White.copy(alpha = 0.35f), style = Stroke(thick * 0.3f, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+    if (part != SpillPart.Splash) {
+        drawPath(path, color.copy(alpha = 0.8f), style = Stroke(thick, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+        drawPath(path, Color.White.copy(alpha = 0.35f), style = Stroke(thick * 0.3f, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+    }
+    if (part == SpillPart.Stream) return
     // The splash where it lands: two rings opening and a few drops thrown up.
     val landX = pivotX + s * (lipX + speed * fall) * ppm
+    val landY = pivotY - landZ * ppm
     for (r in 0..1) {
         val u = br.com.faru.boitata.core.fx.cycle(seconds, 0.6f, r * 0.5f)
-        drawOval(color.copy(alpha = 0.5f * br.com.faru.boitata.core.fx.bump(u)), Offset(landX - thick * (1f + 3f * u), pivotY - thick * 0.3f * (1f + 3f * u)), Size(2f * thick * (1f + 3f * u), thick * 0.6f * (1f + 3f * u)), style = Stroke(1.6f))
+        drawOval(color.copy(alpha = 0.5f * br.com.faru.boitata.core.fx.bump(u)), Offset(landX - thick * (1f + 3f * u), landY - thick * 0.3f * (1f + 3f * u)), Size(2f * thick * (1f + 3f * u), thick * 0.6f * (1f + 3f * u)), style = Stroke(1.6f))
     }
     val noise = br.com.faru.boitata.core.FastNoise(3L)
     for (i in 0 until if (quality == Quality.Low) 2 else 6) {
         val u = br.com.faru.boitata.core.fx.cycle(seconds, 0.5f + 0.3f * noise.at(i, 0), noise.at(i, 1))
         val dx = (noise.at(i, 2) - 0.5f) * thick * 5f * u
-        drawCircle(color.copy(alpha = 0.8f * (1f - u)), 1.8f, Offset(landX + dx, pivotY - thick * 3f * u * (1f - u) * 4f))
+        drawCircle(color.copy(alpha = 0.8f * (1f - u)), 1.8f, Offset(landX + dx, landY - thick * 3f * u * (1f - u) * 4f))
     }
 }
 
@@ -273,7 +298,7 @@ public fun DrawScope.drawPuddle(color: Color, centreX: Float, surfaceY: Float, r
  * Draw on the table before the vessel. [pivotX], [pivotY] are as for [drawVessel]; nothing is drawn for an empty or tipped glass.
  */
 public fun DrawScope.drawCaustic(vessel: LiquidVessel, pivotX: Float, pivotY: Float, pixelsPerMeter: Float, seconds: Float, fromLeft: Boolean, quality: Quality = Quality.High) {
-    if (vessel.empty || abs(vessel.body.angle) > 0.4f) return
+    if (vessel.empty || abs(vessel.body.angle) > 0.4f || vessel.lift > 0.005f) return
     val ppm = pixelsPerMeter
     val dir = if (fromLeft) 1f else -1f                         // the way the shadow goes
     val wp = vessel.width * ppm; val hp = vessel.height * ppm

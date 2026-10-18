@@ -3,6 +3,7 @@ package br.com.faru.boitata.core.fluid
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.exp
 import kotlin.math.sin
 
 /**
@@ -45,11 +46,34 @@ public class TippingBody(public val width: Float, public val height: Float) {
     /** Whether it is standing. */
     public val upright: Boolean get() = angle == 0f && omega == 0f
 
+    /** Which way it may tip: 1 only to the right, -1 only to the left, 0 either (see [PourSide]). A knock toward the other side does nothing, a hand cannot turn it that way and it never rests past upright toward it. */
+    public var allowedSide: Int = 0
+
+    private fun blocked(direction: Float): Boolean = allowedSide != 0 && (if (direction >= 0f) 1 else -1) != allowedSide
+
     /** Knocks it: gives it [speed] radians per second toward the side [direction] (+1 or -1). */
-    public fun knock(speed: Float, direction: Float = 1f) { omega += speed * (if (direction >= 0f) 1f else -1f) }
+    public fun knock(speed: Float, direction: Float = 1f) { if (!blocked(direction)) omega += speed * (if (direction >= 0f) 1f else -1f) }
+
+    private var heldAngle = Float.NaN
+
+    /** Whether a hand holds it (see [hold]). */
+    public val held: Boolean get() = !heldAngle.isNaN()
+
+    /** A hand takes it and turns it toward [angle] (radians, signed like [angle]): it eases there smoothly and cannot fall over while held, however far it is turned. */
+    public fun hold(angle: Float) { heldAngle = if (angle != 0f && blocked(angle)) 0f else angle }
+
+    /** The hand lets go: it falls back or on over by its own weight from wherever it is. */
+    public fun release() { heldAngle = Float.NaN; if (abs(omega) < 0.05f) omega = 0f }
 
     /** Moves it on by [dt] seconds. */
     public fun step(dt: Float) {
+        if (held) {
+            if (dt <= 0f) return
+            val next = angle + (heldAngle - angle) * (1f - exp(-10f * dt))
+            omega = (next - angle) / dt
+            angle = next
+            return
+        }
         var left = dt
         while (left > 0f) {
             val h = minOf(left, 1f / 240f); left -= h
@@ -64,6 +88,7 @@ public class TippingBody(public val width: Float, public val height: Float) {
             if (angle * s < 0f && abs(angle) > 0f && a < 0.02f && omega * s <= 0f) { angle = 0f; omega = 0f }
             if (abs(angle) > HALF_TURN) { angle = HALF_TURN * s; omega = -omega * restitution; if (abs(omega) < 0.4f) omega = 0f }
         }
+        if (allowedSide != 0 && angle * allowedSide < 0f) { angle = 0f; omega = 0f }              // it never goes over to the side it cannot pour from
         if (abs(angle) < 0.0005f && abs(omega) < 0.02f) { angle = 0f; omega = 0f }
     }
 

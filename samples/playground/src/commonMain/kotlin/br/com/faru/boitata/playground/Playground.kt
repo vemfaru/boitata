@@ -24,6 +24,9 @@ import br.com.faru.boitata.audio.BoitataAudio
 import br.com.faru.boitata.audio.createAudioSink
 import br.com.faru.boitata.core.sky.SkyWeather
 import br.com.faru.boitata.core.sky.StormModel
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +42,8 @@ import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.surface.PaneWeather
 import br.com.faru.boitata.core.surface.SurfaceClimate
 import br.com.faru.boitata.core.fluid.Fluid
+import br.com.faru.boitata.core.stain.SurfaceMaterial
+import br.com.faru.boitata.core.sip.Drinker
 import br.com.faru.boitata.core.sky.MoonPhase
 import br.com.faru.boitata.core.wind.Wind
 
@@ -327,11 +332,22 @@ internal fun LiquidsDemo(seconds: () -> Float) {
                 FilterChip(selected = false, onClick = { bench.heat() }, label = { Text("Heat it") })
                 FilterChip(selected = false, onClick = { bench.drop() }, label = { Text("Drop in") })
                 FilterChip(selected = false, onClick = { bench.knock() }, label = { Text("Knock over") })
+                // Held down, it keeps sipping: a gulp at once and another every half second.
+                val sipSource = remember { MutableInteractionSource() }
+                val sipHeld by sipSource.collectIsPressedAsState()
+                LaunchedEffect(sipHeld) { bench.holdSip(sipHeld) }
+                FilterChip(selected = sipHeld, onClick = {}, interactionSource = sipSource, label = { Text("Hold to sip") })
                 FilterChip(selected = false, onClick = { bench.light() }, label = { Text("Light the spill") })
                 FilterChip(selected = false, onClick = { bench.refill() }, label = { Text("Refill all") })
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (f in Fluid.All) FilterChip(selected = current.name == f.name, onClick = { bench.setFluid(f) }, label = { Text(f.name) })
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (m in SurfaceMaterial.All) FilterChip(selected = bench.surface === m, onClick = { bench.surface = m }, label = { Text(m.name) })
+                FilterChip(selected = false, onClick = { bench.wipe() }, label = { Text("Wipe stains") })
+                Text("Who sips:", color = controlText())
+                for (d in Drinker.All) FilterChip(selected = bench.drinker === d, onClick = { bench.drinker = d }, label = { Text("${d.name} (${d.viewpoint.name})") })
             }
             Text("Tap a glass to pick it (and drop a ripple in). Drag it along the table and the liquid lags and sloshes. Hot liquids steam, boil and cool; pouring hot coffee mixes by volume and leaves foam. Knock it over: it pours out in a stream into a puddle that spreads, and a puddle that spreads past the end or the front of the table runs off in drops to the floor. Spilled kerosene burns. Choose the picked glass's liquid, or set its viscosity, density, cloudiness and refraction below.", color = controlText())
             Labelled("Viscosity (water 0, honey 1)", viscosity, 0f..1f) { viscosity = it; bench.setFluid(bench.fluid.copy(viscosity = it)) }

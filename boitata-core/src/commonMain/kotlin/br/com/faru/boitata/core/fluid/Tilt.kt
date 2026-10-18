@@ -51,6 +51,16 @@ public object Tilt {
     /** The most liquid, as an area, the container holds at this tilt without spilling over the lip. */
     public fun capacity(width: Float, height: Float, angle: Float): Float = areaBelow(width, height, angle, lipHeight(width, height, angle))
 
+    /** The tilt (radians) at which [volume] of liquid just reaches the lip: a full container only needs a little, a nearly empty one has to be turned a long way. Upright (0) if it is full or more. */
+    public fun angleToReachLip(width: Float, height: Float, volume: Float): Float {
+        if (volume >= width * height) return 0f
+        var lo = 0f; var hi = HALF_TURN
+        repeat(22) { val mid = (lo + hi) / 2f; if (capacity(width, height, mid) > volume) lo = mid else hi = mid }
+        return (lo + hi) / 2f
+    }
+
+    private const val HALF_TURN = 1.5707964f
+
     /** The world height of the level surface of [volume] of liquid in the container at this tilt (the surface is at the lip if it is full). */
     public fun levelFor(width: Float, height: Float, angle: Float, volume: Float): Float {
         val p = corners(width, height, angle)
