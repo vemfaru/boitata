@@ -309,6 +309,7 @@ The GIFs in this README are drawn offscreen by the same code, frame by frame, so
 | `boitata-scene` | `SceneCamera`, `SceneViewport` (fits a world to any window), `Modifier.worldBounds`, `Modifier.depthDrag` (drag things about a ground, with depth) | core |
 | `boitata-light` | `LightSource`, `LightShade`, `Fire`, `drawFlameTrail`, `CastShadow`, `CastSilhouette`, `WindowLight`, flicker | core, scene |
 | `boitata-weather` | `Rain`, `Snow`, `Fog`, `SkyWindow`, `rememberStorm` (lightning) | core |
+| `boitata-plants` | `PlantSpecies`, `Soil`, `PlantPatch` (water, light, stress and growth that follow the hour, the weather and the wind), `RunningDay`, `drawPlant` | core |
 | `boitata-testing` | `measureScene`: draws a scene frame by frame and tells you its cost and whether it changed each frame (JVM, for tests) | core |
 
 See [docs/architecture.md](docs/architecture.md) for how they fit together.

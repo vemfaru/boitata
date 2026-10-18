@@ -10,6 +10,7 @@ import br.com.faru.boitata.core.light.ShadowMath
 import br.com.faru.boitata.core.light.Transmission
 import br.com.faru.boitata.core.light.WallCast
 import br.com.faru.boitata.core.sky.MoonPhase
+import br.com.faru.boitata.core.sky.SkyModel
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -155,7 +156,7 @@ public class DirectionalLight(
 
     /** Puts this light where the sun is at [hour] (0 to 24): it rises on the left, crosses high at noon and sets on the right, orange at the edges and pale at noon, off at night. */
     public fun followSun(hour: Float) {
-        val t = (hour - 6f) / 12f
+        val t = (hour - SkyModel.SUNRISE) / (SkyModel.SUNSET - SkyModel.SUNRISE)
         if (t <= 0f || t >= 1f) { strength = 0f; arc = -1f; return }
         arc = t
         val angle = PI.toFloat() * t
