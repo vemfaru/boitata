@@ -15,6 +15,7 @@ import kotlin.math.sqrt
  * - [index], the index of refraction: how much it magnifies and bends what is seen through a glass of it (water 1.33, oil 1.47).
  * - [turbidity], 0 clear to 1 opaque (milk).
  * - [flammable]: whether a puddle of it burns.
+ * - [toxicity], 0 harmless to 1 deadly: how much it harms a living thing it is poured on (a plant's roots). Water 0, tea and coffee a little, wine and oil a lot, kerosene and mercury kill. A mix is the volume-weighted average.
  * - [potable]: whether it is safe to drink (water, tea, coffee, wine, milk, honey). A mix is only potable if everything in it is.
  */
 public class Fluid(
@@ -26,6 +27,7 @@ public class Fluid(
     public val flammable: Boolean = false,
     public val density: Float = 1000f,
     public val potable: Boolean = false,
+    public val toxicity: Float = 0f,
 ) {
     /**
      * What this and [other] make together, [thisVolume] of one and [otherVolume] of the other (any one unit): the colour, thickness, refraction, cloudiness and weight are averaged by volume, and it burns if either does.
@@ -39,25 +41,25 @@ public class Fluid(
         fun l(a: Float, b: Float) = a + (b - a) * t
         val major = if (t < 0.5f) this else other; val minor = if (t < 0.5f) other else this
         val label = when { major.name.contains(minor.name) -> major.name; minor.name.contains(major.name) -> minor.name; else -> "${major.name} + ${minor.name}" }
-        return Fluid(label, androidx.compose.ui.graphics.lerp(color, other.color, t), l(viscosity, other.viscosity), l(index, other.index), l(turbidity, other.turbidity), flammable || other.flammable, l(density, other.density), potable && other.potable)
+        return Fluid(label, androidx.compose.ui.graphics.lerp(color, other.color, t), l(viscosity, other.viscosity), l(index, other.index), l(turbidity, other.turbidity), flammable || other.flammable, l(density, other.density), potable && other.potable, l(toxicity, other.toxicity))
     }
 
     /** A variation on this liquid: whatever you give is changed, the rest is kept. */
     public fun copy(
         name: String = this.name, color: Color = this.color, viscosity: Float = this.viscosity, index: Float = this.index, turbidity: Float = this.turbidity,
-        flammable: Boolean = this.flammable, density: Float = this.density, potable: Boolean = this.potable,
-    ): Fluid = Fluid(name, color, viscosity, index, turbidity, flammable, density, potable)
+        flammable: Boolean = this.flammable, density: Float = this.density, potable: Boolean = this.potable, toxicity: Float = this.toxicity,
+    ): Fluid = Fluid(name, color, viscosity, index, turbidity, flammable, density, potable, toxicity)
 
     public companion object {
         public val Water: Fluid = Fluid("Water", Color(0xFF8FD0D8), 0f, 1.33f, density = 1000f, potable = true)
-        public val Tea: Fluid = Fluid("Tea", Color(0xFFB8641E), 0.02f, 1.34f, turbidity = 0.2f, density = 1001f, potable = true)
-        public val Coffee: Fluid = Fluid("Coffee", Color(0xFF3B2316), 0.03f, 1.34f, turbidity = 0.92f, density = 1005f, potable = true)
-        public val Wine: Fluid = Fluid("Wine", Color(0xFF7A1630), 0.04f, 1.35f, turbidity = 0.25f, density = 990f, potable = true)
-        public val Milk: Fluid = Fluid("Milk", Color(0xFFF1EDE2), 0.05f, 1.35f, turbidity = 0.95f, density = 1030f, potable = true)
-        public val Oil: Fluid = Fluid("Oil", Color(0xFFD9A62B), 0.5f, 1.47f, turbidity = 0.1f, flammable = true, density = 920f)
-        public val Kerosene: Fluid = Fluid("Kerosene", Color(0xFFE8D58A), 0.1f, 1.44f, turbidity = 0.05f, flammable = true, density = 800f)
-        public val Honey: Fluid = Fluid("Honey", Color(0xFFD28A1B), 0.95f, 1.49f, turbidity = 0.15f, density = 1420f, potable = true)
-        public val Mercury: Fluid = Fluid("Mercury", Color(0xFFB9C0C8), 0.04f, 1.6f, turbidity = 1f, density = 13534f)
+        public val Tea: Fluid = Fluid("Tea", Color(0xFFB8641E), 0.02f, 1.34f, turbidity = 0.2f, density = 1001f, potable = true, toxicity = 0.03f)
+        public val Coffee: Fluid = Fluid("Coffee", Color(0xFF3B2316), 0.03f, 1.34f, turbidity = 0.92f, density = 1005f, potable = true, toxicity = 0.12f)
+        public val Wine: Fluid = Fluid("Wine", Color(0xFF7A1630), 0.04f, 1.35f, turbidity = 0.25f, density = 990f, potable = true, toxicity = 0.45f)
+        public val Milk: Fluid = Fluid("Milk", Color(0xFFF1EDE2), 0.05f, 1.35f, turbidity = 0.95f, density = 1030f, potable = true, toxicity = 0.15f)
+        public val Oil: Fluid = Fluid("Oil", Color(0xFFD9A62B), 0.5f, 1.47f, turbidity = 0.1f, flammable = true, density = 920f, toxicity = 0.85f)
+        public val Kerosene: Fluid = Fluid("Kerosene", Color(0xFFE8D58A), 0.1f, 1.44f, turbidity = 0.05f, flammable = true, density = 800f, toxicity = 1f)
+        public val Honey: Fluid = Fluid("Honey", Color(0xFFD28A1B), 0.95f, 1.49f, turbidity = 0.15f, density = 1420f, potable = true, toxicity = 0.3f)
+        public val Mercury: Fluid = Fluid("Mercury", Color(0xFFB9C0C8), 0.04f, 1.6f, turbidity = 1f, density = 13534f, toxicity = 1f)
 
         /** The liquids that come with the library. */
         public val All: List<Fluid> = listOf(Water, Tea, Coffee, Wine, Milk, Oil, Kerosene, Honey, Mercury)
@@ -117,6 +119,17 @@ public class LiquidVessel(
 
     /** The drop that has just left the lip, as an area in m^2 (0 if none has since you last asked): the caller lets it fall, or run down the side. Ask once a step. */
     public fun takeDribbleDrop(): Float { val d = pendingDrop; pendingDrop = 0f; return d }
+
+    /** Who hears what happens with this container (a stream, a gulp, a thud): `null` to hear nothing. */
+    public var events: LiquidEvents? = null
+
+    /** How glassy it sounds when set down or knocked over: 0 dull (a clay pot) to 1 glassy. */
+    public var materialTone: Float = 0.7f
+
+    /** Tells [events] that [kind] happened, [strength] 0..1 (see [LiquidCue]). */
+    public fun emit(kind: LiquidCueKind, strength: Float = 1f, tone: Float = materialTone) { events?.onCue(LiquidCue(kind, strength.coerceIn(0f, 1f), this, tone)) }
+
+    private var wasLying = false
 
     /** The foot it stands on (see [VesselBase]); change it for a mug's ring foot or a bottle's whole base. */
     public var base: VesselBase = VesselBase(width * 0.45f)
@@ -180,8 +193,14 @@ public class LiquidVessel(
     /** How thick it is right now: the fluid's viscosity, thinned by heat (it halves for every 25 degrees above 20, and thickens a little when cold). */
     public val effectiveViscosity: Float get() = (fluid.viscosity * kotlin.math.exp(-(temperature - 20f) / 36f)).coerceIn(0f, 1f)
 
-    /** How full it is, 0 to 1 of its upright capacity. */
-    public val fill: Float get() = (volume / (width * height)).coerceIn(0f, 1f)
+    /** Something that is not liquid fills the bottom of it, as a cross-section area in m^2 (the soil in a pot): the liquid has only what is left above it. */
+    public var solid: Float = 0f
+
+    /** The height of the liquid's surface above the floor of the container's base when upright, in meters: what is under it ([solid]) and the liquid itself, spread over the width. */
+    public val surfaceHeight: Float get() = (solid + volume) / width
+
+    /** How full it is, 0 to 1 of its upright capacity (what is left over a [solid], if there is one). */
+    public val fill: Float get() = (volume / (width * height - solid).coerceAtLeast(1e-9f)).coerceIn(0f, 1f)
 
     /** Whether any liquid is left. */
     public val empty: Boolean get() = volume <= width * height * 0.003f
@@ -279,7 +298,7 @@ public class LiquidVessel(
 
         // Spilling: whatever is above what the tilted container can hold runs over the lip, at the rate of a weir.
         val angle = abs(body.angle)
-        val capacity = Tilt.capacity(width, height, angle)
+        val capacity = (Tilt.capacity(width, height, angle) - solid).coerceAtLeast(0f)
         val excess = volume - capacity
         if (excess > 1e-9f) {
             val lip = Tilt.lipHeight(width, height, angle)
@@ -298,6 +317,13 @@ public class LiquidVessel(
             surface.impulse(0.9f, 0.01f, 0.1f)
             if (volume <= width * height * 0.003f) { spilled += volume; volume = 0f }
         } else { spillRate = 0f; jetSpeed = 0f }
+
+        // What can be heard: the stream over the lip, a boil, and the thud of lying down.
+        if (spillRate > 0f) emit(LiquidCueKind.Stream, (spillRate / (width * height * 0.5f)).coerceIn(0.05f, 1f))
+        if (!empty && boil > 0.05f) emit(LiquidCueKind.Boil, boil)
+        val lying = body.lying
+        if (lying && !wasLying) emit(LiquidCueKind.Knock, 0.9f)
+        wasLying = lying
 
         // When a spill stops, a little clings to the lip; it forms beads that let go one after another.
         if (wasSpilling && spillRate <= 0f && volume > 0f) { val c = minOf(volume, dribbleShare * width * height); volume -= c; dribble += c; dribbleTimer = 0.25f }

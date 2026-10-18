@@ -19,8 +19,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableIntStateOf
 import br.com.faru.boitata.audio.AudioSink
 import br.com.faru.boitata.audio.BoitataAudio
+import br.com.faru.boitata.audio.LiquidAudio
+import br.com.faru.boitata.audio.LiquidAudioPlayer
 import br.com.faru.boitata.audio.createAudioSink
 import br.com.faru.boitata.core.sky.SkyWeather
 import br.com.faru.boitata.core.sky.StormModel
@@ -30,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -42,13 +46,17 @@ import br.com.faru.boitata.core.clock.rememberSceneSeconds
 import br.com.faru.boitata.core.surface.PaneWeather
 import br.com.faru.boitata.core.surface.SurfaceClimate
 import br.com.faru.boitata.core.fluid.Fluid
+import br.com.faru.boitata.core.fluid.LiquidCueKind
 import br.com.faru.boitata.core.stain.SurfaceMaterial
 import br.com.faru.boitata.core.sip.Drinker
+import br.com.faru.boitata.core.sky.DayClock
 import br.com.faru.boitata.core.sky.MoonPhase
+import br.com.faru.boitata.core.sky.rememberSmoothMoon
+import br.com.faru.boitata.plants.rememberRunningDay
 import br.com.faru.boitata.core.wind.Wind
 
 /** The demos, in the order of the tabs. */
-enum class Demo(val label: String) { Story("O Fogo que Guarda"), Forest("Boitatá"), Weather("Weather"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Pond("Pond"), Liquids("Liquids"), Burn("Burn"), Fire("Fire") }
+enum class Demo(val label: String) { Story("O Fogo que Guarda"), Forest("Boitatá"), Weather("Weather"), Garden("Garden"), Window("Window light"), Shadows("Shadows"), Depth("Depth"), Lights("Lights"), Stage("Light stage"), Theatre("Shadow theatre"), Pond("Pond"), Liquids("Liquids"), Burn("Burn"), Fire("Fire") }
 
 /** The whole playground: pick a demo, play with its controls. The same scenes are what the README's GIFs are rendered from. */
 @Composable
@@ -58,12 +66,17 @@ fun PlaygroundApp() {
         var sound by remember { mutableStateOf(false) }
         // The wind and the moon are the whole playground's: set them once and every scene that has wind or a moon follows.
         var wind by remember { mutableStateOf(Wind.Breeze) }
-        var moon by remember { mutableStateOf(MoonPhase.Full) }
+        // The moon follows the calendar unless a phase was picked by hand; either way it eases into the new phase instead of jumping.
+        var pickedMoon by remember { mutableStateOf<MoonPhase?>(null) }
         var southern by remember { mutableStateOf(true) }
         val sink = remember { createAudioSink() }
         DisposableEffect(sink) { onDispose { sink.release() } }
         BoitataScene(Modifier.fillMaxSize().background(Color(0xFF0B0D10)), wind = wind) {
         val seconds = rememberSceneSeconds()
+        val calendar = rememberRunningDay(DayClock.at(7f), hoursPerSecond = 0.5f)
+        val calendarStep by remember { derivedStateOf { (MoonPhase.of(calendar.clock).age * 240f).toInt() } }
+        val calendarMoon = remember(calendarStep) { MoonPhase.ofAge(calendarStep / 240f) }
+        val moon = rememberSmoothMoon(pickedMoon ?: calendarMoon)
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (d in Demo.entries) FilterChip(selected = d == demo, onClick = { demo = d }, label = { Text(d.label) })
@@ -71,7 +84,7 @@ fun PlaygroundApp() {
                 FilterChip(selected = sound, onClick = { sound = !sound; if (sound) sink.unlock() }, label = { Text(if (sound) "Sound on" else "Sound off") })
             }
             WindControls(wind) { wind = it }
-            MoonControls(moon, southern, onPhase = { moon = it }, onHemisphere = { southern = it })
+            MoonControls(pickedMoon, moon, southern, onPhase = { pickedMoon = it }, onHemisphere = { southern = it })
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 ProvideSprites { sprites ->
                 CompositionLocalProvider(LocalSprites provides sprites) {
@@ -79,6 +92,7 @@ fun PlaygroundApp() {
                     Demo.Story -> StoryApp(seconds, sink, sound, moon, southern, onWorkshop = { demo = Demo.Forest })
                     Demo.Forest -> ForestDemo(seconds, sink, sound, moon, southern)
                     Demo.Weather -> WeatherDemo(seconds, sink, sound, moon, southern)
+                    Demo.Garden -> GardenDemo(seconds, moon, southern, calendar)
                     Demo.Window -> WindowDemo(seconds, moon, southern)
                     Demo.Shadows -> ShadowDemo(seconds)
                     Demo.Depth -> DepthDemo(seconds)
@@ -86,7 +100,7 @@ fun PlaygroundApp() {
                     Demo.Stage -> LightStageDemo(seconds)
                     Demo.Theatre -> ShadowTheatreDemo(seconds)
                     Demo.Pond -> PondDemo(seconds, moon, southern)
-                    Demo.Liquids -> LiquidsDemo(seconds)
+                    Demo.Liquids -> LiquidsDemo(seconds, sink, sound)
                     Demo.Burn -> BurnDemo(seconds, sink, sound)
                     Demo.Fire -> FireDemo(seconds, sink, sound)
                 }
@@ -118,10 +132,11 @@ private fun WindControls(wind: Wind, onChange: (Wind) -> Unit) {
 
 /** Which moon, and from which hemisphere: it sets which side is lit. */
 @Composable
-private fun MoonControls(phase: MoonPhase, southern: Boolean, onPhase: (MoonPhase) -> Unit, onHemisphere: (Boolean) -> Unit) {
+private fun MoonControls(picked: MoonPhase?, shown: MoonPhase, southern: Boolean, onPhase: (MoonPhase?) -> Unit, onHemisphere: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Text("Moon", color = controlText())
-        for (p in MoonPhase.All) FilterChip(selected = p === phase, onClick = { onPhase(p) }, label = { Text(p.label) })
+        FilterChip(selected = picked == null, onClick = { onPhase(null) }, label = { Text(if (picked == null) "Calendar: ${shown.label}" else "Calendar") })
+        for (p in MoonPhase.All) FilterChip(selected = p === picked, onClick = { onPhase(p) }, label = { Text(p.label) })
         FilterChip(selected = southern, onClick = { onHemisphere(!southern) }, label = { Text(if (southern) "Southern sky" else "Northern sky") })
     }
 }
@@ -313,8 +328,12 @@ internal fun PondDemo(seconds: () -> Float, moon: MoonPhase, southern: Boolean) 
 }
 
 @Composable
-internal fun LiquidsDemo(seconds: () -> Float) {
+internal fun LiquidsDemo(seconds: () -> Float, sink: AudioSink, sound: Boolean) {
     val bench = remember { LiquidBench() }
+    // What happens on the bench is heard: every container tells the player, which plays it where the container stands.
+    val player = remember(sink) { LiquidAudioPlayer(sink, panOf = { bench.panOf(it) }) }
+    DisposableEffect(bench, player) { bench.events = player; onDispose { bench.events = null } }
+    var soundVersion by remember { mutableIntStateOf(0) }
     val sel = bench.selected
     val current = bench.fluid
     // The sliders show the picked vessel's liquid, and move it when you drag them.
@@ -324,19 +343,19 @@ internal fun LiquidsDemo(seconds: () -> Float) {
     var cloud by remember(sel, version) { mutableFloatStateOf(current.turbidity) }
     var index by remember(sel, version) { mutableFloatStateOf(current.index) }
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) { LiquidsScene(seconds, bench) }
+        Box(Modifier.weight(1f)) { LiquidsScene(seconds, bench); LiquidAudio(player, sound) }
         Controls {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = false, onClick = { bench.pour() }, label = { Text("Pour") })
-                FilterChip(selected = false, onClick = { bench.pourHot() }, label = { Text("Pour hot coffee") })
-                FilterChip(selected = false, onClick = { bench.heat() }, label = { Text("Heat it") })
-                FilterChip(selected = false, onClick = { bench.drop() }, label = { Text("Drop in") })
-                FilterChip(selected = false, onClick = { bench.knock() }, label = { Text("Knock over") })
                 // Held down, it keeps sipping: a gulp at once and another every half second.
                 val sipSource = remember { MutableInteractionSource() }
                 val sipHeld by sipSource.collectIsPressedAsState()
                 LaunchedEffect(sipHeld) { bench.holdSip(sipHeld) }
                 FilterChip(selected = sipHeld, onClick = {}, interactionSource = sipSource, label = { Text("Hold to sip") })
+                FilterChip(selected = false, onClick = { bench.pourHot() }, label = { Text("Pour hot coffee") })
+                FilterChip(selected = false, onClick = { bench.heat() }, label = { Text("Heat it") })
+                FilterChip(selected = false, onClick = { bench.drop() }, label = { Text("Drop in") })
+                FilterChip(selected = false, onClick = { bench.knock() }, label = { Text("Knock over") })
                 FilterChip(selected = false, onClick = { bench.light() }, label = { Text("Light the spill") })
                 FilterChip(selected = false, onClick = { bench.refill() }, label = { Text("Refill all") })
             }
@@ -346,8 +365,17 @@ internal fun LiquidsDemo(seconds: () -> Float) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (m in SurfaceMaterial.All) FilterChip(selected = bench.surface === m, onClick = { bench.surface = m }, label = { Text(m.name) })
                 FilterChip(selected = false, onClick = { bench.wipe() }, label = { Text("Wipe stains") })
+                FilterChip(selected = false, onClick = { bench.waitHours(1f) }, label = { Text("Wait an hour") })
+                FilterChip(selected = false, onClick = { bench.waitHours(12f) }, label = { Text("Wait half a day") })
                 Text("Who sips:", color = controlText())
                 for (d in Drinker.All) FilterChip(selected = bench.drinker === d, onClick = { bench.drinker = d }, label = { Text("${d.name} (${d.viewpoint.name})") })
+            }
+            // Which sound goes with which thing that happens: tap to hear it or mute it (needs Sound on, up in the corner).
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Sounds:", color = controlText())
+                @Suppress("UNUSED_VARIABLE") val shown = soundVersion
+                for ((kind, name) in listOf(LiquidCueKind.Stream to "Pour", LiquidCueKind.Splash to "Splash", LiquidCueKind.Gulp to "Gulp", LiquidCueKind.Drip to "Drip", LiquidCueKind.SetDown to "Set down", LiquidCueKind.Knock to "Knock over", LiquidCueKind.Boil to "Boil", LiquidCueKind.Soak to "Soak"))
+                    FilterChip(selected = !player.map.isMuted(kind), onClick = { player.map.setMuted(kind, !player.map.isMuted(kind)); soundVersion++ }, label = { Text(name) })
             }
             Text("Tap a glass to pick it (and drop a ripple in). Drag it along the table and the liquid lags and sloshes. Hot liquids steam, boil and cool; pouring hot coffee mixes by volume and leaves foam. Knock it over: it pours out in a stream into a puddle that spreads, and a puddle that spreads past the end or the front of the table runs off in drops to the floor. Spilled kerosene burns. Choose the picked glass's liquid, or set its viscosity, density, cloudiness and refraction below.", color = controlText())
             Labelled("Viscosity (water 0, honey 1)", viscosity, 0f..1f) { viscosity = it; bench.setFluid(bench.fluid.copy(viscosity = it)) }

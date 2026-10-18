@@ -79,6 +79,7 @@ public class PourJob(public val source: LiquidVessel, public val target: LiquidV
                 val amount = ran * source.width
                 target.receive(source.fluid, amount / target.width, source.temperature, at = (0.5f + (land - targetX) / target.width).coerceIn(0.05f, 0.95f))
                 delivered += amount
+                target.emit(br.com.faru.boitata.core.fluid.LiquidCueKind.Splash, (amount / target.width / (target.width * target.height) * 40f).coerceIn(0.1f, 1f))
             } else { missed = ran * source.width; missX = land }
         }
 
@@ -100,7 +101,7 @@ public class PourJob(public val source: LiquidVessel, public val target: LiquidV
                 tilt = (Tilt.angleToReachLip(source.width, source.height, source.volume) + extra).coerceIn(0f, 1.5f)
                 source.body.hold(dir * tilt)
                 // Keep the stream on the middle of the mouth, and the lip over the rim.
-                source.landHeight = target.height * target.fill
+                source.landHeight = target.surfaceHeight
                 val lip = source.lipX() + Spill.reach(source.fallHeight, source.jetSpeed)
                 x = moveToward(x, targetX - dir * (lip + source.width / 2f), dt, 0.5f)
                 liftTo(max(target.height + 0.03f - source.lipHeight(), target.height + 0.015f), dt)
@@ -125,7 +126,7 @@ public class PourJob(public val source: LiquidVessel, public val target: LiquidV
     /** Whether this level of pouring has been poured. */
     private fun reached(): Boolean = when (level) {
         PourLevel.TopUp -> target.fill >= 0.95f
-        is PourLevel.Amount -> target.fill >= 0.95f || delivered >= level.share.coerceIn(0f, 1f) * target.width * target.height * target.width
+        is PourLevel.Amount -> target.fill >= 0.95f || delivered >= level.share.coerceIn(0f, 1f) * (target.width * target.height - target.solid) * target.width
         PourLevel.UntilStopped -> false
     }
 

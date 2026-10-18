@@ -36,6 +36,7 @@ dependencyResolutionManagement {
 include(":boitata-core")
 include(":boitata-light")
 include(":boitata-weather")
+include(":boitata-plants")
 include(":boitata-scene")
 
 include(":samples:playground")
