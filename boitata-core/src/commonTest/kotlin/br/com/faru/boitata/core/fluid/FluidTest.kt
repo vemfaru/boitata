@@ -287,4 +287,39 @@ class DensityTest {
         assertEquals(0.8f, thick.viscosity); assertEquals(1100f, thick.density)
         assertEquals(Fluid.Coffee.color, thick.color); assertEquals(Fluid.Coffee.index, thick.index)
     }
+
+    @Test
+    fun aSipLowersTheLevelByAMouthfulAndReturnsWhatWasTaken() {
+        val glass = LiquidVessel(1f, 2f, fill = 0.5f)
+        val before = glass.volume
+        val taken = glass.sip(share = 0.1f)
+        assertEquals(0.2f, taken, 1e-4f)
+        assertEquals(before - 0.2f, glass.volume, 1e-4f)
+    }
+
+    @Test
+    fun sippingAnEmptyGlassTakesNothingAndNeverGoesBelowEmpty() {
+        val glass = LiquidVessel(1f, 2f, fill = 0.03f)
+        glass.sip(share = 0.5f)
+        assertTrue(glass.volume >= 0f && glass.volume < 1e-6f, "a big sip takes what is left: ${glass.volume}")
+        assertEquals(0f, glass.sip(), 0f)
+    }
+
+    @Test
+    fun overfillingAFullGlassSpillsTheExtra() {
+        val glass = LiquidVessel(1f, 2f, fill = 1f)
+        glass.pour(0.5f)
+        repeat(120) { glass.step(1f / 60f) }
+        assertTrue(glass.spilled > 0.4f, "spilled ${glass.spilled}")
+        assertTrue(glass.volume <= 2f + 0.05f, "back to about full at most: ${glass.volume}")
+    }
+
+    @Test
+    fun onlyPotableLiquidsCanBeSippedAndAMixIsOnlyAsSafeAsItsWorstPart() {
+        assertTrue(LiquidVessel(1f, 2f, Fluid.Coffee, 0.5f).sippable)
+        assertTrue(!LiquidVessel(1f, 2f, Fluid.Kerosene, 0.5f).sippable)
+        assertTrue(!LiquidVessel(1f, 2f, Fluid.Water, 0f).sippable, "nothing to sip")
+        assertTrue(Fluid.Coffee.mix(Fluid.Milk, 1f, 1f).potable)
+        assertTrue(!Fluid.Water.mix(Fluid.Kerosene, 1f, 1f).potable)
+    }
 }
