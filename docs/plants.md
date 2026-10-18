@@ -33,3 +33,7 @@ Read `day.clock` only in draw blocks: it changes every frame.
 ## The moon
 
 `MoonPhase.of(day.clock)` gives the moon for the calendar day, so a long run shows it waxing to full and waning again every 29.53 days. Use `rememberSmoothMoon(target)` when the phase can be changed by hand: the lit part morphs into the new phase over about a second.
+
+## Where it fits
+
+A plant has a size: `PlantSpecies.matureHeight`, `spread` and `hang`, in metres. `species.fit(Surface(width, depth, clearanceAbove, hangRoom), PotSize(width, height), growth = 1f)` says whether a potted plant can stand on a surface and, if not, `TooTall` (the pot and the plant would touch the board above), `TooWide`, `TooDeep` or `HangsTooFar` (trailing stems with no room below the edge). The game builds the `Surface` from its own shelves, desks and floor; the rule is here so every game asks the same question. It checks full size by default, so a plant does not grow into the board above it later; pass `growth` to ask about the plant as it is now.
