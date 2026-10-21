@@ -97,7 +97,14 @@ fun LightShade(source: () -> LightSource?, night: Boolean, modifier: Modifier = 
  * A soft shadow under a flat thing lying on another (a sheet on the platen): its rectangle repeated a few times, offset away from
  * the light and each a little bigger and fainter, so the edge is soft and the shadow falls the way the light does.
  */
-fun Modifier.softDropShadow(light: LightSource?, groundX: Float, groundY: Float, lift: Float = 6f): Modifier = drawBehind {
+fun Modifier.softDropShadow(light: LightSource?, groundX: Float, groundY: Float, lift: Float = 6f): Modifier =
+    drawBehind { drawSoftDropShadow(light, groundX, groundY, lift) }
+
+/** [softDropShadow] with the light read in the draw phase (from [rememberEasedLightState]): a moving light redraws it without recomposing. */
+fun Modifier.softDropShadow(light: () -> LightSource?, groundX: Float, groundY: Float, lift: Float = 6f): Modifier =
+    drawBehind { drawSoftDropShadow(light(), groundX, groundY, lift) }
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSoftDropShadow(light: LightSource?, groundX: Float, groundY: Float, lift: Float) {
     val d = density
     var ux = 0f; var uy = 1f; var a = 0.2f
     if (light != null && light.strength > 0f) {
