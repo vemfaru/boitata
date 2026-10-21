@@ -142,7 +142,9 @@ private fun DrawScope.drawCrystals(pane: PaneWeather, area: Rect, ice: Color) {
             drawLine(ice.copy(alpha = alpha), p, next, 1.6f)
             // Twigs, shorter toward the tip.
             val tw = seg * (0.65f - 0.05f * k)
-            for (sgn in floatArrayOf(-1f, 1f)) drawLine(ice.copy(alpha = alpha * 0.8f), next, Offset(next.x + cos(a + sgn * 0.95f) * tw, next.y + sin(a + sgn * 0.95f) * tw), 1.2f)
+            val twig = ice.copy(alpha = alpha * 0.8f)
+            drawLine(twig, next, Offset(next.x + cos(a - 0.95f) * tw, next.y + sin(a - 0.95f) * tw), 1.2f)
+            drawLine(twig, next, Offset(next.x + cos(a + 0.95f) * tw, next.y + sin(a + 0.95f) * tw), 1.2f)
             p = next
         }
     }

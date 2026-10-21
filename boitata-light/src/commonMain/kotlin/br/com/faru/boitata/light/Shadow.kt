@@ -10,6 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import br.com.faru.boitata.core.clock.rememberSceneQuality
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
@@ -79,56 +81,71 @@ fun CastSilhouette(layers: List<ShadowLayer>, feetX: Float, feetY: Float, footW:
     val pad = 8f
     val minX = minOf(xs.min(), feetX - footW / 2f) - pad; val maxX = maxOf(xs.max(), feetX + footW / 2f) + pad
     val minY = minOf(ys.min(), pivotY - footD / 2f) - pad; val maxY = maxOf(ys.max(), pivotY + footD / 2f, bottom) + pad
+    // A shadow's edge is soft: a blur, wider the longer the shadow, hides what is left of the sampling. The blur is a layer of its own that
+    // is redone whenever the scene redraws, so it follows the scene's quality: less at Medium, none at Low (the footprint stays soft).
+    val blurScale = shadowBlurScale(rememberSceneQuality()())
     Spacer(
         Modifier
             .worldBounds(minX, minY, maxX - minX, maxY - minY)
-            // A shadow's edge is soft: a blur, wider the longer the shadow, hides what is left of the sampling.
-            .blur((3f + 6f * (kotlin.math.abs(sy) + kotlin.math.abs(sx)).coerceAtMost(1.2f)).dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)
-            .drawBehind {
+            .let { m ->
+                if (blurScale <= 0f) m
+                else m.blur(((3f + 6f * (kotlin.math.abs(sy) + kotlin.math.abs(sx)).coerceAtMost(1.2f)) * blurScale).dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)
+            }
+            .drawWithCache {
+                // Everything here depends only on the shadow's geometry, worked out above: made once per change of it, not on every frame.
                 val d = density
                 val bounds = androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height)
                 val feet = Offset((feetX - minX) * d, (pivotY - minY) * d)
-                // A soft footprint under the base.
                 val fw = footW * d; val fd = footD * d
-                drawOval(
-                    Brush.radialGradient(0f to Color.Black.copy(alpha = alpha * 0.9f), 1f to Color.Transparent, center = feet, radius = fw * 0.55f),
-                    topLeft = Offset(feet.x - fw / 2f, feet.y - fd / 2f), size = androidx.compose.ui.geometry.Size(fw, fd),
-                )
-                if (light != null && light.strength > 0f && present < 0.02f) return@drawBehind
+                val footprint = Brush.radialGradient(0f to Color.Black.copy(alpha = alpha * 0.9f), 1f to Color.Transparent, center = feet, radius = fw * 0.55f)
+                val layerPaint = androidx.compose.ui.graphics.Paint()
+                val black = androidx.compose.ui.graphics.ColorFilter.tint(Color.Black)
+                // The silhouette, laid flat: x' = x - sx*dy, y' = -sy*dy about the feet (dy up is negative).
+                val m = androidx.compose.ui.graphics.Matrix()
+                m.values[androidx.compose.ui.graphics.Matrix.ScaleX] = 1f
+                m.values[androidx.compose.ui.graphics.Matrix.SkewX] = -sx
+                m.values[androidx.compose.ui.graphics.Matrix.SkewY] = 0f
+                m.values[androidx.compose.ui.graphics.Matrix.ScaleY] = -sy
+                val sizes = layers.map { layer -> androidx.compose.ui.unit.IntSize((layer.rect.width * d).toInt().coerceAtLeast(1), (layer.rect.height * d).toInt().coerceAtLeast(1)) }
+                // Fade with distance from the foot along the shadow.
+                val tip = Offset(feet.x + sx * (extent + footD * 0.42f) * d, feet.y + sy * (extent + footD * 0.42f) * d)
+                val fade = Brush.linearGradient(0f to Color.Black, 0.6f to Color.Black.copy(alpha = 0.55f), 1f to Color.Transparent, start = feet, end = tip)
+                val silhouetteAlpha = alpha * (if (light != null && light.strength > 0f) present else 1f)
+                onDrawBehind {
+                // A soft footprint under the base.
+                drawOval(footprint, topLeft = Offset(feet.x - fw / 2f, feet.y - fd / 2f), size = androidx.compose.ui.geometry.Size(fw, fd))
+                if (light != null && light.strength > 0f && present < 0.02f) return@onDrawBehind
                 drawIntoCanvas { canvas ->
-                    canvas.saveLayer(bounds, androidx.compose.ui.graphics.Paint())
-                    // The silhouette, laid flat: x' = x - sx*dy, y' = -sy*dy about the feet (dy up is negative).
-                    val m = androidx.compose.ui.graphics.Matrix()
-                    m.values[androidx.compose.ui.graphics.Matrix.ScaleX] = 1f
-                    m.values[androidx.compose.ui.graphics.Matrix.SkewX] = -sx
-                    m.values[androidx.compose.ui.graphics.Matrix.SkewY] = 0f
-                    m.values[androidx.compose.ui.graphics.Matrix.ScaleY] = -sy
+                    canvas.saveLayer(bounds, layerPaint)
                     withTransform({
                         translate(feet.x, feet.y)
                         transform(m)
                         translate(-feet.x, -feet.y)
                     }) {
-                        layers.forEachIndexed { i, layer ->
+                        for (i in layers.indices) {
+                            val layer = layers[i]
                             translate((layer.rect.left - minX) * d, (layer.rect.top - minY) * d) {
                                 // Mipmapped sampling (Medium): the picture is laid flat and shrunk, which aliases badly otherwise. High is bicubic with no mipmaps: it costs several times more and aliases more.
                                 drawImage(
-                                    images[i], dstSize = androidx.compose.ui.unit.IntSize((layer.rect.width * d).toInt().coerceAtLeast(1), (layer.rect.height * d).toInt().coerceAtLeast(1)),
-                                    alpha = alpha * (if (light != null && light.strength > 0f) present else 1f), colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.Black), filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium,
+                                    images[i], dstSize = sizes[i],
+                                    alpha = silhouetteAlpha, colorFilter = black, filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium,
                                 )
                             }
                         }
                     }
-                    // Fade with distance from the foot along the shadow.
-                    val tipY = feet.y + sy * (extent + footD * 0.42f) * d
-                    val tipX = feet.x + sx * (extent + footD * 0.42f) * d
-                    drawRect(
-                        Brush.linearGradient(0f to Color.Black, 0.6f to Color.Black.copy(alpha = 0.55f), 1f to Color.Transparent, start = feet, end = Offset(tipX, tipY)),
-                        blendMode = BlendMode.DstIn,
-                    )
+                    drawRect(fade, blendMode = BlendMode.DstIn)
                     canvas.restore()
+                }
                 }
             },
     )
+}
+
+/** How much of a shadow's blur the scene can afford: all of it at High, some at Medium, none at Low (a blur is a layer redone every frame). */
+fun shadowBlurScale(quality: br.com.faru.boitata.core.clock.Quality): Float = when (quality) {
+    br.com.faru.boitata.core.clock.Quality.High -> 1f
+    br.com.faru.boitata.core.clock.Quality.Medium -> 0.6f
+    br.com.faru.boitata.core.clock.Quality.Low -> 0f
 }
 
 
@@ -149,17 +166,19 @@ fun WallShadow(image: ImageBitmap, rect: Rect, light: LightSource?, gap: Float =
         alpha = (0.18f + 0.3f * light.strength).coerceAtMost(maxAlpha)
     }
     val pad = 24f
+    val blurScale = shadowBlurScale(rememberSceneQuality()())
     Spacer(
         Modifier
             .worldBounds(rect.left + dx - pad, rect.top + dy - pad, rect.width + 2 * pad, rect.height + 2 * pad)
-            .blur(blurDp.dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded)
-            .drawBehind {
+            .let { m -> if (blurScale <= 0f) m else m.blur((blurDp * blurScale).dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded) }
+            .drawWithCache {
                 val d = density
-                translate(pad * d, pad * d) {
-                    drawImage(
-                        image, dstSize = androidx.compose.ui.unit.IntSize((rect.width * d).toInt().coerceAtLeast(1), (rect.height * d).toInt().coerceAtLeast(1)),
-                        alpha = alpha, colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.Black), filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium,
-                    )
+                val dst = androidx.compose.ui.unit.IntSize((rect.width * d).toInt().coerceAtLeast(1), (rect.height * d).toInt().coerceAtLeast(1))
+                val black = androidx.compose.ui.graphics.ColorFilter.tint(Color.Black)
+                onDrawBehind {
+                    translate(pad * d, pad * d) {
+                        drawImage(image, dstSize = dst, alpha = alpha, colorFilter = black, filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium)
+                    }
                 }
             },
     )

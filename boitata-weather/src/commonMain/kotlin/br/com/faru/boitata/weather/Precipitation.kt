@@ -1,5 +1,7 @@
 package br.com.faru.boitata.weather
 
+import br.com.faru.boitata.core.draw.unitGlow
+import br.com.faru.boitata.core.draw.drawGlow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -137,6 +139,8 @@ public fun DrawScope.drawFog(seconds: Float, density: Float, color: Color, seed:
     val banks = quality.scaled(BANKS)
     // Each bank is a soft gradient, the costliest thing here: fewer banks, each a little denser, keeps the same amount of mist.
     val denser = BANKS.toFloat() / banks
+    // One glow for all the banks, stamped per bank (each at its own alpha): no new shader per bank per frame.
+    val glow = unitGlow(color.copy(alpha = 1f))
     for (i in 0 until banks) {
         val speed = 0.01f + 0.02f * noise.at(i, 0)
         val u = noise.at(i, 1) + seconds * speed + carried * FOG_CARRY * (0.7f + 0.6f * noise.at(i, 0))
@@ -144,10 +148,7 @@ public fun DrawScope.drawFog(seconds: Float, density: Float, color: Color, seed:
         val y = h * (0.35f + 0.6f * noise.at(i, 2))
         val r = w * (0.25f + 0.3f * noise.at(i, 3))
         val a = ((0.05f + 0.16f * noise.at(i, 4)) * density.coerceIn(0f, 1f) * (0.8f + 0.2f * sin(seconds * 0.3f + i)) * denser).coerceAtMost(0.5f)
-        drawCircle(
-            Brush.radialGradient(0f to color.copy(alpha = a), 1f to Color.Transparent, center = Offset(x, y), radius = r),
-            radius = r, center = Offset(x, y),
-        )
+        drawGlow(glow, Offset(x, y), r, a)
     }
 }
 

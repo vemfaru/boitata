@@ -34,6 +34,12 @@ BoitataScene(Modifier.fillMaxSize()) {
    them: they draw exactly what you tell them, so reading time in the draw phase and scaling by quality becomes your job.
 4. **Do not snap moving things to whole pixels.** Use `drawImageSmooth` for any picture that moves.
 
+## What the library does for you in the draw phase
+
+- **No shader per particle.** A glow repeated many times a frame (an ember, a fog bank, a cloud puff) is one `unitGlow` stamped with `drawGlow` at each place: a transform instead of a new gradient. Use the same pair in your own `draw*` code.
+- **Made once per change.** Shadows and the light's shading build their brushes, paints and matrices in `drawWithCache`, so a frame that only moves something else costs no allocation.
+- **Blurs follow quality.** A blur is a layer redone whenever the scene redraws: a cast or wall shadow blurs fully at High, less at Medium and not at all at Low (`shadowBlurScale`); the star field and the particles scale with it too.
+
 ## How it is checked
 
 | Check | What it catches | Run it |
@@ -58,7 +64,7 @@ assertTrue(stats.longestStill <= 3, "stood still for ${stats.longestStill} frame
 - **Pre-scaled art and cached tints** (scaling each picture once to the screen size, building colour filters once) are not done: they have to be measured first, and the sampling and snapping fixes
   already took the sky layers from about 61 ms to 19 ms of CPU a frame.
 - **Fire spread keeps state.** `FireWorld` depends on what has already burnt, so unlike rain and snow it is not a function of time alone: it steps at a fixed rate on the scene clock, deterministically for a seed, and costs about the square of the number of things in it per step (fine for dozens of things, not thousands).
-- **`rememberFlicker`** changes every 80 ms, so reading it recomposes about twelve times a second. For a per-frame flicker read the clock in a draw block instead.
+- **`rememberFlicker`** and **`rememberEasedLight`** return plain values: reading them recomposes the caller (twelve times a second for the flicker, every frame of an easing for the light). Where they only feed drawing, use `rememberFlickerState` / `rememberEasedLightState` and read `.value` in the draw block, and pass the light to `LightShade` as a lambda.
 
 ## History
 
