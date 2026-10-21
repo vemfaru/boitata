@@ -1,5 +1,7 @@
 package br.com.faru.boitata.weather
 
+import br.com.faru.boitata.core.draw.unitGlow
+import br.com.faru.boitata.core.draw.drawGlow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -181,7 +183,8 @@ private fun DrawScope.drawSky(sky: SkyState, seconds: Float, parallax: Offset, c
     // Stars: a fixed field that turns slowly, each twinkling in its own time, fewer near the horizon.
     if (sky.stars > 0.01f) {
         val noise = FastNoise(31L)
-        repeat(160) { i ->
+        // The count follows the scene's quality, like every other field of particles.
+        repeat(quality.scaled(STARS)) { i ->
             val bx = noise.at(i, 0); val by = noise.at(i, 1)
             val x = ((bx + seconds * 0.0025f) % 1f) * w + shift
             val y = by * horizonY * 0.96f
@@ -257,6 +260,9 @@ private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, st
         val u = noise.at(i, 1) + seconds * speed + travelled * gain * CLOUD_CARRY
         val x = (((u % 1.3f) + 1.3f) % 1.3f - 0.15f) * w + shift * (0.5f + noise.at(i, 2))
         val scale = w * (0.07f + 0.09f * noise.at(i, 4)) * (0.8f + cover * 0.5f)
+        // Two glows per cloud (its lit rim and its body), stamped per puff: no new shader per puff per frame.
+        val rimGlow = unitGlow(rim.copy(alpha = 0.75f * cover.coerceAtLeast(0.35f)), rim.copy(alpha = 0.35f * cover))
+        val bodyGlow = unitGlow(body.copy(alpha = 0.75f * cover.coerceAtLeast(0.35f)), body.copy(alpha = 0.35f * cover))
         val puffs = 5 + (noise.at(i, 5) * 4).toInt()
         for (p in 0 until puffs) {
             val a = noise.at(i * 17 + p, 6) * 2f * PI.toFloat()
@@ -265,7 +271,7 @@ private fun DrawScope.drawClouds(sky: SkyState, seconds: Float, shift: Float, st
             val r = scale * (0.3f + 0.35f * noise.at(i * 17 + p, 9))
             val c = Offset(px, py)
             val colour = if (py < y) rim else body
-            drawCircle(Brush.radialGradient(0f to colour.copy(alpha = 0.75f * cover.coerceAtLeast(0.35f)), 0.7f to colour.copy(alpha = 0.35f * cover), 1f to Color.Transparent, center = c, radius = r), r, c)
+            drawGlow(if (py < y) rimGlow else bodyGlow, c, r)
         }
     }
 }
@@ -285,3 +291,6 @@ public fun DrawScope.drawAtlasStar(atlas: StarAtlas, index: Int, at: Offset, pix
 
 /** How far clouds move (as a share of the screen) for one unit of the air's travelled distance, before their own gain. */
 private const val CLOUD_CARRY = 0.012f
+
+/** The stars of a clear night at High quality; fewer at Medium and Low. */
+private const val STARS = 160

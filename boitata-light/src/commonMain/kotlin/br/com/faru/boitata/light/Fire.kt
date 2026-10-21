@@ -1,5 +1,7 @@
 package br.com.faru.boitata.light
 
+import br.com.faru.boitata.core.draw.unitGlow
+import br.com.faru.boitata.core.draw.drawGlow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -149,6 +151,8 @@ public fun DrawScope.drawFlameTrail(
     val noise = FastNoise(seed)
     // Tail first, so the hot head is drawn over the cooler body. Between every two points three more blobs run together into one ribbon.
     val steps = when (quality) { Quality.High -> 3; Quality.Medium -> 2; Quality.Low -> 1 }
+    // One glow for every blob of this trail, stamped per blob: a gradient per blob was a new shader dozens of times a frame.
+    val glow = if (quality.softGlow) unitGlow(palette.outer.copy(alpha = 0.3f)) else null
     for (n in last downTo first) {
         for (k in steps - 1 downTo 0) {
             if (n == count - 1 && k > 0) continue
@@ -164,7 +168,7 @@ public fun DrawScope.drawFlameTrail(
             val c = Offset(bx + (noise.at(n, 1) - 0.5f) * width * 0.18f * t, by + (noise.at(n, 2) - 0.5f) * width * 0.18f * t)
             // Up close the blobs are big and overlap a lot, and added together they would burn out to white: thin each one as the body grows.
             val fade = (1f - t * t) * vis / kotlin.math.sqrt(sc.coerceAtLeast(1f))
-            if (quality.softGlow) drawCircle(Brush.radialGradient(0f to palette.outer.copy(alpha = 0.3f * fade), 1f to Color.Transparent, center = c, radius = r * 2.2f), radius = r * 2.2f, center = c, blendMode = BlendMode.Plus)
+            if (glow != null) drawGlow(glow, c, r * 2.2f, fade, BlendMode.Plus)
             drawCircle(lerp(palette.mid, palette.outer, t).copy(alpha = 0.34f * fade), radius = r, center = c, blendMode = BlendMode.Plus)
             drawCircle(palette.core.copy(alpha = 0.12f * fade * (1f - t) * (1f - t)), radius = r * 0.5f, center = c, blendMode = BlendMode.Plus)
         }
