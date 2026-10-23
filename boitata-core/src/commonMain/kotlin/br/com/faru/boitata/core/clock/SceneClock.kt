@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 /** What a scene's clock is allowed to do. */
@@ -31,6 +32,13 @@ public class SceneConfig(
     public val reducedMotion: ReducedMotionMode = ReducedMotionMode.Auto,
     /** Stop the clock while the screen is not in the foreground (a background tab, a locked phone, another app in front). */
     public val pauseWhenNotResumed: Boolean = true,
+    /**
+     * At most this many clock ticks a second (0: one every frame). Compose draws the whole screen on every frame anything asks for, and the
+     * clock asks for every one: on a 120 or 144 Hz screen a scene that moves only by its clock is drawn twice as often as its rain and flames
+     * need. At 100 the clock ticks every frame up to 90 Hz and every other frame above; what animates on its own (a transition, a gesture)
+     * still runs at the screen's rate.
+     */
+    public val maxFps: Int = 0,
 )
 
 public enum class ReducedMotionMode { Auto, On, Off }
@@ -121,7 +129,7 @@ public fun rememberSceneClock(config: SceneConfig = SceneConfig()): SceneClock {
     val state by lifecycle.currentStateAsState()
     val running = !config.pauseWhenNotResumed || state.isAtLeast(Lifecycle.State.RESUMED)
     clock.foreground = running
-    LaunchedEffect(running, reduced, config.adaptiveQuality, config.targetFps) {
+    LaunchedEffect(running, reduced, config.adaptiveQuality, config.targetFps, config.maxFps) {
         if (!running) return@LaunchedEffect
         val governor = QualityGovernor(1f / config.targetFps, config.quality)
         var last = 0L
@@ -140,6 +148,9 @@ public fun rememberSceneClock(config: SceneConfig = SceneConfig()): SceneClock {
                 }
                 last = now
             }
+            // Wait most of a tick before asking for the next frame: the frame that comes is the first vsync after it (timers run late, never
+            // early, so a tenth less lands on the frame due rather than the one after).
+            if (config.maxFps > 0) delay((900L / config.maxFps).coerceAtLeast(1L))
         }
     }
     return clock

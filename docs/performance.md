@@ -22,6 +22,7 @@ BoitataScene(Modifier.fillMaxSize()) {
 | **Motion is smooth, not stepped** | every moving picture is drawn through `drawImageSmooth`, with a float translation; there is no public API that takes whole-pixel offsets for something that moves |
 | **A heavy scene gets lighter by itself** | `Quality` (High, Medium, Low) scales particles, glow and sampling; an adaptive governor steps it down after about a second of slow frames and back up after several calm seconds, waiting longer each time it relapses |
 | **It stops when you are not looking** | the clock pauses when the screen is not in the foreground (background tab, locked phone, another app) |
+| **It draws no more often than its motion needs** (opt in) | `SceneConfig(maxFps = 100)`: the clock asks for a frame at most that often. Compose draws the whole screen on any frame something asks for, so on a 120 or 144 Hz screen a scene that moves only by its clock is drawn every other frame (half the GPU work); a transition or a gesture still runs at the screen's rate, and the scene's time runs at the real pace |
 | **It respects "reduce motion"** | Android (animations removed), iOS (Reduce Motion) and web (`prefers-reduced-motion`) are read; time stands still. Force it with `SceneConfig(reducedMotion = On)` |
 | **The same frame for the same time** | rain, snow, fog, embers and storms are functions of time alone, so they can be scrubbed, paused and recorded |
 
