@@ -14,7 +14,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import br.com.faru.boitata.core.clock.Quality
@@ -65,12 +64,13 @@ public fun Optics.shadowShare(back: Float, front: Float): Float {
 @Stable
 public class ThroughShadows(public val scale: Float = 0.25f) {
     internal val main = Layer()
-    // Smaller copies of the picture, halving each time: a blurred shadow is drawn into the one its blur fits and stretched back smoothly.
+    // Smaller copies of the picture, halving each time, and the way back up: a shadow is shrunk as far as its blur needs and grown again 2× at a time, which blurs it
+    // smoothly (a single big stretch would show its texels as steps).
     internal val levels = Array(LEVELS) { Layer() }
+    internal val ups = Array(LEVELS) { Layer() }
     internal var key = 0L
     internal var valid = false
     internal val cast = WallCast()
-    internal val paint = androidx.compose.ui.graphics.Paint()
 
     internal class Layer {
         var bitmap: ImageBitmap? = null
@@ -127,6 +127,7 @@ public fun DrawScope.drawThroughShadows(
     for (i in 0 until ThroughShadows.LEVELS) {
         val f = 1 shl i
         shadows.levels[i].ensure((w + f - 1) / f, (h + f - 1) / f)
+        shadows.ups[i].ensure((w + f - 1) / f, (h + f - 1) / f)
     }
     if (!shadows.valid || shadows.key != key) {
         val d = density
@@ -147,8 +148,8 @@ public fun DrawScope.drawThroughShadows(
 private fun castsThrough(l: ThroughLamp, surfaceFootY: Float) = l.strength >= 0.05f && l.groundY < surfaceFootY - 8f
 
 /**
- * One caster's shadow from one lamp, drawn into the main picture (this scope, in cache pixels). The outline is drawn into the smaller picture its blur fits (each level halves the size)
- * and stretched back with smooth filtering, a few times shifted by half a texel, so its edge fades over the blur's width instead of stepping.
+ * One caster's shadow from one lamp, drawn into the main picture (this scope, in cache pixels). The outline is drawn at the picture's own size, shrunk by halves as far as its blur
+ * needs and grown back by doubles, each step sampled four times half a texel apart (a dual Kawase blur): the edge fades over the blur's width, smoothly, with no texels showing.
  */
 private fun DrawScope.castOne(
     shadows: ThroughShadows, lamp: ThroughLamp, c: ThroughCaster, surfaceFootY: Float, maxScale: Float, alpha: Float, diffusion: Float, quality: Quality, k: Float, d: Float,
@@ -161,14 +162,14 @@ private fun DrawScope.castOne(
     // A thing touching the surface: its far edge leans away from it, so that edge spreads too.
     val lean = if (c.contact > 0f) 0.18f * (c.bottom - c.top) * s * c.contact else 0f
     val radius = sqrt(diffusion * diffusion + (0.5f * penumbra) * (0.5f * penumbra) + lean * lean)
-    // The level whose texel is about the blur's radius (in cache pixels): stretched back, a texel becomes a smooth ramp that wide.
+    // How many halvings the blur's radius (in cache pixels) asks for: each down-and-up pair blurs by about its texel. Low quality stops one sooner.
     var level = 0
     while (level < ThroughShadows.LEVELS - 1 && (1 shl (level + 1)) <= radius * k / 1.1f) level++
-    val f = 1 shl level
-    val layer = shadows.levels[level]
+    if (quality == Quality.Low && level > 0) level--
     val pivot = Offset(lamp.flameX, lamp.flameY)
-    layer.render(d) {
-        withTransform({ scale(k / f, k / f, Offset.Zero); scale(s, s, pivot) }) {
+    val base = shadows.levels[0]
+    base.render(d) {
+        withTransform({ scale(k, k, Offset.Zero); scale(s, s, pivot) }) {
             translate(c.x, c.y) { c.outline(this, Color.Black, BlendMode.SrcOver) }
             if (c.contact > 0f) {
                 // Darkest where it touches (its bottom), fading slowly toward its top.
@@ -183,19 +184,29 @@ private fun DrawScope.castOne(
             }
         }
     }
-    val img = layer.bitmap ?: return
-    val full = IntSize(img.width * f, img.height * f)
-    if (c.solid) drawImage(img, dstSize = full, filterQuality = FilterQuality.Medium, blendMode = BlendMode.DstOut)
-    if (level == 0 || quality == Quality.Low) { drawImage(img, dstSize = full, alpha = alpha, filterQuality = FilterQuality.Medium); return }
-    // Four copies half a texel apart, a quarter each, added in a layer of their own: the stretched texels' corners melt into one smooth fade, as dark inside as one copy.
-    shadows.paint.alpha = alpha
-    drawContext.canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), shadows.paint)
-    val h = f / 2
-    for (j in 0 until 4) {
-        val ox = if (j % 2 == 0) -h else h; val oy = if (j < 2) -h else h
-        drawImage(img, dstOffset = IntOffset(ox, oy), dstSize = full, alpha = 0.25f, filterQuality = FilterQuality.Medium, blendMode = BlendMode.Plus)
+    var img = base.bitmap ?: return
+    for (i in 1..level) {
+        val src = img
+        shadows.levels[i].render(d) { taps(src, (src.width + 1) / 2, (src.height + 1) / 2, 0.5f) }
+        img = shadows.levels[i].bitmap ?: return
     }
-    drawContext.canvas.restore()
+    for (i in level - 1 downTo 0) {
+        val src = img
+        shadows.ups[i].render(d) { taps(src, src.width * 2, src.height * 2, 1f) }
+        img = shadows.ups[i].bitmap ?: return
+    }
+    val full = IntSize(img.width, img.height)
+    if (c.solid) drawImage(img, dstSize = full, filterQuality = FilterQuality.Medium, blendMode = BlendMode.DstOut)
+    drawImage(img, dstSize = full, alpha = alpha, filterQuality = FilterQuality.Medium)
+}
+
+/** [src] drawn at [w] × [h], four times a quarter each, shifted ±[o] pixels: a 2× step of the blur, as dark inside as one copy. */
+private fun DrawScope.taps(src: ImageBitmap, w: Int, h: Int, o: Float) {
+    val to = IntSize(w, h)
+    for (j in 0 until 4) {
+        val ox = if (j % 2 == 0) -o else o; val oy = if (j < 2) -o else o
+        translate(ox, oy) { drawImage(src, dstSize = to, alpha = 0.25f, filterQuality = FilterQuality.Medium, blendMode = BlendMode.Plus) }
+    }
 }
 
 private fun mix(k: Long, f: Float): Long = k * 31L + f.toBits()

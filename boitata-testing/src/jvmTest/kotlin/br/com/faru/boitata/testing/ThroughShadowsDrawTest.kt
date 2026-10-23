@@ -90,4 +90,21 @@ class ThroughShadowsDrawTest {
         }.alpha(200, 150)
         assertTrue(at(0.05f) > at(0.8f) + 30, "dark ${at(0.05f)} vs lit ${at(0.8f)}")
     }
+
+    @Test
+    fun aSoftEdgeIsSmoothWithNoStepsShowing() {
+        // A round thing near the lamp: its wide penumbra must fade pixel by pixel, also along its curve (a stretched small picture would show its texels as steps).
+        val disc = ThroughCaster(170f, 100f, 500f, 100f, 160f) { colour, mode -> drawCircle(colour, 30f, androidx.compose.ui.geometry.Offset(30f, 30f), blendMode = mode) }
+        val still = renderStill(width = 400, height = 300) {
+            val shadows = ThroughShadows(scale = 0.25f)
+            Spacer(Modifier.fillMaxSize().drawBehind { drawThroughShadows(shadows, listOf(lamp), listOf(disc), 1000f, quality = Quality.High, blend = BlendMode.SrcOver) })
+        }
+        var worst = 0
+        for (y in 0 until 299) for (x in 0 until 399) {
+            val a = still.alpha(x, y)
+            worst = maxOf(worst, kotlin.math.abs(a - still.alpha(x + 1, y)), kotlin.math.abs(a - still.alpha(x, y + 1)))
+        }
+        assertTrue(still.count(20) > 500, "it casts")
+        assertTrue(worst <= 10, "no step bigger than $worst between neighbouring pixels")
+    }
 }
