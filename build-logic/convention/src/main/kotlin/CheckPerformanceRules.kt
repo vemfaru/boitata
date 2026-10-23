@@ -38,7 +38,9 @@ abstract class CheckPerformanceRules : DefaultTask() {
             Rule("whole-pixel-placement", Regex("""dstOffset\s*=\s*IntOffset\("""), "drawImage takes whole pixels: a layer that drifts a fraction of a pixel a frame will sit still and then jump. Use drawImageSmooth"),
             Rule("bicubic-sampling", Regex("""FilterQuality\.High"""), "bicubic sampling costs several times more than mipmapped bilinear for no visible gain on scaled art. Use Quality.imageFilter"),
             Rule("no-delay-loops", Regex("""\bdelay\("""), "a timer loop drifts from the frame clock and keeps running when hidden: derive from the scene clock instead",
-                appliesTo = { it.contains("/boitata-") && !it.contains("/samples/") }),
+                appliesTo = { it.contains("/boitata-") && !it.contains("/samples/") },
+                // The scene clock is the frame loop: it may wait between ticks when its rate is capped (SceneConfig.maxFps).
+                allowedIn = { it.endsWith("core/clock/SceneClock.kt") }),
             Rule("common-code-only", Regex("""\b(Math|System)\.|\bjava\.(util|io|lang)\."""), "this only exists on the JVM and breaks the wasm and iOS builds: use kotlin.math / kotlin.*",
                 appliesTo = { it.contains("/commonMain/") }),
         )
