@@ -9,29 +9,28 @@ import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import br.com.faru.boitata.core.clock.Quality
 import br.com.faru.boitata.core.light.Optics
 import br.com.faru.boitata.core.light.ShadowMath
 import br.com.faru.boitata.core.light.WallCast
-import kotlin.math.cos
-import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * A lamp **behind** a translucent surface (a sheet of paper, a shadow theatre's screen), for [drawThroughShadows]: its flame where it is drawn ([flameX], [flameY]), the point on the
- * ground under it ([groundX], [groundY]: its depth, as everywhere in the engine), how strong it is (0..1), and its [size] (0 a point, 1 a lamp's chimney): a bigger light makes softer
- * shadows. All in the pixels of the scope that draws them.
+ * ground under it ([groundX], [groundY]: its depth, as everywhere in the engine), how strong it is (0..1), and its [size]: how wide the glowing part is (a chimney, a bulb, a flame), in
+ * the scope's pixels. A wider light makes wider, softer shadow edges. Positions in the pixels of the scope that draws them; [groundY] in the same units as the casters' depths.
  */
 public class ThroughLamp(
     public val flameX: Float, public val flameY: Float, public val groundX: Float, public val groundY: Float,
-    public val strength: Float = 1f, public val size: Float = 0.5f,
+    public val strength: Float = 1f, public val size: Float = 24f,
 )
 
 /**
@@ -39,8 +38,8 @@ public class ThroughLamp(
  * ([depth]: how far back it stands), and how far it reaches up and down on screen ([top], [bottom]).
  *
  * - [solid]: it stops all the light (a metal plate): where it stands no other shadow adds to its own.
- * - [contact], 0..1: it touches the surface (a plate the paper lies against): its shadow is fully dark where it touches, at its [bottom], and fades toward its [top] to `1 - contact`
- *   of that, with a soft edge there, as light creeps round through the surface where the two part. 0: it stands free.
+ * - [contact], 0..1: it touches the surface (a plate the paper lies against): its shadow is fully dark where it touches, at its [bottom], and fades slowly toward its [top] to
+ *   `1 - contact` of that, its far edge spread wide, as light creeps round through the surface where the two part. 0: it stands free.
  */
 public class ThroughCaster(
     public val x: Float, public val y: Float, public val depth: Float, public val top: Float, public val bottom: Float,
@@ -49,114 +48,153 @@ public class ThroughCaster(
 )
 
 /**
- * How bright what comes through a surface of these [Optics] shows, against plain paper's (`Optics.Paper`): what passes (`1 - opacity`), the less the more it scatters
- * (`/ (1 + 0.8 scatter)`), the same rule the light on a translucent wall follows (`drawWallLight`). 1 for plain paper, more for thin paper, less for heavy.
+ * How dark a shadow on a lit translucent surface shows, 0..1: the share of the surface's brightness there that came through from behind and the thing now stops. What comes
+ * through is the lamp's [back] light times what the surface lets pass (`1 - opacity`, see `paperTransmittance`); what lights its face is [front] (the room's light on it, 0..1) times
+ * what the surface sends back. So a shadow is strong when the room is dark and the lamp behind is the main light, and faint on heavy paper in a lit room.
  */
-public fun Optics.throughShare(): Float = through(this) / through(Optics.Paper())
-
-private fun through(o: Optics): Float = (1f - o.opacity) / (1f + 0.8f * o.scatter)
+public fun Optics.shadowShare(back: Float, front: Float): Float {
+    val through = (1f - opacity) * back
+    val face = front * (opacity * 0.9f).coerceAtLeast(0.05f)
+    return if (through <= 0f) 0f else (through / (through + face)).coerceIn(0f, 0.92f)
+}
 
 /**
- * The shadows of the shadow theatre, held between frames: they are drawn into a small picture ([scale] of the screen: a quarter keeps a leaf readable and soft) and that picture is
- * drawn again until something that decides them changes (a lamp, a thing, the surface), so a frame costs one scaled image. Make one per surface and keep it ([androidx.compose.runtime.remember]).
+ * The shadows of the shadow theatre, held between frames: they are drawn into a small picture ([scale] of the screen) and that picture is drawn again until something that decides
+ * them changes (a lamp, a thing, the surface), so a frame costs one scaled image. Make one per surface and keep it ([androidx.compose.runtime.remember]).
  */
 @Stable
 public class ThroughShadows(public val scale: Float = 0.25f) {
-    internal var bitmap: ImageBitmap? = null
-    private var canvas: Canvas? = null
-    private val scope = CanvasDrawScope()
+    internal val main = Layer()
+    // Smaller copies of the picture, halving each time: a blurred shadow is drawn into the one its blur fits and stretched back smoothly.
+    internal val levels = Array(LEVELS) { Layer() }
     internal var key = 0L
     internal var valid = false
     internal val cast = WallCast()
-    internal val layerPaint = Paint()
+    internal val paint = androidx.compose.ui.graphics.Paint()
 
-    internal fun ensure(w: Int, h: Int) {
-        val b = bitmap
-        if (b == null || b.width != w || b.height != h) { val n = ImageBitmap(w, h); bitmap = n; canvas = Canvas(n); valid = false }
-    }
+    internal class Layer {
+        var bitmap: ImageBitmap? = null
+        private var canvas: Canvas? = null
+        private val scope = CanvasDrawScope()
 
-    internal fun render(density: Float, w: Int, h: Int, draw: DrawScope.() -> Unit) {
-        val c = canvas ?: return
-        scope.draw(Density(density), LayoutDirection.Ltr, c, Size(w.toFloat(), h.toFloat())) {
-            drawRect(Color.Transparent, blendMode = BlendMode.Clear)
-            draw()
+        fun ensure(w: Int, h: Int): Boolean {
+            val b = bitmap
+            if (b != null && b.width == w && b.height == h) return false
+            val n = ImageBitmap(w, h); bitmap = n; canvas = Canvas(n)
+            return true
+        }
+
+        fun render(density: Float, draw: DrawScope.() -> Unit) {
+            val c = canvas ?: return; val b = bitmap ?: return
+            scope.draw(Density(density), LayoutDirection.Ltr, c, Size(b.width.toFloat(), b.height.toFloat())) {
+                drawRect(Color.Transparent, blendMode = BlendMode.Clear)
+                draw()
+            }
         }
     }
+
+    internal companion object { const val LEVELS = 6 }
 }
 
 /**
  * The shadows that [casters] standing between [lamps] **behind** a translucent surface and that surface throw on it, as a shadow theatre's screen shows them from the front. The
- * surface stands at the depth [surfaceFootY] and fills this scope; its [optics] say how much light comes through and so how dark a shadow on it is ([darkness] for plain paper).
+ * surface stands at the depth [surfaceFootY] and fills this scope; its [optics] say how much light comes through, and [front] how lit its face is from the room (0 a dark room),
+ * which together say how dark a shadow is ([shadowShare]).
  *
  * - **Where and how big** (`ShadowMath.onWallFromPoint`): a thing's outline lands where it is, enlarged away from the lamp's flame by how much farther the surface is from the lamp
  *   than the thing (at most [maxScale]). A thing against the surface casts its own size; a thing near the lamp a big one.
- * - **How soft**: the penumbra grows with the thing's distance from the surface and with the lamp's size (several shifted copies of the outline, more at higher [quality]).
+ * - **How soft**: the penumbra is the lamp's [ThroughLamp.size] times how much farther the surface is than the thing (`t - 1`), as a real light's is; on top of that the surface
+ *   itself spreads the light that crosses it by [diffusion] pixels. The edge is a smooth fade that wide, not a step.
  * - **Solid things** erase every other shadow where they stand, then lay their own: no light gets through them, so nothing can be darker.
- * - **Contact**: a thing that touches the surface is darkest where it touches and fades up toward its far edge.
+ * - **Contact**: a thing that touches the surface is darkest where it touches and fades slowly up toward its far edge.
  *
  * Draw it over the surface; [blend] is how the shadows are laid on it ([BlendMode.SrcAtop] keeps them to what the surface has drawn, in its own layer).
  */
 public fun DrawScope.drawThroughShadows(
     shadows: ThroughShadows, lamps: List<ThroughLamp>, casters: List<ThroughCaster>, surfaceFootY: Float, optics: Optics = Optics.Paper(),
-    darkness: Float = 0.55f, quality: Quality = Quality.High, maxScale: Float = 1.6f, blend: BlendMode = BlendMode.SrcAtop,
+    front: Float = 0.3f, diffusion: Float = 4f, quality: Quality = Quality.High, maxScale: Float = 1.6f, blend: BlendMode = BlendMode.SrcAtop,
 ) {
-    val behind = lamps.filter { it.strength >= 0.1f && it.groundY < surfaceFootY - 8f }
-    if (behind.isEmpty() || casters.isEmpty()) return
-    val dark = (darkness * optics.throughShare()).coerceIn(0.05f, 0.9f)
+    var any = false
+    for (l in lamps) if (castsThrough(l, surfaceFootY)) any = true
+    if (!any || casters.isEmpty()) return
     val k = shadows.scale
     val w = (size.width * k).toInt().coerceAtLeast(1); val h = (size.height * k).toInt().coerceAtLeast(1)
     var key = mix(quality.ordinal.toLong(), w.toLong() * 65_537L + h)
-    key = mix(key, dark); key = mix(key, surfaceFootY); key = mix(key, maxScale)
-    for (l in behind) { key = mix(key, l.flameX); key = mix(key, l.flameY); key = mix(key, l.groundX); key = mix(key, l.groundY); key = mix(key, l.strength); key = mix(key, l.size) }
+    key = mix(key, optics.opacity); key = mix(key, front); key = mix(key, diffusion); key = mix(key, surfaceFootY); key = mix(key, maxScale)
+    for (l in lamps) { key = mix(key, l.flameX); key = mix(key, l.flameY); key = mix(key, l.groundX); key = mix(key, l.groundY); key = mix(key, l.strength); key = mix(key, l.size) }
     for (c in casters) { key = mix(key, c.x); key = mix(key, c.y); key = mix(key, c.depth); key = mix(key, c.top); key = mix(key, c.bottom); key = mix(key, c.contact) }
-    shadows.ensure(w, h)
+    if (shadows.main.ensure(w, h)) shadows.valid = false
+    for (i in 0 until ThroughShadows.LEVELS) {
+        val f = 1 shl i
+        shadows.levels[i].ensure((w + f - 1) / f, (h + f - 1) / f)
+    }
     if (!shadows.valid || shadows.key != key) {
-        shadows.render(density, w, h) {
-            withTransform({ scale(k, k, Offset.Zero) }) {
-                for (lamp in behind) {
-                    val alpha = dark * (lamp.strength / 0.75f).coerceIn(0.3f, 1f)
-                    // Free things first, then the solid ones over them (each erasing what is under it first).
-                    for (c in casters) if (!c.solid) castOne(shadows, lamp, c, surfaceFootY, maxScale, alpha, quality)
-                    for (c in casters) if (c.solid) castOne(shadows, lamp, c, surfaceFootY, maxScale, alpha, quality)
-                }
+        val d = density
+        shadows.main.render(d) {
+            for (lamp in lamps) {
+                if (!castsThrough(lamp, surfaceFootY)) continue
+                val alpha = optics.shadowShare(lamp.strength, front)
+                // Free things first, then the solid ones over them (each erasing what is under it first).
+                for (c in casters) if (!c.solid) castOne(shadows, lamp, c, surfaceFootY, maxScale, alpha, diffusion, quality, k, d)
+                for (c in casters) if (c.solid) castOne(shadows, lamp, c, surfaceFootY, maxScale, alpha, diffusion, quality, k, d)
             }
         }
         shadows.key = key; shadows.valid = true
     }
-    shadows.bitmap?.let { drawImage(it, dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)), filterQuality = FilterQuality.Medium, blendMode = blend) }
+    shadows.main.bitmap?.let { drawImage(it, dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)), filterQuality = FilterQuality.Medium, blendMode = blend) }
 }
 
-/** One caster's shadow from one lamp, in the full-size coordinates (the picture's own scale is applied around it). */
-private fun DrawScope.castOne(shadows: ThroughShadows, lamp: ThroughLamp, c: ThroughCaster, surfaceFootY: Float, maxScale: Float, alpha: Float, quality: Quality) {
+private fun castsThrough(l: ThroughLamp, surfaceFootY: Float) = l.strength >= 0.05f && l.groundY < surfaceFootY - 8f
+
+/**
+ * One caster's shadow from one lamp, drawn into the main picture (this scope, in cache pixels). The outline is drawn into the smaller picture its blur fits (each level halves the size)
+ * and stretched back with smooth filtering, a few times shifted by half a texel, so its edge fades over the blur's width instead of stepping.
+ */
+private fun DrawScope.castOne(
+    shadows: ThroughShadows, lamp: ThroughLamp, c: ThroughCaster, surfaceFootY: Float, maxScale: Float, alpha: Float, diffusion: Float, quality: Quality, k: Float, d: Float,
+) {
     if (!ShadowMath.onWallFromPoint(lamp.groundX, lamp.groundY, 1f, c.x, c.depth, surfaceFootY, 1f, shadows.cast, maxScale)) return
     val s = shadows.cast.scale
+    // The penumbra of a light of this size: the surface's distance from the thing over the thing's from the light, times the light's width (unclamped, as the light really is).
+    val t = (surfaceFootY - lamp.groundY) / (c.depth - lamp.groundY)
+    val penumbra = lamp.size * (t - 1f).coerceAtLeast(0f)
+    // A thing touching the surface: its far edge leans away from it, so that edge spreads too.
+    val lean = if (c.contact > 0f) 0.18f * (c.bottom - c.top) * s * c.contact else 0f
+    val radius = sqrt(diffusion * diffusion + (0.5f * penumbra) * (0.5f * penumbra) + lean * lean)
+    // The level whose texel is about the blur's radius (in cache pixels): stretched back, a texel becomes a smooth ramp that wide.
+    var level = 0
+    while (level < ThroughShadows.LEVELS - 1 && (1 shl (level + 1)) <= radius * k / 1.1f) level++
+    val f = 1 shl level
+    val layer = shadows.levels[level]
     val pivot = Offset(lamp.flameX, lamp.flameY)
-    // The penumbra: wider the farther the thing is from the surface (s above 1) and the bigger the lamp.
-    val spread = (c.bottom - c.top).coerceAtLeast(1f) * (0.012f + 0.05f * (s - 1f)) * (0.4f + lamp.size)
-    val copies = when (quality) { Quality.High -> 6; Quality.Medium -> 3; Quality.Low -> 1 }
-    fun outlineAt(dx: Float, dy: Float, colour: Color, mode: BlendMode) {
-        withTransform({ scale(s, s, pivot) }) { translate(c.x + dx, c.y + dy) { c.outline(this, colour, mode) } }
-    }
-    fun soft(colour: Color, mode: BlendMode) {
-        if (copies == 1 || spread < 0.5f) { outlineAt(0f, 0f, colour, mode); return }
-        val each = colour.copy(alpha = (colour.alpha * 1.6f / copies).coerceAtMost(1f))
-        for (i in 0 until copies) {
-            val a = i * 6.2831855f / copies
-            outlineAt(cos(a) * spread, sin(a) * spread, each, mode)
+    layer.render(d) {
+        withTransform({ scale(k / f, k / f, Offset.Zero); scale(s, s, pivot) }) {
+            translate(c.x, c.y) { c.outline(this, Color.Black, BlendMode.SrcOver) }
+            if (c.contact > 0f) {
+                // Darkest where it touches (its bottom), fading slowly toward its top.
+                val e = c.contact
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 1f - e), 0.45f to Color.Black.copy(alpha = 1f - 0.6f * e), 0.8f to Color.Black.copy(alpha = 1f - 0.2f * e), 1f to Color.Black,
+                        startY = c.top, endY = c.bottom,
+                    ),
+                    topLeft = Offset(-1e5f, c.top - 1e4f), size = Size(2e5f, 2e4f + c.bottom - c.top), blendMode = BlendMode.DstIn,
+                )
+            }
         }
     }
-    if (c.solid) outlineAt(0f, 0f, Color.Black, BlendMode.DstOut)
-    if (c.contact <= 0f) { soft(Color.Black.copy(alpha = alpha), BlendMode.SrcOver); return }
-    // Touching the surface: dark where it touches (its bottom), fading toward its top, in a layer of its own so the fade is cut to its outline.
-    val bounds = androidx.compose.ui.geometry.Rect(0f, 0f, size.width / shadows.scale, size.height / shadows.scale)
-    drawContext.canvas.saveLayer(bounds, shadows.layerPaint)
-    soft(Color.Black.copy(alpha = alpha), BlendMode.SrcOver)
-    val top = lamp.flameY + s * (c.top - lamp.flameY)
-    val bottom = lamp.flameY + s * (c.bottom - lamp.flameY)
-    drawRect(
-        Brush.verticalGradient(0f to Color.Black.copy(alpha = 1f - c.contact), 0.35f to Color.Black.copy(alpha = 1f - 0.6f * c.contact), 1f to Color.Black, startY = top, endY = bottom),
-        size = Size(bounds.width, bounds.height), blendMode = BlendMode.DstIn,
-    )
+    val img = layer.bitmap ?: return
+    val full = IntSize(img.width * f, img.height * f)
+    if (c.solid) drawImage(img, dstSize = full, filterQuality = FilterQuality.Medium, blendMode = BlendMode.DstOut)
+    if (level == 0 || quality == Quality.Low) { drawImage(img, dstSize = full, alpha = alpha, filterQuality = FilterQuality.Medium); return }
+    // Four copies half a texel apart, a quarter each, added in a layer of their own: the stretched texels' corners melt into one smooth fade, as dark inside as one copy.
+    shadows.paint.alpha = alpha
+    drawContext.canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), shadows.paint)
+    val h = f / 2
+    for (j in 0 until 4) {
+        val ox = if (j % 2 == 0) -h else h; val oy = if (j < 2) -h else h
+        drawImage(img, dstOffset = IntOffset(ox, oy), dstSize = full, alpha = 0.25f, filterQuality = FilterQuality.Medium, blendMode = BlendMode.Plus)
+    }
     drawContext.canvas.restore()
 }
 

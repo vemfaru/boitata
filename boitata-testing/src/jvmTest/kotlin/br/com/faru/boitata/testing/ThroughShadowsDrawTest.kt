@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 
 /** The shadow theatre: things between a lamp behind a sheet and the sheet show on it, bigger and softer the nearer the lamp, never darker than a solid thing, fading up from a contact. */
 class ThroughShadowsDrawTest {
-    private val lamp = ThroughLamp(flameX = 200f, flameY = 20f, groundX = 200f, groundY = 200f, strength = 1f, size = 0.5f)
+    private val lamp = ThroughLamp(flameX = 200f, flameY = 20f, groundX = 200f, groundY = 200f, strength = 1f, size = 24f)
 
     private fun box(x: Float, y: Float, w: Float, h: Float, depth: Float, solid: Boolean = false, contact: Float = 0f) =
         ThroughCaster(x, y, depth, top = y, bottom = y + h, solid = solid, contact = contact) { colour, mode -> drawRect(colour, size = Size(w, h), blendMode = mode) }
@@ -62,8 +62,8 @@ class ThroughShadowsDrawTest {
     @Test
     fun heavierPaperShowsAFainterShadow() {
         val caster = listOf(box(150f, 100f, 100f, 100f, depth = 900f))
-        val thin = render(caster, optics = Optics(opacity = 0.22f, scatter = 0.5f)).alpha(200, 150)
-        val heavy = render(caster, optics = Optics(opacity = 0.62f, scatter = 0.8f)).alpha(200, 150)
+        val thin = render(caster, optics = Optics.paper(34f)).alpha(200, 150)
+        val heavy = render(caster, optics = Optics.paper(75f)).alpha(200, 150)
         assertTrue(thin > heavy, "thin $thin vs heavy $heavy")
     }
 
@@ -71,12 +71,23 @@ class ThroughShadowsDrawTest {
     fun aFarThingHasASofterEdgeThanAThingAgainstTheSurface() {
         fun edgeWidth(depth: Float): Int {
             val still = render(listOf(box(170f, 100f, 60f, 60f, depth = depth)), quality = Quality.High)
-            // Pixels on the shadow's middle row that are neither empty nor full: the penumbra.
-            val row = (0 until 300).maxByOrNull { y -> (0 until 400).count { x -> still.alpha(x, y) > 0 } } ?: 0
+            // Pixels on the shadow's darkest row that are neither empty nor full: the penumbra.
+            val row = (0 until 300).maxByOrNull { y -> (0 until 400).maxOf { x -> still.alpha(x, y) } } ?: 0
             val peak = (0 until 400).maxOf { still.alpha(it, row) }
             return (0 until 400).count { x -> still.alpha(x, row) in 3 until (peak * 0.9).toInt() }
         }
         val near = edgeWidth(500f); val touching = edgeWidth(995f)
         assertTrue(near > touching, "penumbra near the lamp $near vs against the sheet $touching")
+        assertTrue(near >= 12, "a thing near a lamp fades over a wide edge, not a step ($near px)")
+    }
+
+    @Test
+    fun aDarkRoomShowsTheShadowStrongerThanALitOne() {
+        val caster = listOf(box(150f, 100f, 100f, 100f, depth = 900f))
+        fun at(front: Float) = renderStill(width = 400, height = 300) {
+            val shadows = ThroughShadows(scale = 0.5f)
+            Spacer(Modifier.fillMaxSize().drawBehind { drawThroughShadows(shadows, listOf(lamp), caster, 1000f, Optics.paper(60f), front = front, blend = BlendMode.SrcOver) })
+        }.alpha(200, 150)
+        assertTrue(at(0.05f) > at(0.8f) + 30, "dark ${at(0.05f)} vs lit ${at(0.8f)}")
     }
 }
