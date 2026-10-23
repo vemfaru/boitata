@@ -84,6 +84,17 @@ A surface with `Optics.Paper()` (or `Frosted`, or tinted `Glass`) lets light thr
 - The glow is the light on a flat surface (Lambert, centred on the point of the paper nearest the lamp, at the lamp's height), multiplied by what the paper lets through (`1 - opacity`), tinted by it, and **spread wider and softer by `scatter`**: thin clear glass shows the lamp as it is, paper makes a soft glow. `drawWallLight(rig, screen, seconds)` draws it for a lamp on either side.
 - The shadows are drawn on the glow by `drawCastShadows(..., floor = false)`: a dark overlay keeps `1 - alpha` of the light under it, which is what an object in front of a lamp does to the paper behind.
 
+How much light a real sheet lets through is not a guess: paper is a layer that scatters and barely absorbs, and the Kubelka–Munk theory gives what passes, `T = b / (a·sinh(b·SX) + b·cosh(b·SX))` with `a = 1 + K/S`, `b = √(a² − 1)`, `S` (scattering, about 50 m²/kg for white paper) and `K` (absorption, about 0.8) times the sheet's weight `X`. `paperTransmittance(grammage)` computes it and `Optics.paper(grammage)` makes a paper of that weight: onionskin (34 g/m²) lets through about 39%, typing paper (60) 23%, 20 lb bond (75) 19%. Most of the rest goes back toward the lamp.
+
+`drawThroughShadows(shadows, lamps, casters, surfaceFootY, optics, front)` is the same theatre for a surface that is only a picture in a bigger scene (a sheet of paper in a typewriter, a paper lantern): you give it the lamps behind the surface (`ThroughLamp`: flame, ground point, strength, and size, how wide the glowing part is) and the things in between (`ThroughCaster`: an outline drawn at its own place, its depth, its top and bottom), and it does the rest:
+
+- **Where:** each outline is scaled away from the lamp's flame by `t`, so a thing stays where it stands and grows the nearer it is to the lamp (at most `maxScale`, 1.6 by default: a sheet is small).
+- **Softness, as a real light gives it:** the penumbra is the lamp's size times `t − 1` (how much farther the surface is than the thing), and the paper spreads the light that crosses it by `diffusion` pixels more. The edge is a smooth fade that wide: the outline is shrunk by halves as far as the blur needs and grown back by doubles, each step sampled four times half a texel apart (a dual Kawase blur), so no texel shows as a step.
+- **Solid things** (`solid = true`, a metal plate) stop all the light, so they first erase every other shadow where they stand: nothing on them can be darker than they are.
+- **Contact** (`contact`, 0..1): a thing touching the surface (the plate the paper lies against) is fully dark where it touches, at its bottom, and fades slowly toward its top to `1 − contact` of that, its far edge spread wide as it leans away from the paper.
+- **Darkness** is the share of the surface's brightness that came through from behind (`Optics.shadowShare(back, front)`): strong in a dark room with the lamp behind as the main light, faint on heavy paper in a lit room.
+- **Cost:** the shadows are drawn into a small picture (`ThroughShadows(scale = 0.25f)`) and redrawn only when a lamp, a thing or the surface changes; any other frame draws one image.
+
 The playground's **Shadow theatre** tab is this: a paper screen in a frame, a lamp (candle, hurricane lamp or the Boitatá's fire) behind it, the characters and animals as puppets you drag between them, red or amber paper, and a Backstage view of the puppeteers' side.
 
 ## Glass that blurs, bends and dirties
