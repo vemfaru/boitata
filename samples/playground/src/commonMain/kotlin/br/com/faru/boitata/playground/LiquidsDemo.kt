@@ -1,6 +1,20 @@
 package br.com.faru.boitata.playground
 
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.unit.dp
+import br.com.faru.boitata.scene.focus.FocusPasses
+import br.com.faru.boitata.scene.focus.FocusStrength
+import br.com.faru.boitata.scene.focus.hoverIntent
+import br.com.faru.boitata.scene.focus.rememberHoverIntent
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
@@ -177,6 +191,28 @@ class LiquidBench {
     }
 
     fun closeWheel() { wheelFor = -1 }
+
+    /** The vessel the mouse is resting over (its focus is previewed: the rest goes behind glass), or -1. */
+    var preview by mutableIntStateOf(-1)
+
+    /** Opens the wheel on vessel [i] (and picks it); unlike [toggleWheel] it never closes it. */
+    fun openWheel(i: Int) { if (wheelFor != i) { select(i); wheelFor = i; wheelAnchor = Offset(anchorX[i], anchorY[i]) } }
+
+    /** The bench's keys: Tab and Shift+Tab move to the next or the previous vessel and open its wheel, Esc closes it. */
+    fun onKey(e: androidx.compose.ui.input.key.KeyEvent): Boolean {
+        if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return false
+        return when (e.key) {
+            androidx.compose.ui.input.key.Key.Tab -> {
+                val from = wheelFor.takeIf { it >= 0 } ?: preview.takeIf { it >= 0 } ?: selected
+                val order = vessels.indices.sortedBy { vessels[it].x }
+                val at = order.indexOf(from).coerceAtLeast(0)
+                val next = order[(at + (if (e.isShiftPressed) order.size - 1 else 1)) % order.size]
+                openWheel(next); true
+            }
+            androidx.compose.ui.input.key.Key.Escape -> if (wheelFor >= 0) { closeWheel(); true } else false
+            else -> false
+        }
+    }
 
     /** An action that goes on while it is held down is pressed ([down]) or let go: sipping takes a gulp now and one every half second after, pouring goes on until it is let go (and runs over if the destination fills). */
     fun hold(i: Int, action: VesselAction, down: Boolean) {
@@ -447,23 +483,48 @@ fun LiquidsScene(seconds: () -> Float, bench: LiquidBench, modifier: Modifier = 
     val behind = rememberGraphicsLayer()
     RunOnSceneClock(bench) { dt, _ -> bench.step(dt) }
     if (script != null) { val now = seconds(); SideEffect { script(bench, now) } }
+    // Focus (the engine's focus FX): hovering a vessel previews it (the rest of the bench goes behind glass), resting on it, a click or Tab opens its wheel.
+    val hover = rememberHoverIntent<Int>(onPreview = { bench.preview = it ?: -1 }, onDwell = { bench.openWheel(it) })
+    var widthPx by remember { mutableIntStateOf(1) }
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+    // Keep the wheel composed while its keys pop out.
+    var shownFor by remember { mutableIntStateOf(-1) }
+    if (bench.wheelFor >= 0) shownFor = bench.wheelFor
+    val focus = if (bench.sipActive) null else bench.wheelFor.takeIf { it >= 0 } ?: bench.preview.takeIf { it >= 0 }
     Box(
-        modifier.pointerInput(bench) {
-            var grabbed = -1
-            detectDragGestures(
-                onDragStart = { at -> grabbed = pick(bench, at.x / this.size.width).takeIf { it < 0 || bench.vessels[it].job == null } ?: -1; if (grabbed >= 0) { bench.select(grabbed); bench.closeWheel() } },
-                onDragEnd = { grabbed = -1 }, onDragCancel = { grabbed = -1 },
-            ) { change, delta -> if (grabbed >= 0) { change.consume(); bench.vessels[grabbed].x = (bench.vessels[grabbed].x + delta.x / this.size.width).coerceIn(0.1f, 0.9f) } }
-        }.pointerInput(bench) {
-            detectTapGestures { at -> val i = pick(bench, at.x / this.size.width); if (i >= 0) bench.toggleWheel(i) }
-        },
+        modifier.onSizeChanged { widthPx = it.width.coerceAtLeast(1) }
+            .focusRequester(focusRequester).focusable()
+            .onKeyEvent { e -> bench.onKey(e) }
+            .hoverIntent(hover) { at -> pick(bench, at.x / widthPx).takeIf { it >= 0 } }
+            .pointerInput(bench) {
+                var grabbed = -1
+                detectDragGestures(
+                    onDragStart = { at -> grabbed = pick(bench, at.x / this.size.width).takeIf { it < 0 || bench.vessels[it].job == null } ?: -1; if (grabbed >= 0) { bench.select(grabbed); bench.closeWheel() } },
+                    onDragEnd = { grabbed = -1 }, onDragCancel = { grabbed = -1 },
+                ) { change, delta -> if (grabbed >= 0) { change.consume(); bench.vessels[grabbed].x = (bench.vessels[grabbed].x + delta.x / this.size.width).coerceIn(0.1f, 0.9f) } }
+            }.pointerInput(bench) {
+                detectTapGestures { at -> val i = pick(bench, at.x / this.size.width); if (i >= 0) { hover.consume(); bench.toggleWheel(i) } }
+            },
     ) {
-        Spacer(Modifier.fillMaxSize().drawBehind { drawBench(art, bench, behind, seconds(), quality()) })
-        // The wheel of things the picked vessel can do, hanging from its top.
-        val open = bench.wheelFor
-        if (open >= 0) VesselWheel(bench.actionsFor(open), bench.wheelAnchor, onAction = { bench.act(open, it) }, onDismiss = { bench.closeWheel() }, onHold = { a, down -> bench.hold(open, a, down) }, hidden = bench.sipActive)
+        FocusPasses(
+            focus, if (focus != null) BenchFocus else null, Modifier.fillMaxSize(), wash = Color(0xFF0B0806),
+            scene = { Spacer(Modifier.fillMaxSize().drawBehind { drawBench(art, bench, behind, seconds(), quality()) }) },
+            sharp = { i -> Spacer(Modifier.fillMaxSize().drawBehind { drawBenchVessel(art, bench, i, behind, seconds(), quality()) }) },
+        )
+        // The wheel of things the picked vessel can do, hanging from its top; its keys pop in one after another, and out again when it closes.
+        if (shownFor >= 0) {
+            val at = shownFor
+            VesselWheel(
+                bench.actionsFor(at), bench.wheelAnchor, onAction = { bench.act(at, it) }, onDismiss = { bench.closeWheel() }, onHold = { a, down -> bench.hold(at, a, down) },
+                hidden = bench.sipActive, open = bench.wheelFor == at,
+            )
+        }
     }
 }
+
+/** The bench's focus: the light strength, a wheel's (blur 6, 20% darker). */
+private val BenchFocus = FocusStrength(6.dp, 0.2f)
 
 private fun styleOf(art: Sprites, b: BenchVessel): VesselStyle = b.planter?.let { VesselStyle(b.style.shape, b.style.glass, b.style.ink, soil = SoilLook(it.patch.wet.moisture, it.patch.wet.contamination)) } ?: b.art?.let { art.vessels[it] }?.let { VesselStyle(b.style.shape, b.style.glass, b.style.ink, art = it) } ?: b.style
 
@@ -471,6 +532,31 @@ private fun styleOf(art: Sprites, b: BenchVessel): VesselStyle = b.planter?.let 
 private fun pivotPx(b: BenchVessel, canvasWidth: Float, ppm: Float): Float = canvasWidth * b.x + (if (b.vessel.body.angle >= 0f) 1f else -1f) * b.vessel.width * ppm / 2f
 
 private fun pick(bench: LiquidBench, share: Float): Int = bench.vessels.indices.minByOrNull { abs(bench.vessels[it].x - share) }?.takeIf { abs(bench.vessels[it].x - share) < 0.1f } ?: -1
+
+/**
+ * One vessel of the bench where it stands, with its light on the table, its stream and any splash into it: on its own, for the focus passes, which draw the vessel in focus sharp
+ * over the blurred bench.
+ */
+private fun DrawScope.drawBenchVessel(art: Sprites, bench: LiquidBench, i: Int, behind: androidx.compose.ui.graphics.layer.GraphicsLayer, t: Float, quality: Quality) {
+    val w = size.width; val h = size.height
+    val topBack = h * 0.56f; val topFront = h * 0.72f; val tableY = h * 0.645f
+    val left = w * bench.tableLeft; val right = w * bench.tableRight
+    val ppm = h * 1.8f
+    val b = bench.vessels[i]
+    val style = styleOf(art, b)
+    val px = pivotPx(b, w, ppm)
+    // Selected: a faint pool under it.
+    if (i == bench.selected) drawOval(Color(0xFFFFE9B0).copy(alpha = 0.12f), Offset(px - b.vessel.width * ppm, tableY - 4f), Size(b.vessel.width * ppm * 2f, 14f))
+    // The lamp is the flame on the left: the glass throws its coloured shadow and its caustic away from it.
+    // (kept to the table's top: past its ends there is nothing for the light to land on)
+    clipRect(left, topBack, right, topFront) { drawCaustic(b.vessel, px, tableY + 8f, ppm, t, fromLeft = b.x > 0.12f, quality = quality) }
+    drawVessel(b.vessel, style, px, tableY + 6f, ppm, t, quality, behind = behind)
+    b.planter?.let { drawFernIn(it, w * b.x, tableY + 6f - b.vessel.height * ppm * 0.98f + b.vessel.width * ppm * 0.02f, b.vessel.height * ppm, t) }
+    // A stream into another container is drawn before it (see the order in drawBench); any other spill, whole.
+    drawSpillStream(b.vessel, px, tableY + 6f, ppm, t, quality, if (b.job != null) SpillPart.Stream else SpillPart.Whole)
+    // Over this container's liquid: the splash of whoever is pouring into it.
+    for (src in bench.vessels) if (src.job?.target === b.vessel) drawSpillStream(src.vessel, pivotPx(src, w, ppm), tableY + 6f, ppm, t, quality, SpillPart.Splash)
+}
 
 private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androidx.compose.ui.graphics.layer.GraphicsLayer, t: Float, quality: Quality) {
     val w = size.width; val h = size.height
@@ -518,20 +604,8 @@ private fun DrawScope.drawBench(art: Sprites, bench: LiquidBench, behind: androi
     val order = bench.vessels.withIndex().sortedBy { (_, b) -> if (pouringInto.any { it === b.vessel }) 2 else if (b.job != null) 1 else 0 }
     for ((i, b) in order) {
         if (b.sip != null) continue
-        val style = styleOf(art, b)
-        val px = pivotPx(b, w, ppm)
         bench.anchorX[i] = w * b.x; bench.anchorY[i] = tableY + 6f - (b.vessel.height * 1.15f + b.vessel.lift) * ppm
-        // Selected: a faint pool under it.
-        if (i == bench.selected) drawOval(Color(0xFFFFE9B0).copy(alpha = 0.12f), Offset(px - b.vessel.width * ppm, tableY - 4f), Size(b.vessel.width * ppm * 2f, 14f))
-        // The lamp is the flame on the left: the glass throws its coloured shadow and its caustic away from it.
-        // (kept to the table's top: past its ends there is nothing for the light to land on)
-        clipRect(left, topBack, right, topFront) { drawCaustic(b.vessel, px, tableY + 8f, ppm, t, fromLeft = b.x > 0.12f, quality = quality) }
-        drawVessel(b.vessel, style, px, tableY + 6f, ppm, t, quality, behind = behind)
-        b.planter?.let { drawFernIn(it, w * b.x, tableY + 6f - b.vessel.height * ppm * 0.98f + b.vessel.width * ppm * 0.02f, b.vessel.height * ppm, t) }
-        // A stream into another container is drawn before it (see above); any other spill, whole.
-        drawSpillStream(b.vessel, px, tableY + 6f, ppm, t, quality, if (b.job != null) SpillPart.Stream else SpillPart.Whole)
-        // Over this container's liquid: the splash of whoever is pouring into it.
-        for (src in bench.vessels) if (src.job?.target === b.vessel) drawSpillStream(src.vessel, pivotPx(src, w, ppm), tableY + 6f, ppm, t, quality, SpillPart.Splash)
+        drawBenchVessel(art, bench, i, behind, t, quality)
     }
     // Drops falling off the table's edge.
     for (drips in listOf(bench.drips, bench.tableDrips)) for (k in 0 until drips.count) {
