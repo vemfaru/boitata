@@ -29,6 +29,7 @@ kotlin {
             implementation(project(":boitata-plants"))
             implementation(project(":boitata-scene"))
             implementation(project(":boitata-core"))
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }
