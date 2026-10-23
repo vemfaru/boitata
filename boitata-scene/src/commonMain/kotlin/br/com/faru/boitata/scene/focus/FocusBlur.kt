@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import br.com.faru.boitata.core.clock.LocalSceneClock
 import br.com.faru.boitata.core.clock.Quality
-import br.com.faru.boitata.core.clock.rememberSceneQuality
 import br.com.faru.boitata.core.draw.blurSupported
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -60,7 +59,8 @@ public fun Modifier.focusBlur(
 internal fun Modifier.focusBlurLayer(strength: FocusStrength?, motion: FocusMotion, wash: Color, blurEnabled: Boolean, startFocused: Boolean, edges: TileMode = TileMode.Decal): Modifier = composed {
     val clock = LocalSceneClock.current
     val reduced = motion.reduced ?: (clock?.reducedMotion ?: false)
-    val quality = rememberSceneQuality()
+    // The scene's quality governor if there is a scene clock; outside a scene, full quality (and no clock of our own: a focus blur never starts a frame loop).
+    val quality: () -> Quality = clock?.quality ?: { Quality.High }
     val supported = remember { blurSupported() }
     val amount = remember { Animatable(if (startFocused && strength != null) 1f else 0f) }
     val radius = remember { Animatable(strength?.radius?.value ?: 0f) }
