@@ -84,6 +84,15 @@ A surface with `Optics.Paper()` (or `Frosted`, or tinted `Glass`) lets light thr
 - The glow is the light on a flat surface (Lambert, centred on the point of the paper nearest the lamp, at the lamp's height), multiplied by what the paper lets through (`1 - opacity`), tinted by it, and **spread wider and softer by `scatter`**: thin clear glass shows the lamp as it is, paper makes a soft glow. `drawWallLight(rig, screen, seconds)` draws it for a lamp on either side.
 - The shadows are drawn on the glow by `drawCastShadows(..., floor = false)`: a dark overlay keeps `1 - alpha` of the light under it, which is what an object in front of a lamp does to the paper behind.
 
+`drawThroughShadows(shadows, lamps, casters, surfaceFootY, optics)` is the same theatre for a surface that is only a picture in a bigger scene (a sheet of paper in a typewriter, a paper lantern): you give it the lamps behind the surface (`ThroughLamp`, flame, ground point, strength and size) and the things in between (`ThroughCaster`, an outline drawn at its own place, its depth, its top and bottom), and it does the rest:
+
+- **Where:** each outline is scaled away from the lamp's flame by `t`, so a thing stays where it stands and grows the nearer it is to the lamp (at most `maxScale`, 1.6 by default: a sheet is small).
+- **Softness by distance:** the penumbra widens with the thing's distance from the surface and the lamp's size (shifted copies of the outline: 6 at High, 3 at Medium, one hard shadow at Low).
+- **Solid things** (`solid = true`, a metal plate) stop all the light, so they first erase every other shadow where they stand: nothing on them can be darker than they are.
+- **Contact** (`contact`, 0..1): a thing touching the surface (the plate the paper lies against) is fully dark where it touches, at its bottom, and fades toward its top to `1 - contact` of that, softly, as light creeps round through the paper where the two part.
+- **Darkness** follows the surface's optics (`Optics.throughShare()`: thin onionskin shows sharper, darker shadows than heavy bond).
+- **Cost:** the shadows are drawn into a small picture (`ThroughShadows(scale = 0.25f)`, which also softens them) and redrawn only when a lamp, a thing or the surface changes; any other frame draws one image.
+
 The playground's **Shadow theatre** tab is this: a paper screen in a frame, a lamp (candle, hurricane lamp or the Boitatá's fire) behind it, the characters and animals as puppets you drag between them, red or amber paper, and a Backstage view of the puppeteers' side.
 
 ## Glass that blurs, bends and dirties
