@@ -165,4 +165,17 @@ class ShadowRoomTest {
         val k = (0 until alone.corners).first { alone.owner[it] == 0 }
         assertTrue(filled.share[0][k] < alone.share[0][k] - 0.1f, "${filled.share[0][k]} vs ${alone.share[0][k]}")
     }
+
+    @Test
+    fun aLightInARecessLightsOnlyWhatItSeesThroughTheOpening() {
+        // A candle 20 cm back in a recess behind the wall (60 cm), its opening 40 cm wide from 100 to 160 cm up: the desk gets a lit patch in front, nothing reaches the wall.
+        val light = RoomLight(0f, 80f, 110f, opening = Opening(60f, -20f, 100f, 20f, 160f))
+        val desk = room.litOnPicture(0, light)!!
+        assertTrue(desk.size >= 6, "a lit patch on the desk")
+        // The patch is in front of the wall's foot on the picture (larger y), and wider than the opening (it spreads with distance).
+        cam.project(0f, 60f, 67f, p); val backEdge = p[1]
+        assertTrue((0 until desk.size / 2).all { desk[2 * it + 1] > backEdge - 0.5f }, "on the desk, in front of the wall")
+        assertEquals(0, room.litOnPicture(1, light)!!.size, "the wall faces away from a light behind it")
+        assertTrue(room.litOnPicture(0, RoomLight(0f, 30f, 110f)) == null, "a light with no opening lights everything")
+    }
 }

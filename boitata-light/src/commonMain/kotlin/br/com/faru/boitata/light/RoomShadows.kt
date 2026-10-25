@@ -54,7 +54,17 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
         paint.shader = ImageShader(image)
         // Each surface's part is cut to the surface's outline only. Cutting away where another surface shades it (a shelf's shade on the desk) would leave a hole with straight
         // edges in the thing's shadow unless that surface's own shade were drawn as well; the rays already end on the first surface they meet.
-        for (i in room.receivers.indices) clips[i] = polygon(room.outlineOnPicture(i), 1f, 0f, 0f)
+        for (i in room.receivers.indices) {
+            val outline = polygon(room.outlineOnPicture(i), 1f, 0f, 0f)
+            // A light inside something (a recess, a crate) reaches only what it sees through its opening: outside that the surface is already in the shade of what holds it,
+            // so the thing's shadow adds nothing there.
+            val lit = room.litOnPicture(i, light)
+            clips[i] = when {
+                lit == null -> outline
+                lit.isEmpty() -> null
+                else -> Path().apply { op(outline, polygon(lit, 1f, 0f, 0f), androidx.compose.ui.graphics.PathOperation.Intersect) }
+            }
+        }
         builtUnit = Float.NaN
     }
 
