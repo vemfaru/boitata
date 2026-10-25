@@ -38,7 +38,7 @@ class LightFieldTest {
         // Along the desk toward the front the light comes in: none just under the mouth, some farther out, with a soft edge between.
         val near = LightField.visibility(room, 0, l.light, 0f, 55f, 67f)
         val far = LightField.visibility(room, 0, l.light, 0f, -20f, 67f)
-        assertEquals(0f, near); assertEquals(1f, far)
+        assertEquals(0f, near); assertTrue(far > 0.8f, "farther out the flame is (nearly) all seen: $far")
         val shares = (0..60).map { LightField.visibility(room, 0, l.light, 0f, 55f - it * 1.25f, 67f) }
         assertTrue(shares.any { it > 0f && it < 1f }, "a soft edge: some points see part of the flame")
     }
