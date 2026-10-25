@@ -2,6 +2,9 @@ package br.com.faru.boitata.core.light
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import kotlin.math.cosh
+import kotlin.math.sinh
+import kotlin.math.sqrt
 
 /**
  * What light does when it meets a thing: how much it stops, what colour it lets through, and how much it blurs and bends what is seen through it.
@@ -38,7 +41,34 @@ public class Optics(
 
         /** A sheet of paper or cloth, as in a shadow theatre: stops about half the light and scatters what passes. */
         public fun Paper(tint: Color = Color.White): Optics = Optics(0.45f, tint, scatter = 0.7f, blur = 0.15f)
+
+        /**
+         * A sheet of real paper of this [grammage] (g/m²: onionskin about 34, typing paper 60, 20 lb bond 75), stopping what [paperTransmittance] says it stops: thin paper glows,
+         * heavy paper hardly. [scattering] and [absorption] are the paper's own (m²/kg), as there.
+         */
+        public fun paper(grammage: Float, tint: Color = Color.White, scattering: Float = PAPER_SCATTERING, absorption: Float = PAPER_ABSORPTION): Optics =
+            Optics(1f - paperTransmittance(grammage, scattering, absorption), tint, scatter = 0.7f, blur = 0.15f)
+
+        /** What white printing paper scatters, per kilogram of it in a square metre (m²/kg): 40 to 60. */
+        public const val PAPER_SCATTERING: Float = 50f
+
+        /** What white paper absorbs (m²/kg): very little; most of what does not pass goes back toward the light. */
+        public const val PAPER_ABSORPTION: Float = 0.8f
     }
+}
+
+/**
+ * How much of the light that falls on one side of a sheet of paper comes out of the other, by the Kubelka–Munk theory of a layer that scatters and absorbs: with `a = 1 + K/S`,
+ * `b = √(a² − 1)` and `SX` the scattering of the whole sheet (`S` times its weight per square metre), `T = b / (a·sinh(b·SX) + b·cosh(b·SX))`. About 0.39 for onionskin (34 g/m²),
+ * 0.23 for typing paper (60) and 0.19 for 20 lb bond (75), with [scattering] `S` and [absorption] `K` in m²/kg.
+ */
+public fun paperTransmittance(grammage: Float, scattering: Float = Optics.PAPER_SCATTERING, absorption: Float = Optics.PAPER_ABSORPTION): Float {
+    val sx = scattering * grammage / 1000f
+    if (sx <= 0f) return 1f
+    val a = 1f + absorption / scattering
+    val b = sqrt(a * a - 1f)
+    if (b < 1e-4f) return 1f / (1f + sx)                       // nothing absorbed: what is not sent back passes
+    return b / (a * sinh(b * sx) + b * cosh(b * sx))
 }
 
 /**
