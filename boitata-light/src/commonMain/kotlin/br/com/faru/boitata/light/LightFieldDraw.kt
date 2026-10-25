@@ -30,7 +30,6 @@ class LightMesh(private val room: ShadowRoom) {
     private var dark: Vertices? = null
     private var warm: Vertices? = null
     private val darkPaint = Paint()
-    private val warmPaint = Paint().apply { blendMode = BlendMode.Plus }
 
     /** Builds the meshes of [grid] seen as [look], for drawing at [unit] pixels per world unit from ([originX], [originY]). */
     fun build(grid: SurfaceLight, look: LightLook, unit: Float, originX: Float, originY: Float) {
@@ -54,15 +53,15 @@ class LightMesh(private val room: ShadowRoom) {
         warm = Vertices(VertexMode.Triangles, positions, positions, warms, indices)
     }
 
-    /** Draws the meshes last built, cut to [clip] (already in this scope's pixels). */
-    fun draw(scope: DrawScope, clip: Path) {
-        val d = dark ?: return; val w = warm ?: return
-        scope.clipPath(clip) {
-            // Dst: the vertices' own colours, alpha and all (with no picture to blend them with, Src would draw them opaque).
-            drawIntoCanvas { canvas ->
-                canvas.drawVertices(d, BlendMode.Dst, darkPaint)
-                canvas.drawVertices(w, BlendMode.Dst, warmPaint)
-            }
-        }
+    /** Draws the darkness mesh last built, cut to [clip] (already in this scope's pixels). */
+    fun drawDark(scope: DrawScope, clip: Path) = draw(scope, clip, dark, darkPaint)
+
+    /** Draws the lamps' colour mesh last built, cut to [clip]. Draw it added onto what is under it (the room, or a picture laid with [BlendMode.Plus]). */
+    fun drawWarm(scope: DrawScope, clip: Path) = draw(scope, clip, warm, Paint())
+
+    private fun draw(scope: DrawScope, clip: Path, v: Vertices?, paint: Paint) {
+        v ?: return
+        // Dst: the vertices' own colours, alpha and all (with no picture to blend them with, Src would draw them opaque).
+        scope.clipPath(clip) { drawIntoCanvas { canvas -> canvas.drawVertices(v, BlendMode.Dst, paint) } }
     }
 }

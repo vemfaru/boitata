@@ -38,8 +38,17 @@ public class SurfaceLight(public val receiver: Int, public val cols: Int, public
  * Pure numbers, no drawing (the light module draws it). Things standing in the room (props) are not in it: their sharp shadows are drawn on top.
  */
 public object LightField {
-    /** The points across a light its visibility is sampled at (shares of its radius: across, up). */
-    private val SAMPLES = arrayOf(0f to 0f, 1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f)
+    /** The points across a light its visibility is sampled at (shares of its radius: across, up): its middle, and two rings of six, so an edge's shadow fades in thirteen steps. */
+    private val SAMPLES: Array<Pair<Float, Float>> = buildList {
+        add(0f to 0f)
+        for (ring in listOf(0.5f, 1f)) for (k in 0 until 6) {
+            val a = (k + if (ring < 1f) 0.5f else 0f) * kotlin.math.PI.toFloat() / 3f
+            add(ring * kotlin.math.cos(a) to ring * kotlin.math.sin(a))
+        }
+    }.toTypedArray()
+
+    /** What glows of a light is never smaller than this, in cm, for the field: a flame's glow is wider than its core, and shadows in a room are never razor-edged. */
+    public const val MIN_GLOW_CM: Float = 3f
 
     /**
      * Fills [out] with the light on receiver [out].receiver of [room] from [lights], over the part of the surface within [view] (its plane box: u0, v0, u1, v1, or null for the
@@ -89,8 +98,9 @@ public object LightField {
     /** The share of the light [l] the point ([px], [pd], [pz]) of receiver [self] sees: of a few points across it, those whose ray is not stopped. */
     public fun visibility(room: ShadowRoom, self: Int, l: RoomLight, px: Float, pd: Float, pz: Float): Float {
         var seen = 0
+        val radius = maxOf(l.radius, MIN_GLOW_CM)
         for ((sx, sz) in SAMPLES) {
-            val lx = l.x + sx * l.radius; val ld = l.d; val lz = l.z + sz * l.radius
+            val lx = l.x + sx * radius; val ld = l.d; val lz = l.z + sz * radius
             if (clear(room, self, l.opening, lx, ld, lz, px, pd, pz)) seen++
         }
         return seen / SAMPLES.size.toFloat()
