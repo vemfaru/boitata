@@ -51,10 +51,20 @@ public class RoomLight(public var x: Float, public var d: Float, public var z: F
 }
 
 /**
- * A thing standing in the room as a picture: an upright card [d] cm behind the reference line (the middle of its footprint), standing on a surface [baseZ] cm above the floor.
- * Its picture is drawn at [left], [top] to [right], [bottom] in world units; every point of it is a point of the card ([RoomCamera.onUpright]), so what the picture shows is what casts.
+ * A thing in the room as a picture: an upright card [d] cm behind the reference line (the middle of its footprint), resting on a surface [baseZ] cm above the floor. Its picture
+ * is drawn at [left], [top] to [right], [bottom] in world units; every point of it is a point of the card ([RoomCamera.onUpright]), so what the picture shows is what casts.
+ * [maxHeight] caps how far above [baseZ] it reaches: a thing lying flat (a sheet, a notepad) is drawn tall on the picture because it is seen from above, but it is only its
+ * thickness high, so its shadow is a thin rim round its footprint ([CasterKind.Lying]). A thing hung on a wall has no surface under it: [baseZ] is minus infinity.
  */
-public class RoomCaster(public var d: Float, public var baseZ: Float, public var left: Float, public var top: Float, public var right: Float, public var bottom: Float)
+public class RoomCaster(
+    public var d: Float,
+    public var baseZ: Float,
+    public var left: Float,
+    public var top: Float,
+    public var right: Float,
+    public var bottom: Float,
+    public var maxHeight: Float = Float.POSITIVE_INFINITY,
+)
 
 /**
  * A room's camera and the surfaces in it that catch shadows, with the exact projection of a thing's shadow onto each one: the ray from the light through every point of the thing's
@@ -174,7 +184,10 @@ public class ShadowMesh(public val cols: Int, public val rows: Int, receivers: I
             texture[2 * k] = sx - caster.left; texture[2 * k + 1] = sy - caster.top
             // The point of the thing this corner of the picture shows: on its upright card, and never below the surface it stands on (the base's front half is drawn below the card's line).
             var px = 0f; var pz = caster.baseZ
-            if (cam.onUpright(sx, sy, caster.d, tmp)) { px = tmp[0]; pz = maxOf(tmp[1], caster.baseZ + 0.01f) }
+            if (cam.onUpright(sx, sy, caster.d, tmp)) {
+                px = tmp[0]; pz = maxOf(tmp[1], caster.baseZ + 0.01f)
+                if (caster.maxHeight.isFinite()) pz = minOf(pz, caster.baseZ + caster.maxHeight)
+            }
             val pd = caster.d
             for (i in room.receivers.indices) {
                 val ok = room.onPlane(i, light.x, light.d, light.z, px, pd, pz, tmp)

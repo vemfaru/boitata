@@ -116,4 +116,28 @@ class ShadowRoomTest {
         val told = m.caster(cam, left, bottom - 10f * u, left + 10f * u, bottom, 67f, ObjectSize(depth = 12f))
         assertTrue(abs(told.d - guess.d - (12f - 3f) / 2f) < 0.3f, "${told.d} vs ${guess.d}")
     }
+
+    @Test
+    fun aThingLyingFlatCastsOnlyItsThickness() {
+        // A sheet drawn 6 cm tall on the picture (it is seen from above) but lying flat: its shadow is a rim, not a standing card's.
+        val light = RoomLight(0f, 0f, 107f)
+        cam.project(0f, 30f, 67f, p); val footY = p[1]; val cx = p[0]; val u = cam.unitsPerCm(30f, 67f)
+        val standing = RoomCaster(30f, 67f, cx - 5f * u, footY - 6f * u, cx + 5f * u, footY)
+        val lying = RoomCaster(30f, 67f, cx - 5f * u, footY - 6f * u, cx + 5f * u, footY, maxHeight = 0.6f)
+        val a = ShadowMesh(2, 4, 3).also { it.build(room, light, standing) }
+        val b = ShadowMesh(2, 4, 3).also { it.build(room, light, lying) }
+        // The top middle corner's shadow on the desk: far behind for the standing card, right at the sheet for the lying one.
+        assertTrue(a.positions[0][3] < b.positions[0][3] - 20f, "${a.positions[0][3]} vs ${b.positions[0][3]}")
+    }
+
+    @Test
+    fun aThingHungOnTheWallCastsCloseBehindIt() {
+        val light = RoomLight(0f, 0f, 107f)
+        cam.project(0f, 60f, 140f, p); val y = p[1]; val cx = p[0]
+        val c = SilhouetteMetrics.hung(60f, cx - 50f, y - 80f, cx + 50f, y)
+        val mesh = ShadowMesh(2, 2, 3).also { it.build(room, light, c) }
+        // Every corner lands on the wall, within a few units of where the picture is (1.5 cm from the wall).
+        assertTrue(mesh.owner.all { it == 1 })
+        assertTrue(abs(mesh.positions[1][0] - (cx - 50f)) < 15f, "${mesh.positions[1][0]}")
+    }
 }
