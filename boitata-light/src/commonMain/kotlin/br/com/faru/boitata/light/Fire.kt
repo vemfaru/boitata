@@ -191,5 +191,5 @@ public fun DrawScope.drawFlameTrail(
  */
 public fun fireLight(x: Float, y: Float, seconds: Float, reach: Float = 520f, strength: Float = 0.95f, color: Color = Color(0xFFFFA63C), groundX: Float = x, groundY: Float = y): LightSource {
     val f = 0.9f + 0.1f * sin(seconds * 11f) + 0.05f * cos(seconds * 17.3f)
-    return LightSource(x, y, color, (strength * f).coerceIn(0f, 1f), reach * (0.96f + 0.04f * f), flicker = 0.3f, groundX = groundX, groundY = groundY)
+    return LightSource(x, y, color, (strength * f).coerceIn(0f, 1f), reach * (0.96f + 0.04f * f), flicker = 0.3f, groundX = groundX, groundY = groundY, flame = 1f)
 }

@@ -36,6 +36,8 @@ data class LightSource(
     /** Where the light is straight above the desk top, for casting shadows (the foot of the lamp). */
     val groundX: Float = x,
     val groundY: Float = y,
+    /** How much it is a flame ([br.com.faru.boitata.core.light.Flame]): 0 a bulb (it does not move), 1 an open candle, between a flame behind glass. Its light then sways and breathes. */
+    val flame: Float = 0f,
 )
 
 
@@ -149,6 +151,26 @@ fun rememberFlickerState(amount: Float, reduced: Boolean = false): androidx.comp
 }
 
 private const val FLICKER_STEP = 0.08f
+
+/**
+ * Where a flame's light is now and how bright ([br.com.faru.boitata.core.light.Flame]): `[0]` across and `[1]` up, in centimetres, `[2]` its brightness, sampled
+ * [br.com.faru.boitata.core.light.Flame.RATE] times a second on the scene's clock. Still (0, 0, 1) for a bulb, under reduced motion and when [enabled] is false (the quality governor).
+ * Read it in a draw block: a flame then redraws its shadows fifteen times a second and recomposes nothing.
+ */
+@Composable
+fun rememberFlameState(amount: Float, reduced: Boolean = false, seed: Int = 0, enabled: () -> Boolean = { true }): androidx.compose.runtime.State<FloatArray> {
+    val clock = br.com.faru.boitata.core.clock.LocalSceneClock.current ?: br.com.faru.boitata.core.clock.rememberSceneClock()
+    return androidx.compose.runtime.remember(amount, reduced, seed, clock) {
+        val still = floatArrayOf(0f, 0f, 1f)
+        androidx.compose.runtime.derivedStateOf {
+            if (reduced || clock.reducedMotion || amount <= 0f || !enabled()) still
+            else {
+                val step = br.com.faru.boitata.core.light.Flame.step(clock.seconds())
+                FloatArray(3).also { br.com.faru.boitata.core.light.Flame.at(step / br.com.faru.boitata.core.light.Flame.RATE, amount, it, seed) }
+            }
+        }
+    }
+}
 
 /** The flash of the lightning over the room (0..1), read by [LightShade] and the room's own layers in the draw phase. */
 val LocalSceneFlash = compositionLocalOf<() -> Float> { { 0f } }

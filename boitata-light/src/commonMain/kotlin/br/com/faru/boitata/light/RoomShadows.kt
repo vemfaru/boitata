@@ -49,12 +49,8 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
      * Works out the shadow of [caster] (drawn from [image]) from [light]: [strength] at [reach] cm and [ambient] decide how dark it is on each surface. Call again when anything of it moves.
      */
     fun build(light: RoomLight, caster: RoomCaster, image: ImageBitmap, strength: Float = 1f, reach: Float = 150f, ambient: Float = 0.1f) {
-        val r = light.radius
-        for (k in 0 until SAMPLES) {
-            val (dx, dz) = OFFSETS[k]
-            sample.setOffset(light, dx * r, 0f, dz * r)
-            meshes[k].build(room, sample, caster, strength, reach, ambient)
-        }
+        this.caster = caster; this.strength = strength; this.reach = reach; this.ambient = ambient
+        buildMeshes(light)
         imageW = image.width.toFloat(); imageH = image.height.toFloat()
         casterW = (caster.right - caster.left).coerceAtLeast(1e-3f); casterH = (caster.bottom - caster.top).coerceAtLeast(1e-3f)
         paint.shader = ImageShader(image)
@@ -64,6 +60,31 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
             clips[i] = outline
         }
         builtUnit = Float.NaN
+    }
+
+    private var caster: RoomCaster? = null
+    private var strength = 1f
+    private var reach = 150f
+    private var ambient = 0.1f
+
+    /**
+     * The light moved a little (a flame swaying, [br.com.faru.boitata.core.light.Flame]): the shadow is carried along the new rays, the surfaces' outlines and the shade of the
+     * desk top stay as [build] made them (a few millimetres of sway does not move them). Call [build] first.
+     */
+    fun moveTo(light: RoomLight) {
+        if (caster == null) return
+        buildMeshes(light)
+        builtUnit = Float.NaN
+    }
+
+    private fun buildMeshes(light: RoomLight) {
+        val c = caster ?: return
+        val r = light.radius
+        for (k in 0 until SAMPLES) {
+            val (dx, dz) = OFFSETS[k]
+            sample.setOffset(light, dx * r, 0f, dz * r)
+            meshes[k].build(room, sample, c, strength, reach, ambient)
+        }
     }
 
     /** Draws the shadow's part on surface [receiver], [alpha] dark at most, the picture's world units drawn at [unit] pixels each, from the world point ([originX], [originY]). */
