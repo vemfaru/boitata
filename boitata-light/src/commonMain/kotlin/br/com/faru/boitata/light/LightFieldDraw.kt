@@ -37,8 +37,8 @@ class LightMesh(private val room: ShadowRoom) {
         val positions = ArrayList<Offset>(grid.corners); val darks = ArrayList<Color>(grid.corners); val warms = ArrayList<Color>(grid.corners)
         for (r in 0..grid.rows) for (c in 0..grid.cols) {
             val i = r * (grid.cols + 1) + c
-            grid.point(room, c, r, p)
-            if (!room.camera.project(p[0], p[1], p[2], s)) { s[0] = 0f; s[1] = 0f }
+            if (grid.onPicture) { s[0] = grid.pictureX(c); s[1] = grid.pictureY(r) }
+            else if (!grid.point(room, c, r, p) || !room.camera.project(p[0], p[1], p[2], s)) { s[0] = 0f; s[1] = 0f }
             positions += Offset((s[0] - originX) * unit, (s[1] - originY) * unit)
             val lit = 1f - exp(-grid.amount[i] * look.gain)
             darks += Color.Black.copy(alpha = (look.darkness * (1f - look.lift * lit)).coerceIn(0f, 1f))

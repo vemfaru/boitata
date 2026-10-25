@@ -14,6 +14,11 @@ public class FieldLight(public val light: RoomLight, public val color: Int, publ
  * [red], [green], [blue] its colour, each corner's light weighted by how much of it comes from which lamp. Row by row, corners `(cols + 1) × (rows + 1)`. Built in place.
  */
 public class SurfaceLight(public val receiver: Int, public val cols: Int, public val rows: Int) {
+    /**
+     * Whether the grid is laid over the picture instead of the surface's plane: its box ([u0] .. [u1], [v0] .. [v1]) is then in picture units, and each corner is found on the
+     * surface's plane through the camera. A picture drawn with its own perspective (a room's backdrop) puts its surfaces where it draws them; the grid follows the picture.
+     */
+    public var onPicture: Boolean = false
     public val corners: Int = (cols + 1) * (rows + 1)
     public val amount: FloatArray = FloatArray(corners)
     public val red: FloatArray = FloatArray(corners)
@@ -21,11 +26,34 @@ public class SurfaceLight(public val receiver: Int, public val cols: Int, public
     public val blue: FloatArray = FloatArray(corners)
     public var u0: Float = 0f; public var v0: Float = 0f; public var u1: Float = 1f; public var v1: Float = 1f
 
-    /** The room point of corner ([c], [r]), into [out] (x, d, z). */
-    public fun point(room: ShadowRoom, c: Int, r: Int, out: FloatArray) {
+    /** The room point of corner ([c], [r]), into [out] (x, d, z). False when a picture corner does not land on the surface's plane. */
+    public fun point(room: ShadowRoom, c: Int, r: Int, out: FloatArray): Boolean {
         val rec = room.receivers[receiver]
         val u = u0 + (u1 - u0) * c / cols; val v = v0 + (v1 - v0) * r / rows
-        if (rec.level) { out[0] = u; out[1] = v; out[2] = rec.at } else { out[0] = u; out[1] = rec.at; out[2] = v }
+        if (!onPicture) { rec.toRoom(u, v, out); return true }
+        val cam = room.camera
+        val ok = when (rec.axis) { 2 -> cam.onLevel(u, v, rec.at, tmp); 1 -> cam.onUpright(u, v, rec.at, tmp); else -> cam.onSide(u, v, rec.at, tmp) }
+        if (!ok) return false
+        // Kept on the surface as far as it really goes: a picture drawn with its own perspective can put a point of a side wall behind the back wall, where the back wall would
+        // hide every light from it.
+        val o = rec.outline
+        var minU = Float.MAX_VALUE; var maxU = -Float.MAX_VALUE; var minV = Float.MAX_VALUE; var maxV = -Float.MAX_VALUE
+        var k = 0
+        while (k < o.size) { minU = minOf(minU, o[k]); maxU = maxOf(maxU, o[k]); minV = minOf(minV, o[k + 1]); maxV = maxOf(maxV, o[k + 1]); k += 2 }
+        val pu = tmp[0].coerceIn(minU + EDGE_IN, maxU - EDGE_IN); val pv = tmp[1].coerceIn(minV + EDGE_IN, maxV - EDGE_IN)
+        rec.toRoom(pu, pv, out)
+        return true
+    }
+
+    /** Where corner ([c], [r]) is on the picture, for a grid laid over the picture ([onPicture]). */
+    public fun pictureX(c: Int): Float = u0 + (u1 - u0) * c / cols
+    public fun pictureY(r: Int): Float = v0 + (v1 - v0) * r / rows
+
+    private val tmp = FloatArray(2)
+
+    private companion object {
+        /** How far inside its outline a point found through the picture is kept, in cm (on the edge, the next surface would hide it). */
+        const val EDGE_IN = 0.5f
     }
 }
 
@@ -59,7 +87,11 @@ public object LightField {
         var minU = Float.MAX_VALUE; var maxU = -Float.MAX_VALUE; var minV = Float.MAX_VALUE; var maxV = -Float.MAX_VALUE
         var k = 0
         while (k < rec.outline.size) { minU = minOf(minU, rec.outline[k]); maxU = maxOf(maxU, rec.outline[k]); minV = minOf(minV, rec.outline[k + 1]); maxV = maxOf(maxV, rec.outline[k + 1]); k += 2 }
-        if (view != null) { minU = maxOf(minU, view[0]); minV = maxOf(minV, view[1]); maxU = minOf(maxU, view[2]); maxV = minOf(maxV, view[3]) }
+        if (out.onPicture) {
+            // A grid over the picture: [view] is its box there.
+            requireNotNull(view) { "a grid over the picture needs its box" }
+            minU = view[0]; minV = view[1]; maxU = view[2]; maxV = view[3]
+        } else if (view != null) { minU = maxOf(minU, view[0]); minV = maxOf(minV, view[1]); maxU = minOf(maxU, view[2]); maxV = minOf(maxV, view[3]) }
         if (maxU <= minU) maxU = minU + 1f
         if (maxV <= minV) maxV = minV + 1f
         out.u0 = minU; out.v0 = minV; out.u1 = maxU; out.v1 = maxV
@@ -67,7 +99,7 @@ public object LightField {
         val ar = ((ambientColor shr 16) and 0xFF) / 255f; val ag = ((ambientColor shr 8) and 0xFF) / 255f; val ab = (ambientColor and 0xFF) / 255f
         for (r in 0..out.rows) for (c in 0..out.cols) {
             val i = r * (out.cols + 1) + c
-            out.point(room, c, r, p)
+            if (!out.point(room, c, r, p)) { out.amount[i] = ambient; out.red[i] = ar; out.green[i] = ag; out.blue[i] = ab; continue }
             var sum = ambient; var sr = ambient * ar; var sg = ambient * ag; var sb = ambient * ab
             for (fl in lights) {
                 val e = arriving(room, out.receiver, fl, p[0], p[1], p[2])
@@ -86,8 +118,9 @@ public object LightField {
         val rec = room.receivers[i]
         val dx = l.x - px; val dd = l.d - pd; val dz = l.z - pz
         val dist = sqrt(dx * dx + dd * dd + dz * dz).coerceAtLeast(0.1f)
-        // A level surface is a top (the desk, the floor, a board): lit only from above. An upright one faces the room (toward the viewer).
-        val cos = if (rec.level) dz / dist else -dd / dist
+        // A level surface is a top (the desk, the floor, a board): lit only from above. A back wall faces the viewer, a side wall the middle of the room.
+        val toward = when (rec.axis) { 2 -> dz; 1 -> dd; else -> dx }
+        val cos = rec.facing * toward / dist
         if (cos <= 0f) return 0f
         val seen = visibility(room, i, l, px, pd, pz)
         if (seen <= 0f) return 0f
@@ -122,15 +155,15 @@ public object LightField {
             if (j == self) continue
             val r = room.receivers[j]
             // The wall the opening is in: the opening test above already let the ray through it.
-            if (opening != null && !r.level && kotlin.math.abs(r.at - opening.d) < 0.5f) continue
-            val from = if (r.level) lz else ld
-            val to = if (r.level) pz else pd
+            if (opening != null && r.axis == 1 && kotlin.math.abs(r.at - opening.d) < 0.5f) continue
+            val from = r.along(lx, ld, lz)
+            val to = r.along(px, pd, pz)
             val den = to - from
             if (den > -1e-4f && den < 1e-4f) continue
             val t = (r.at - from) / den
             if (t <= 0.001f || t >= 0.999f) continue
             val hx = lx + t * (px - lx); val hd = ld + t * (pd - ld); val hz = lz + t * (pz - lz)
-            if (if (r.level) r.contains(hx, hd) else r.contains(hx, hz)) return false
+            if (r.holds(hx, hd, hz)) return false
         }
         return true
     }

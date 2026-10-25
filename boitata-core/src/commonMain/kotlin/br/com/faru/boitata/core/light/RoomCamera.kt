@@ -68,6 +68,20 @@ public class RoomCamera(
         return true
     }
 
+    /** The point of the side wall [x] cm across (it runs from the front to the back) that is drawn at ([px], [py]), into [out] (d, z). False on the camera's own axis or behind the eye. */
+    public fun onSide(px: Float, py: Float, x: Float, out: FloatArray): Boolean {
+        val dx = px - centerX
+        if (dx > -1e-3f && dx < 1e-3f) return false
+        val a = focalX * x / dx
+        if (a <= MIN_ALONG) return false
+        val down = (py - horizonY) / focalY * a
+        val ahead = a * c - down * s
+        val below = a * s + down * c
+        out[0] = ahead - eyeBack
+        out[1] = eyeHeight - below
+        return true
+    }
+
     /** How many world units a centimetre across is, drawn at ([d], [z]). */
     public fun unitsPerCm(d: Float, z: Float): Float = focalX / along(d, z)
 

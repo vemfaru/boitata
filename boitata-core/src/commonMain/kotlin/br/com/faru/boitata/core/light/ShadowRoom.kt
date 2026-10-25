@@ -13,9 +13,28 @@ public class ShadowReceiver(
     public val outline: FloatArray,
     /** What the surface is made of: how bright it shows under a light and how much it gives back to what is near it. */
     public val material: br.com.faru.boitata.core.thing.Material = br.com.faru.boitata.core.thing.Materials.Plaster,
+    /** An upright surface that runs from the front of the room to the back (a side wall), [at] cm across: its outline is (d, z) pairs. */
+    public val side: Boolean = false,
 ) {
     /** The same surface made of [m]. */
-    public fun made(m: br.com.faru.boitata.core.thing.Material): ShadowReceiver = ShadowReceiver(level, at, outline, m)
+    public fun made(m: br.com.faru.boitata.core.thing.Material): ShadowReceiver = ShadowReceiver(level, at, outline, m, side)
+
+    /** Which room coordinate is the same all over its plane: 0 across (a side wall), 1 depth (a back wall), 2 height (a top). */
+    public val axis: Int get() = if (level) 2 else if (side) 0 else 1
+
+    /** The room point's coordinate along [axis]. */
+    public fun along(x: Float, d: Float, z: Float): Float = when (axis) { 0 -> x; 1 -> d; else -> z }
+
+    /** Whether the room point (on its plane) is inside its outline. */
+    public fun holds(x: Float, d: Float, z: Float): Boolean = when (axis) { 2 -> contains(x, d); 1 -> contains(x, z); else -> contains(d, z) }
+
+    /** The room point (x, d, z) of the plane point ([u], [v]) of its outline, into [out]. */
+    public fun toRoom(u: Float, v: Float, out: FloatArray) {
+        when (axis) { 2 -> { out[0] = u; out[1] = v; out[2] = at }; 1 -> { out[0] = u; out[1] = at; out[2] = v }; else -> { out[0] = at; out[1] = u; out[2] = v } }
+    }
+
+    /** Which way it faces, as the room axis it faces along and its sign: a top faces up, a back wall the viewer, a side wall the middle of the room. */
+    public val facing: Float get() = when (axis) { 2 -> 1f; 1 -> -1f; else -> if (at < 0f) 1f else -1f }
 
     init { require(outline.size >= 6 && outline.size % 2 == 0) { "an outline needs three corners or more" } }
 
@@ -38,6 +57,9 @@ public class ShadowReceiver(
 
         /** An upright surface [d] cm behind the reference line bounded by [outline] ((x, z) pairs). */
         public fun upright(d: Float, vararg outline: Float): ShadowReceiver = ShadowReceiver(false, d, outline)
+
+        /** A side wall [x] cm across, running from the front to the back, bounded by [outline] ((d, z) pairs). */
+        public fun side(x: Float, vararg outline: Float): ShadowReceiver = ShadowReceiver(false, x, outline, side = true)
     }
 }
 
@@ -103,6 +125,7 @@ public class RoomCaster(
  */
 public class ShadowRoom(public val camera: RoomCamera, public val receivers: List<ShadowReceiver>) {
     private val tmp = FloatArray(2)
+    private val room3 = FloatArray(3)
 
     /**
      * How far along the ray from the light ([lx], [ld], [lz]) through the point ([px], [pd], [pz]) receiver [i]'s plane is, in units of the way to the point: above 1 is beyond the point.
@@ -110,8 +133,8 @@ public class ShadowRoom(public val camera: RoomCamera, public val receivers: Lis
      */
     public fun along(i: Int, lx: Float, ld: Float, lz: Float, px: Float, pd: Float, pz: Float): Float {
         val r = receivers[i]
-        val from = if (r.level) lz else ld
-        val to = if (r.level) pz else pd
+        val from = r.along(lx, ld, lz)
+        val to = r.along(px, pd, pz)
         val den = to - from
         return if (den > -1e-5f && den < 1e-5f) Float.NaN else (r.at - from) / den
     }
@@ -124,7 +147,7 @@ public class ShadowRoom(public val camera: RoomCamera, public val receivers: Lis
             if (t.isNaN() || t <= 1f || t >= bestT) continue
             val hx = lx + t * (px - lx); val hd = ld + t * (pd - ld); val hz = lz + t * (pz - lz)
             val r = receivers[i]
-            if (if (r.level) r.contains(hx, hd) else r.contains(hx, hz)) { best = i; bestT = t }
+            if (r.holds(hx, hd, hz)) { best = i; bestT = t }
         }
         return best
     }
@@ -147,7 +170,7 @@ public class ShadowRoom(public val camera: RoomCamera, public val receivers: Lis
         val pts = FloatArray(n * 2); var k = 0
         for (j in 0 until n) {
             val u = r.outline[2 * j]; val v = r.outline[2 * j + 1]
-            val ok = if (r.level) camera.project(u, v, r.at, tmp) else camera.project(u, r.at, v, tmp)
+            r.toRoom(u, v, room3); val ok = camera.project(room3[0], room3[1], room3[2], tmp)
             if (ok) { pts[k++] = tmp[0]; pts[k++] = tmp[1] }
         }
         return pts.copyOf(k)
@@ -163,7 +186,7 @@ public class ShadowRoom(public val camera: RoomCamera, public val receivers: Lis
         val pts = FloatArray(n * 2); var any = false
         for (j in 0 until n) {
             val u = b.outline[2 * j]; val v = b.outline[2 * j + 1]
-            val px = u; val pd = if (b.level) v else b.at; val pz = if (b.level) b.at else v
+            b.toRoom(u, v, room3); val px = room3[0]; val pd = room3[1]; val pz = room3[2]
             if (!onPlane(onto, light.x, light.d, light.z, px, pd, pz, tmp, BLOCKER_REACH)) {
                 // The corner is not between the light and the plane: its ray runs away from it. Its edge of the shade is as far as it goes.
                 camera.project(px, pd, pz, tmp)
@@ -183,8 +206,8 @@ public class ShadowRoom(public val camera: RoomCamera, public val receivers: Lis
         // The opening's corners in the room, then only the part of it whose rays head toward this receiver's plane (a ray through the top of a window above the flame
         // rises and never reaches the desk): cut at the flame's height for a level receiver, at the flame's depth for an upright one.
         var poly = listOf(floatArrayOf(o.left, o.d, o.bottom), floatArrayOf(o.right, o.d, o.bottom), floatArrayOf(o.right, o.d, o.top), floatArrayOf(o.left, o.d, o.top))
-        val axis = if (r.level) 2 else 1
-        val lightAt = if (r.level) light.z else light.d
+        val axis = r.axis
+        val lightAt = r.along(light.x, light.d, light.z)
         val sign = if (r.at < lightAt) -1f else 1f
         poly = clipBelow(poly, axis, lightAt, sign)
         if (poly.size < 3) return FloatArray(0)

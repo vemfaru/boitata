@@ -32,6 +32,8 @@ class ShadowRoomTest {
         assertTrue(cam.onLevel(x, y, 67f, p)); assertEquals(12f, p[0], 1e-3f); assertEquals(33f, p[1], 1e-3f)
         cam.project(-7f, 60f, 110f, p); val (wx, wy) = p[0] to p[1]
         assertTrue(cam.onUpright(wx, wy, 60f, p)); assertEquals(-7f, p[0], 1e-3f); assertEquals(110f, p[1], 1e-3f)
+        cam.project(-90f, 20f, 150f, p); val (sx, sy) = p[0] to p[1]
+        assertTrue(cam.onSide(sx, sy, -90f, p)); assertEquals(20f, p[0], 1e-2f); assertEquals(150f, p[1], 1e-2f)
     }
 
     @Test

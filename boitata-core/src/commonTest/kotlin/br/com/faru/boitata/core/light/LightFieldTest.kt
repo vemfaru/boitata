@@ -57,4 +57,20 @@ class LightFieldTest {
         val l = FieldLight(RoomLight(0f, 30f, 50f), 0xFFFFFF, 1f, 150f)
         assertEquals(0f, LightField.arriving(room, 0, l, 0f, 30f, 67f), "a light under the desk top does not light its top")
     }
+
+    @Test
+    fun sideWallsFaceTheMiddleOfTheRoom() {
+        // A room 200 cm wide: side walls at -100 and +100, from the front to the back wall, up to 230 cm.
+        val left = ShadowReceiver.side(-100f, -40f, 0f, 60f, 0f, 60f, 230f, -40f, 230f)
+        val right = ShadowReceiver.side(100f, -40f, 0f, 60f, 0f, 60f, 230f, -40f, 230f)
+        val r = ShadowRoom(cam, listOf(desk, wall, floor, left, right))
+        val l = FieldLight(RoomLight(-80f, 30f, 100f), 0xFFFFFF, 1f, 400f)
+        val onRight = LightField.arriving(r, 4, l, 100f, 30f, 120f)
+        val onLeft = LightField.arriving(r, 3, l, -100f, 30f, 120f)
+        assertTrue(onRight > 0f && onLeft > 0f, "both walls face the room")
+        // The right wall sees the lamp almost face-on but far; the left is near but at a graze: the cosine and the distance both count.
+        val nearGraze = LightField.arriving(r, 3, l, -100f, 30f, 100f)
+        assertTrue(nearGraze > onLeft, "on the left wall, the point level with the lamp gets more than one above it")
+        assertEquals(0f, LightField.arriving(r, 3, FieldLight(RoomLight(-120f, 30f, 100f), 0xFFFFFF, 1f, 400f), -100f, 30f, 100f), "a lamp behind a side wall does not light its face")
+    }
 }
