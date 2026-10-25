@@ -32,6 +32,16 @@ public class ShadowReceiver(public val level: Boolean, public val at: Float, pub
     }
 }
 
+/** Another light in the room, for how dark a shadow is: where it is (cm), how hard it lights what is [reach] cm away. Its light fills the shadow of the light that casts. */
+public class LitPoint(public val x: Float, public val d: Float, public val z: Float, public val strength: Float, public val reach: Float) {
+    /** How much it lights the point ([px], [pd], [pz]): falling off as 1 / (1 + (r / reach)²). */
+    public fun at(px: Float, pd: Float, pz: Float): Float {
+        val dx = px - x; val dd = pd - d; val dz = pz - z
+        val r2 = (dx * dx + dd * dd + dz * dz) / (reach * reach)
+        return strength / (1f + r2)
+    }
+}
+
 /** A light at one place in the room, in centimetres, and the size of what glows (a bulb, a flame): the bigger, the wider a shadow's soft edge grows with distance. */
 public class RoomLight(public var x: Float, public var d: Float, public var z: Float, public var radius: Float = 1.5f) {
     /**
@@ -174,9 +184,10 @@ public class ShadowMesh(public val cols: Int, public val rows: Int, receivers: I
 
     /**
      * Lays [caster]'s picture on every receiver of [room] from [light]. [strength] is how hard the light lights what is [reach] cm away (it falls off as 1 / (1 + (r / reach)²)),
-     * [ambient] how much other light there is everywhere: a shadow is only as dark as the light it takes away.
+     * [ambient] how much light there is everywhere, and [others] the other lights of the room: a shadow is only as dark as its light's share of all the light where it falls, so
+     * two lamps throw two lighter shadows, and the sun through the window fills a candle's.
      */
-    public fun build(room: ShadowRoom, light: RoomLight, caster: RoomCaster, strength: Float = 1f, reach: Float = 150f, ambient: Float = 0.1f) {
+    public fun build(room: ShadowRoom, light: RoomLight, caster: RoomCaster, strength: Float = 1f, reach: Float = 150f, ambient: Float = 0.1f, others: List<LitPoint> = emptyList()) {
         val cam = room.camera
         val w = caster.right - caster.left; val h = caster.bottom - caster.top
         for (r in 0..rows) for (c in 0..cols) {
@@ -199,7 +210,9 @@ public class ShadowMesh(public val cols: Int, public val rows: Int, receivers: I
                     val dx = t * (px - light.x); val dd = t * (pd - light.d); val dz = t * (pz - light.z)
                     val dist = sqrt(dx * dx + dd * dd + dz * dz)
                     val lit = strength / (1f + (dist / reach) * (dist / reach))
-                    lit / (lit + ambient)
+                    var rest = ambient
+                    if (others.isNotEmpty()) { val hx = light.x + dx; val hd = light.d + dd; val hz = light.z + dz; for (o in others) rest += o.at(hx, hd, hz) }
+                    lit / (lit + rest)
                 }
             }
             owner[k] = room.firstHit(light.x, light.d, light.z, px, pd, pz)

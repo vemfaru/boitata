@@ -48,8 +48,8 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
     /**
      * Works out the shadow of [caster] (drawn from [image]) from [light]: [strength] at [reach] cm and [ambient] decide how dark it is on each surface. Call again when anything of it moves.
      */
-    fun build(light: RoomLight, caster: RoomCaster, image: ImageBitmap, strength: Float = 1f, reach: Float = 150f, ambient: Float = 0.1f) {
-        this.caster = caster; this.strength = strength; this.reach = reach; this.ambient = ambient
+    fun build(light: RoomLight, caster: RoomCaster, image: ImageBitmap, strength: Float = 1f, reach: Float = 150f, ambient: Float = 0.1f, others: List<br.com.faru.boitata.core.light.LitPoint> = emptyList()) {
+        this.caster = caster; this.strength = strength; this.reach = reach; this.ambient = ambient; this.others = others
         buildMeshes(light)
         imageW = image.width.toFloat(); imageH = image.height.toFloat()
         casterW = (caster.right - caster.left).coerceAtLeast(1e-3f); casterH = (caster.bottom - caster.top).coerceAtLeast(1e-3f)
@@ -66,6 +66,7 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
     private var strength = 1f
     private var reach = 150f
     private var ambient = 0.1f
+    private var others: List<br.com.faru.boitata.core.light.LitPoint> = emptyList()
 
     /**
      * The light moved a little (a flame swaying, [br.com.faru.boitata.core.light.Flame]): the shadow is carried along the new rays, the surfaces' outlines and the shade of the
@@ -83,7 +84,7 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
         for (k in 0 until SAMPLES) {
             val (dx, dz) = OFFSETS[k]
             sample.setOffset(light, dx * r, 0f, dz * r)
-            meshes[k].build(room, sample, c, strength, reach, ambient)
+            meshes[k].build(room, sample, c, strength, reach, ambient, others)
         }
     }
 

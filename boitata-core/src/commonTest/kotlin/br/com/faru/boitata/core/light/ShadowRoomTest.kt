@@ -153,4 +153,16 @@ class ShadowRoomTest {
         assertTrue(past.isNotEmpty(), "some rays end past the edge")
         assertTrue(past.all { mesh.share[0][it] > 0.05f }, "their darkness on the desk's plane is kept")
     }
+
+    @Test
+    fun aSecondLightFillsTheShadowOfTheFirst() {
+        // A card on the desk lit by a lamp; a second lamp beside the first lights where the first one's shadow falls, so that shadow is lighter.
+        val light = RoomLight(0f, 10f, 107f)
+        cam.project(0f, 30f, 67f, p); val foot = p[1]; val u = cam.unitsPerCm(30f, 67f)
+        val card = RoomCaster(30f, 67f, -5f * u, foot - 15f * u, 5f * u, foot)
+        val alone = ShadowMesh(2, 4, 3).also { it.build(room, light, card, 1f, 150f, 0.1f) }
+        val filled = ShadowMesh(2, 4, 3).also { it.build(room, light, card, 1f, 150f, 0.1f, listOf(LitPoint(30f, 20f, 100f, 1f, 150f))) }
+        val k = (0 until alone.corners).first { alone.owner[it] == 0 }
+        assertTrue(filled.share[0][k] < alone.share[0][k] - 0.1f, "${filled.share[0][k]} vs ${alone.share[0][k]}")
+    }
 }
