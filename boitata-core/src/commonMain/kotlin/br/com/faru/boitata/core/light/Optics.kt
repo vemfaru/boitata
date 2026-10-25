@@ -81,6 +81,9 @@ public class AlphaMask(public val width: Int, public val height: Int, private va
         val y = ((1f - up) * height).toInt().coerceIn(0, height - 1)
         return (data[y * width + x].toInt() and 0xFF) / 255f
     }
+
+    /** How solid the cell in column [x], row [y] (from the top) is, 0 to 1. */
+    public fun alpha(x: Int, y: Int): Float = (data[y * width + x].toInt() and 0xFF) / 255f
 }
 
 /**
