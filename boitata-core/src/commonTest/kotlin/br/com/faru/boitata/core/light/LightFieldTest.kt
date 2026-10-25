@@ -73,4 +73,14 @@ class LightFieldTest {
         assertTrue(nearGraze > onLeft, "on the left wall, the point level with the lamp gets more than one above it")
         assertEquals(0f, LightField.arriving(r, 3, FieldLight(RoomLight(-120f, 30f, 100f), 0xFFFFFF, 1f, 400f), -100f, 30f, 100f), "a lamp behind a side wall does not light its face")
     }
+
+    @Test
+    fun aLightInABoxDoesNotLightTheWallBehindIt() {
+        // A candle inside a crate against the wall: the crate's front is 30 cm out from the wall; the wall round the crate is behind the candle, in the crate's shade.
+        val inBox = RoomLight(0f, 45f, 120f, 0.5f, Opening(30f, -20f, 115f, 20f, 140f))
+        val l = FieldLight(inBox, 0xFFFFFF, 1f, 200f)
+        assertEquals(0f, LightField.visibility(room, 1, inBox, 40f, 60f, 150f), "the wall beside the crate")
+        assertTrue(LightField.visibility(room, 2, inBox, 0f, -10f, 0f) >= 0f)
+        assertTrue(LightField.arriving(room, 0, l, 0f, 10f, 67f) >= 0f)
+    }
 }

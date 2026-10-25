@@ -19,6 +19,13 @@ public class SurfaceLight(public val receiver: Int, public val cols: Int, public
      * surface's plane through the camera. A picture drawn with its own perspective (a room's backdrop) puts its surfaces where it draws them; the grid follows the picture.
      */
     public var onPicture: Boolean = false
+
+    /**
+     * How a picture point lands on the surface's plane, when the picture's own drawing of the surface does not follow the camera (a room's side walls drawn with a wider
+     * perspective): writes the plane point ((x, d) on a level surface, (x, z) on a back wall, (d, z) on a side wall) into the array and says whether it lands. Null: through
+     * the camera.
+     */
+    public var toPlane: ((x: Float, y: Float, out: FloatArray) -> Boolean)? = null
     public val corners: Int = (cols + 1) * (rows + 1)
     public val amount: FloatArray = FloatArray(corners)
     public val red: FloatArray = FloatArray(corners)
@@ -32,7 +39,8 @@ public class SurfaceLight(public val receiver: Int, public val cols: Int, public
         val u = u0 + (u1 - u0) * c / cols; val v = v0 + (v1 - v0) * r / rows
         if (!onPicture) { rec.toRoom(u, v, out); return true }
         val cam = room.camera
-        val ok = when (rec.axis) { 2 -> cam.onLevel(u, v, rec.at, tmp); 1 -> cam.onUpright(u, v, rec.at, tmp); else -> cam.onSide(u, v, rec.at, tmp) }
+        val custom = toPlane
+        val ok = if (custom != null) custom(u, v, tmp) else when (rec.axis) { 2 -> cam.onLevel(u, v, rec.at, tmp); 1 -> cam.onUpright(u, v, rec.at, tmp); else -> cam.onSide(u, v, rec.at, tmp) }
         if (!ok) return false
         // Kept on the surface as far as it really goes: a picture drawn with its own perspective can put a point of a side wall behind the back wall, where the back wall would
         // hide every light from it.
@@ -128,6 +136,23 @@ public object LightField {
         return fl.strength * cos * fall * seen
     }
 
+    /**
+     * The light arriving at a point of a thing standing in the room ([px], [pd], [pz]), from [lights]: as on a surface, but a thing is rounded, so it takes a light from any side
+     * (no cosine), and nothing of the room's surfaces is its own. How bright a prop shows.
+     */
+    public fun at(room: ShadowRoom, lights: List<FieldLight>, px: Float, pd: Float, pz: Float): Float {
+        var sum = 0f
+        for (fl in lights) {
+            val l = fl.light
+            val dx = l.x - px; val dd = l.d - pd; val dz = l.z - pz
+            val dist = sqrt(dx * dx + dd * dd + dz * dz).coerceAtLeast(0.1f)
+            val seen = visibility(room, -1, l, px, pd, pz)
+            if (seen <= 0f) continue
+            sum += fl.strength * seen / (1f + (dist / fl.reach) * (dist / fl.reach))
+        }
+        return sum
+    }
+
     /** The share of the light [l] the point ([px], [pd], [pz]) of receiver [self] sees: of a few points across it, those whose ray is not stopped. */
     public fun visibility(room: ShadowRoom, self: Int, l: RoomLight, px: Float, pd: Float, pz: Float): Float {
         var seen = 0
@@ -142,14 +167,14 @@ public object LightField {
     /** Whether the ray from the light point to the surface point passes every surface of the room (and the light's opening, if it has one). */
     private fun clear(room: ShadowRoom, self: Int, opening: Opening?, lx: Float, ld: Float, lz: Float, px: Float, pd: Float, pz: Float): Boolean {
         if (opening != null) {
-            // The ray must leave through the opening: where it crosses the opening's plane, inside its rectangle.
+            // The ray must leave through the opening: the point is beyond the opening's plane (a point on the light's own side of it is inside what holds the light, or behind
+            // it, and in its shade), and where the ray crosses that plane is inside the opening's rectangle.
             val den = pd - ld
             if (den > -1e-4f && den < 1e-4f) return false
             val t = (opening.d - ld) / den
-            if (t > 0f && t < 1f) {
-                val x = lx + t * (px - lx); val z = lz + t * (pz - lz)
-                if (x < opening.left || x > opening.right || z < opening.bottom || z > opening.top) return false
-            }
+            if (t <= 0f || t >= 1f) return false
+            val x = lx + t * (px - lx); val z = lz + t * (pz - lz)
+            if (x < opening.left || x > opening.right || z < opening.bottom || z > opening.top) return false
         }
         for (j in room.receivers.indices) {
             if (j == self) continue
