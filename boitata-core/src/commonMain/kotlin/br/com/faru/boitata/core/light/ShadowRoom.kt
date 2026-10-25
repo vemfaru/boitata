@@ -156,7 +156,8 @@ public class ShadowRoom(public val camera: RoomCamera, public val receivers: Lis
 /**
  * A thing's shadow in a [ShadowRoom], as a mesh of its picture laid on each surface: a grid of [cols] × [rows] cells over the picture, each corner carried along its ray onto every
  * receiver's plane. For receiver `i`, [positions]`[i]` holds the corners on the picture (x, y pairs, the picture's grid row by row) and [valid]`[i]` whether each reached the plane;
- * [owner] says which receiver each corner's ray really ends on (or -1), and [share] how dark the shadow is there: the light's share of all the light at that spot.
+ * [owner] says which receiver each corner's ray really ends on (or -1), and [share]`[i]` how dark the shadow is where it lands on receiver `i`: the light's share of all the
+ * light at that spot (for every corner that reaches the plane, owner or not, so a cell cut by a surface's edge is as dark on both sides).
  * Built in place, so a room draws its shadows without allocating.
  */
 public class ShadowMesh(public val cols: Int, public val rows: Int, receivers: Int) {
@@ -164,7 +165,7 @@ public class ShadowMesh(public val cols: Int, public val rows: Int, receivers: I
     public val positions: Array<FloatArray> = Array(receivers) { FloatArray(corners * 2) }
     public val valid: Array<BooleanArray> = Array(receivers) { BooleanArray(corners) }
     public val owner: IntArray = IntArray(corners)
-    public val share: FloatArray = FloatArray(corners)
+    public val share: Array<FloatArray> = Array(receivers) { FloatArray(corners) }
 
     /** The picture coordinates of each corner (x, y pairs), the same for every receiver. */
     public val texture: FloatArray = FloatArray(corners * 2)
@@ -193,16 +194,15 @@ public class ShadowMesh(public val cols: Int, public val rows: Int, receivers: I
                 val ok = room.onPlane(i, light.x, light.d, light.z, px, pd, pz, tmp)
                 valid[i][k] = ok
                 if (ok) { positions[i][2 * k] = tmp[0]; positions[i][2 * k + 1] = tmp[1] }
+                share[i][k] = if (!ok) 0f else {
+                    val t = room.along(i, light.x, light.d, light.z, px, pd, pz).coerceAtMost(ShadowRoom.MAX_REACH)
+                    val dx = t * (px - light.x); val dd = t * (pd - light.d); val dz = t * (pz - light.z)
+                    val dist = sqrt(dx * dx + dd * dd + dz * dz)
+                    val lit = strength / (1f + (dist / reach) * (dist / reach))
+                    lit / (lit + ambient)
+                }
             }
-            val hit = room.firstHit(light.x, light.d, light.z, px, pd, pz)
-            owner[k] = hit
-            share[k] = if (hit < 0) 0f else {
-                val t = room.along(hit, light.x, light.d, light.z, px, pd, pz)
-                val dx = t * (px - light.x); val dd = t * (pd - light.d); val dz = t * (pz - light.z)
-                val dist = sqrt(dx * dx + dd * dd + dz * dz)
-                val lit = strength / (1f + (dist / reach) * (dist / reach))
-                lit / (lit + ambient)
-            }
+            owner[k] = room.firstHit(light.x, light.d, light.z, px, pd, pz)
         }
     }
 

@@ -122,7 +122,8 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
         val positions = List(mesh.corners) { k -> Offset((pos[2 * k] - ox) * unit, (pos[2 * k + 1] - oy) * unit) }
         val sx = imageW / casterW; val sy = imageH / casterH
         val tex = List(mesh.corners) { k -> Offset(mesh.texture[2 * k] * sx, mesh.texture[2 * k + 1] * sy) }
-        val colors = List(mesh.corners) { k -> Color.Black.copy(alpha = mesh.share[k]) }
+        val share = mesh.share[i]
+        val colors = List(mesh.corners) { k -> Color.Black.copy(alpha = share[k]) }
         return Vertices(VertexMode.Triangles, positions, tex, colors, indices)
     }
 

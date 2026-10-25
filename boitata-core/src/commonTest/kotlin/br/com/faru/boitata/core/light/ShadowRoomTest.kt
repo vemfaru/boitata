@@ -88,7 +88,7 @@ class ShadowRoomTest {
         mesh.build(room, light, caster)
         assertTrue(mesh.owner.count { it == 0 } > 0, "some on the desk")
         assertTrue(mesh.owner.count { it == 1 } > 0, "some on the wall")
-        assertTrue(mesh.share.all { it in 0f..1f })
+        assertTrue(mesh.share.all { s -> s.all { it in 0f..1f } })
         // The top row is on the wall; the bottom row on the desk.
         assertEquals(1, mesh.owner[2]); assertEquals(0, mesh.owner[mesh.corners - 3])
     }
@@ -139,5 +139,18 @@ class ShadowRoomTest {
         // Every corner lands on the wall, within a few units of where the picture is (1.5 cm from the wall).
         assertTrue(mesh.owner.all { it == 1 })
         assertTrue(abs(mesh.positions[1][0] - (cx - 50f)) < 15f, "${mesh.positions[1][0]}")
+    }
+
+    @Test
+    fun aShadowRunningOffTheDesksEdgeIsAsDarkUpToTheEdge() {
+        // A light behind a tall card near the front: its shadow runs over the front edge. A corner whose ray ends past the edge still has the desk's darkness, so the cell across
+        // the edge does not fade to nothing on the desk.
+        val light = RoomLight(0f, 33f, 83f)
+        cam.project(0f, 8.6f, 67f, p); val foot = p[1]; val u = cam.unitsPerCm(8.6f, 67f)
+        val card = RoomCaster(8.6f, 67f, -10f * u, foot - 30f * u, 10f * u, foot)
+        val mesh = ShadowMesh(2, 12, 3).also { it.build(room, light, card) }
+        val past = (0 until mesh.corners).filter { mesh.owner[it] != 0 && mesh.valid[0][it] }
+        assertTrue(past.isNotEmpty(), "some rays end past the edge")
+        assertTrue(past.all { mesh.share[0][it] > 0.05f }, "their darkness on the desk's plane is kept")
     }
 }
