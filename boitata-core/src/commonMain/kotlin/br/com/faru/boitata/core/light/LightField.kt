@@ -153,6 +153,60 @@ public object LightField {
         return sum
     }
 
+    /**
+     * One bounce of the light between the room's surfaces, added to [grids] in place (each already holding the light that arrives straight from the lamps): every surface, lit,
+     * gives back its light times its material's reflectance, and that lights the other surfaces as a soft light from its middle as wide as it is, by the angle and the
+     * distance. A corner evens out (each wall lights the other), the walls round a lit desk glow low and warm, and what no lamp reaches gets a little of the room's own light.
+     * [strength] scales it (1: what the reflectances say). No visibility (a bounce comes from a whole surface, it is soft); colours are mixed in by how much each brings.
+     */
+    public fun bounce(room: ShadowRoom, grids: List<SurfaceLight>, strength: Float = 1f) {
+        class Panel(val x: Float, val d: Float, val z: Float, val power: Float, val reach: Float, val r: Float, val g: Float, val b: Float, val receiver: Int)
+        val p = FloatArray(3)
+        val panels = grids.mapNotNull { grid ->
+            var sx = 0f; var sd = 0f; var sz = 0f; var sum = 0f; var sr = 0f; var sg = 0f; var sb = 0f; var n = 0
+            var minA = Float.MAX_VALUE; var maxA = -Float.MAX_VALUE; var minB = Float.MAX_VALUE; var maxB = -Float.MAX_VALUE
+            val rec = room.receivers[grid.receiver]
+            for (r in 0..grid.rows) for (c in 0..grid.cols) {
+                if (!grid.point(room, c, r, p)) continue
+                val i = r * (grid.cols + 1) + c
+                val e = grid.amount[i]
+                sx += p[0]; sd += p[1]; sz += p[2]; sum += e; sr += e * grid.red[i]; sg += e * grid.green[i]; sb += e * grid.blue[i]; n++
+                val (a, b) = when (rec.axis) { 2 -> p[0] to p[1]; 1 -> p[0] to p[2]; else -> p[1] to p[2] }
+                minA = minOf(minA, a); maxA = maxOf(maxA, a); minB = minOf(minB, b); maxB = maxOf(maxB, b)
+            }
+            if (n == 0 || sum <= 1e-5f) return@mapNotNull null
+            val ref = rec.material.reflectance
+            val mr = ((rec.material.color shr 16) and 0xFF) / 255f; val mg = ((rec.material.color shr 8) and 0xFF) / 255f; val mb = (rec.material.color and 0xFF) / 255f
+            val size = kotlin.math.sqrt(((maxA - minA) * (maxB - minB)).coerceAtLeast(1f))
+            Panel(sx / n, sd / n, sz / n, sum / n * ref * strength, size, sr / sum * mr, sg / sum * mg, sb / sum * mb, grid.receiver)
+        }
+        if (panels.isEmpty()) return
+        for (grid in grids) {
+            val rec = room.receivers[grid.receiver]
+            for (r in 0..grid.rows) for (c in 0..grid.cols) {
+                if (!grid.point(room, c, r, p)) continue
+                val i = r * (grid.cols + 1) + c
+                var add = 0f; var ar = 0f; var ag = 0f; var ab = 0f
+                for (pn in panels) {
+                    if (pn.receiver == grid.receiver) continue
+                    val dx = pn.x - p[0]; val dd = pn.d - p[1]; val dz = pn.z - p[2]
+                    val dist = sqrt(dx * dx + dd * dd + dz * dz).coerceAtLeast(1f)
+                    val toward = when (rec.axis) { 2 -> dz; 1 -> dd; else -> dx }
+                    val cos = (rec.facing * toward / dist).coerceAtLeast(0f)
+                    val e = pn.power * cos / (1f + (dist / pn.reach) * (dist / pn.reach))
+                    add += e; ar += e * pn.r; ag += e * pn.g; ab += e * pn.b
+                }
+                if (add <= 0f) continue
+                val old = grid.amount[i]
+                val total = old + add
+                grid.red[i] = (grid.red[i] * old + ar) / total
+                grid.green[i] = (grid.green[i] * old + ag) / total
+                grid.blue[i] = (grid.blue[i] * old + ab) / total
+                grid.amount[i] = total
+            }
+        }
+    }
+
     /** The share of the light [l] the point ([px], [pd], [pz]) of receiver [self] sees: of a few points across it, those whose ray is not stopped. */
     public fun visibility(room: ShadowRoom, self: Int, l: RoomLight, px: Float, pd: Float, pz: Float): Float {
         var seen = 0

@@ -83,4 +83,15 @@ class LightFieldTest {
         assertTrue(LightField.visibility(room, 2, inBox, 0f, -10f, 0f) >= 0f)
         assertTrue(LightField.arriving(room, 0, l, 0f, 10f, 67f) >= 0f)
     }
+
+    @Test
+    fun aLitSurfaceLightsTheOthersThroughOneBounce() {
+        // A lamp low over the desk: the wall gets some of it straight and more once the lit desk gives some back.
+        val l = FieldLight(RoomLight(0f, 30f, 75f), 0xFFFFFF, 1f, 60f)
+        val desk2 = SurfaceLight(0, 6, 6); val wall2 = SurfaceLight(1, 6, 6)
+        LightField.compute(room, listOf(l), desk2); LightField.compute(room, listOf(l), wall2, view = floatArrayOf(-40f, 0f, 40f, 120f))
+        val before = wall2.amount[3]
+        LightField.bounce(room, listOf(desk2, wall2))
+        assertTrue(wall2.amount[3] > before, "${wall2.amount[3]} > $before")
+    }
 }
