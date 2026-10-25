@@ -27,8 +27,8 @@ import br.com.faru.boitata.scene.worldBounds
 /** How much shorter a distance along the desk looks than the same distance across it, from the 35° viewpoint. */
 private const val DEPTH_FORESHORTEN = 0.6f
 
-/** One picture of a shadow-casting thing and where it is drawn, in world units. */
-class ShadowLayer(val image: ImageBitmap, val rect: Rect)
+/** One picture of a shadow-casting thing and where it is drawn, in world units; [opacity] is how much of a light its material stops (glass little, paper most, tin all). */
+class ShadowLayer(val image: ImageBitmap, val rect: Rect, val opacity: Float = 1f)
 
 /**
  * The shadow on the desk of anything made of pictures (a prop, the typewriter): each picture's silhouette laid flat on the desk and

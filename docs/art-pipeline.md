@@ -45,3 +45,17 @@ darkening right under the base is the one exception, and it belongs in the outli
 
 For a room drawn as a backdrop, write where its surfaces are, so its shadows land on them (`ShadowRoom`): the camera (eye height, distance, pitch), the height of each top
 (a desk) and the box of it on the picture, and the line where the wall meets the floor. Without them a shadow that falls past a desk's edge cannot be put on the right floor.
+
+## 6. Things, their layers and their materials
+
+A game hands the engine each thing as a `Thing` (`boitata-core`, `core/thing`): its real size, its kind (standing, lying flat, hung) and its layers back to front. Each
+`ThingLayer` has its picture, its box in the thing, how far behind the thing's middle it stands (a pot's back, its leaves), its shadow outline, its normal map (when it has one)
+and its `Material`.
+
+A `Material` is what light needs to know of a surface: its reflectance and colour (how bright it shows, how much it gives back to what is near it), its gloss and sharpness
+(its highlight), its transmission (glass, paper: a lighter shadow, light coming through) and its emission (a flame, a lit dial: the layer is the light, with how much it
+sways). `Materials` has the common ones (plaster, woods, enamel, glass, iron, brass, tin, bakelite, paper, cloth, wax, terracotta, ceramic, soil, leaf, flames, a bulb); copy
+one to tune it. The surfaces of a room (`ShadowReceiver`) carry a material too.
+
+What uses them now: a layer's shadow stops as much of a light as its material does. What comes next: the amount of light on every surface, a thing's brightness and highlight
+from its material, and the light a lit surface gives back to what is near it.

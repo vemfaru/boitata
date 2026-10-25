@@ -5,9 +5,18 @@ import kotlin.math.sqrt
 /**
  * A flat surface of a room a shadow can land on: a level one (a desk top, the floor, a shelf) [at] cm above the floor, or an upright one (a wall, a crate's face) [at] cm behind
  * the reference line. Its [outline] is a polygon in its own plane, as pairs: (x, d) on a level surface, (x, z) on an upright one. A ray of light stops at the first surface whose
- * outline it crosses, so a desk top catches what falls on it and lets past what falls beyond its edges, on to the floor or the wall.
+ * outline it crosses, so a desk top catches what falls on it and lets past what falls beyond its edges, on to the floor or the wall. Its [material] says how it takes light.
  */
-public class ShadowReceiver(public val level: Boolean, public val at: Float, public val outline: FloatArray) {
+public class ShadowReceiver(
+    public val level: Boolean,
+    public val at: Float,
+    public val outline: FloatArray,
+    /** What the surface is made of: how bright it shows under a light and how much it gives back to what is near it. */
+    public val material: br.com.faru.boitata.core.thing.Material = br.com.faru.boitata.core.thing.Materials.Plaster,
+) {
+    /** The same surface made of [m]. */
+    public fun made(m: br.com.faru.boitata.core.thing.Material): ShadowReceiver = ShadowReceiver(level, at, outline, m)
+
     init { require(outline.size >= 6 && outline.size % 2 == 0) { "an outline needs three corners or more" } }
 
     /** Whether the plane point (u, v) is inside the outline (even-odd). */
