@@ -13,6 +13,21 @@ public object Falloff {
     /** The most a point near a source gets, in units of the source's strength. */
     public const val NEAR: Float = 4f
 
+    /** A source whose reference distance is at least this (cm) is far away (the sun, the moon, the sky through a window): across a room it does not fall off at all. */
+    public const val DISTANT: Float = 10_000f
+
     /** The share of a source's strength that a point [distance] cm away gets, for a source of reference distance [reach]. */
-    public fun of(distance: Float, reach: Float): Float = minOf(NEAR, reach * reach / (distance * distance + GLOW * GLOW))
+    public fun of(distance: Float, reach: Float): Float =
+        if (reach >= DISTANT) 1f else minOf(NEAR, reach * reach / (distance * distance + GLOW * GLOW))
+}
+
+/**
+ * How bright light looks: the eye does not see light in proportion to how much there is (a little lifts the dark a lot, more adds less and less), `1 − e^(−GAIN · E)`. The room's
+ * light field is drawn through it, and a shadow is as strong as its light looks: what it takes away is its light's share of all the light there ([ShadowMesh.share]) times how
+ * bright all that light looks. Faint moonlight throws a faint shadow, a candle close by or the sun a strong one.
+ */
+public object Exposure {
+    public const val GAIN: Float = 1.6f
+
+    public fun response(light: Float): Float = 1f - kotlin.math.exp(-GAIN * light.coerceAtLeast(0f))
 }

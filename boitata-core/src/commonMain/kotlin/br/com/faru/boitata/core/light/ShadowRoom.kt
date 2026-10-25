@@ -332,7 +332,8 @@ public class ShadowMesh(public val cols: Int, public val rows: Int, receivers: I
                     val lit = strength * Falloff.of(dist, reach)
                     var rest = ambient
                     if (others.isNotEmpty()) { val hx = light.x + dx; val hd = light.d + dd; val hz = light.z + dz; for (o in others) rest += o.at(hx, hd, hz) }
-                    lit / (lit + rest)
+                    // Its share of all the light there (the others fill it), times how bright all that light looks (Exposure): light adds up, the eye does not.
+                    lit / (lit + rest) * Exposure.response(lit + rest)
                 }
             }
             owner[k] = room.firstHit(light.x, light.d, light.z, px, pd, pz)
