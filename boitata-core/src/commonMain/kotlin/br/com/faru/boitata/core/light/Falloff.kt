@@ -31,3 +31,26 @@ public object Exposure {
 
     public fun response(light: Float): Float = 1f - kotlin.math.exp(-GAIN * light.coerceAtLeast(0f))
 }
+
+/**
+ * The darkening where a thing stands on a surface (ambient occlusion): right at its foot the thing hides half the sky of soft, all-round light, farther out less and less. For a
+ * point [s] cm out from the edge of a round base of [radius] R, [height] h tall, the share of that light it hides is `(1 − s / √(s² + h²)) · asin(R / (R + s)) / π`: how high
+ * it stands over the point times how much of the horizon it spans (a half at the edge, as a wall; a long straight edge, R infinite, keeps the half all along). It takes away only the soft light, never what a lamp throws straight at the point (that is the cast shadow's work), so how dark it looks is
+ * [amount] times the soft light's share of all the light there, times how bright all of it looks ([Exposure]). In a dark room lit by the moon it all but vanishes.
+ */
+public object ContactShadow {
+    /** The share of the soft light hidden [s] cm out from the edge of a base [height] cm tall and [radius] cm round (infinite: a straight edge). */
+    public fun occlusion(s: Float, height: Float, radius: Float = Float.POSITIVE_INFINITY): Float {
+        val h = height.coerceAtLeast(0.01f)
+        val o = s.coerceAtLeast(0f)
+        val span = if (radius.isInfinite()) 0.5f else (kotlin.math.asin((radius / (radius + o)).coerceIn(0f, 1f)) / kotlin.math.PI).toFloat()
+        return (1f - o / kotlin.math.sqrt(o * o + h * h)) * span
+    }
+
+    /** How dark the occlusion [occlusion] looks under [ambient] soft light and [direct] light thrown at the point by lamps, sun or moon. */
+    public fun darkness(occlusion: Float, ambient: Float, direct: Float): Float {
+        val total = ambient + direct
+        if (total <= 0f) return 0f
+        return occlusion * ambient / total * Exposure.response(total)
+    }
+}

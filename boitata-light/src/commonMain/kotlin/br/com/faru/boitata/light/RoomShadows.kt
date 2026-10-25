@@ -86,8 +86,9 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
 
     private fun buildMeshes(light: RoomLight) {
         val c = caster ?: return
-        // Never smaller than a flame and its halo: a shadow in a room is never razor-edged (LightField.MIN_GLOW_CM).
-        val r = maxOf(light.radius, br.com.faru.boitata.core.light.LightField.MIN_GLOW_CM)
+        // As wide as what glows, no wider: the penumbra is W = D_shadow · size / D_light, so the shadow is sharp where the thing meets its surface and keeps its outline,
+        // softening only farther out (a halo's glow evens the light field's edges, not a thing's own shadow).
+        val r = light.radius
         for (k in 0 until SAMPLES) {
             val (dx, dz) = OFFSETS[k]
             sample.setOffset(light, dx * r, 0f, dz * r)
