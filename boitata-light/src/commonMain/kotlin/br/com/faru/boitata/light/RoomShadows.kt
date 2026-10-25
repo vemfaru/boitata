@@ -9,7 +9,6 @@ import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
-import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Vertices
 import androidx.compose.ui.graphics.VertexMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -22,8 +21,7 @@ import br.com.faru.boitata.core.light.ShadowRoom
 
 /**
  * One thing's shadow in a [ShadowRoom], ready to draw on any of the room's surfaces: its picture laid on each surface along the light's rays ([ShadowMesh]), from a few points across
- * what glows, so the edge is sharp where the thing touches its surface and widens with distance as `W = D_shadow · size / D_light`. Each surface's part is cut to the surface's outline
- * and to where another surface takes the light away (the desk top's own shade on the floor).
+ * what glows, so the edge is sharp where the thing touches its surface and widens with distance as `W = D_shadow · size / D_light`. Each surface's part is cut to the surface's outline.
  *
  * [build] works the geometry out (when the light or the thing moves); [draw] costs one mesh per point of the light, in picture units drawn at [unit] pixels each from [originX], [originY].
  */
@@ -54,11 +52,9 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
         imageW = image.width.toFloat(); imageH = image.height.toFloat()
         casterW = (caster.right - caster.left).coerceAtLeast(1e-3f); casterH = (caster.bottom - caster.top).coerceAtLeast(1e-3f)
         paint.shader = ImageShader(image)
-        for (i in room.receivers.indices) {
-            val outline = polygon(room.outlineOnPicture(i), 1f, 0f, 0f)
-            for (j in room.receivers.indices) if (j != i) room.shadeOf(j, i, light)?.let { shade -> outline.op(outline, polygon(shade, 1f, 0f, 0f), PathOperation.Difference) }
-            clips[i] = outline
-        }
+        // Each surface's part is cut to the surface's outline only. Cutting away where another surface shades it (a shelf's shade on the desk) would leave a hole with straight
+        // edges in the thing's shadow unless that surface's own shade were drawn as well; the rays already end on the first surface they meet.
+        for (i in room.receivers.indices) clips[i] = polygon(room.outlineOnPicture(i), 1f, 0f, 0f)
         builtUnit = Float.NaN
     }
 
