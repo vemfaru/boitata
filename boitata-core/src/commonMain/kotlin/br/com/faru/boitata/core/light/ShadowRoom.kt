@@ -1,0 +1,353 @@
+package br.com.faru.boitata.core.light
+
+import kotlin.math.sqrt
+
+/**
+ * A flat surface of a room a shadow can land on: a level one (a desk top, the floor, a shelf) [at] cm above the floor, or an upright one (a wall, a crate's face) [at] cm behind
+ * the reference line. Its [outline] is a polygon in its own plane, as pairs: (x, d) on a level surface, (x, z) on an upright one. A ray of light stops at the first surface whose
+ * outline it crosses, so a desk top catches what falls on it and lets past what falls beyond its edges, on to the floor or the wall. Its [material] says how it takes light.
+ */
+public class ShadowReceiver(
+    public val level: Boolean,
+    public val at: Float,
+    public val outline: FloatArray,
+    /** What the surface is made of: how bright it shows under a light and how much it gives back to what is near it. */
+    public val material: br.com.faru.boitata.core.thing.Material = br.com.faru.boitata.core.thing.Materials.Plaster,
+    /** An upright surface that runs from the front of the room to the back (a side wall), [at] cm across: its outline is (d, z) pairs. */
+    public val side: Boolean = false,
+) {
+    /** The same surface made of [m]. */
+    public fun made(m: br.com.faru.boitata.core.thing.Material): ShadowReceiver = ShadowReceiver(level, at, outline, m, side)
+
+    /** Which room coordinate is the same all over its plane: 0 across (a side wall), 1 depth (a back wall), 2 height (a top). */
+    public val axis: Int get() = if (level) 2 else if (side) 0 else 1
+
+    /** The room point's coordinate along [axis]. */
+    public fun along(x: Float, d: Float, z: Float): Float = when (axis) { 0 -> x; 1 -> d; else -> z }
+
+    /** Whether the room point (on its plane) is inside its outline. */
+    public fun holds(x: Float, d: Float, z: Float): Boolean = when (axis) { 2 -> contains(x, d); 1 -> contains(x, z); else -> contains(d, z) }
+
+    /** The room point (x, d, z) of the plane point ([u], [v]) of its outline, into [out]. */
+    public fun toRoom(u: Float, v: Float, out: FloatArray) {
+        when (axis) { 2 -> { out[0] = u; out[1] = v; out[2] = at }; 1 -> { out[0] = u; out[1] = at; out[2] = v }; else -> { out[0] = at; out[1] = u; out[2] = v } }
+    }
+
+    /** Which way it faces, as the room axis it faces along and its sign: a top faces up, a back wall the viewer, a side wall the middle of the room. */
+    public val facing: Float get() = when (axis) { 2 -> 1f; 1 -> -1f; else -> if (at < 0f) 1f else -1f }
+
+    init { require(outline.size >= 6 && outline.size % 2 == 0) { "an outline needs three corners or more" } }
+
+    /** Whether the plane point (u, v) is inside the outline (even-odd). */
+    public fun contains(u: Float, v: Float): Boolean {
+        var inside = false
+        val n = outline.size / 2
+        var j = n - 1
+        for (i in 0 until n) {
+            val ui = outline[2 * i]; val vi = outline[2 * i + 1]; val uj = outline[2 * j]; val vj = outline[2 * j + 1]
+            if ((vi > v) != (vj > v) && u < (uj - ui) * (v - vi) / (vj - vi) + ui) inside = !inside
+            j = i
+        }
+        return inside
+    }
+
+    public companion object {
+        /** A level surface [z] cm above the floor bounded by [outline] ((x, d) pairs). */
+        public fun level(z: Float, vararg outline: Float): ShadowReceiver = ShadowReceiver(true, z, outline)
+
+        /** An upright surface [d] cm behind the reference line bounded by [outline] ((x, z) pairs). */
+        public fun upright(d: Float, vararg outline: Float): ShadowReceiver = ShadowReceiver(false, d, outline)
+
+        /** A side wall [x] cm across, running from the front to the back, bounded by [outline] ((d, z) pairs). */
+        public fun side(x: Float, vararg outline: Float): ShadowReceiver = ShadowReceiver(false, x, outline, side = true)
+    }
+}
+
+/** Another light in the room, for how dark a shadow is: where it is (cm), how hard it lights what is [reach] cm away. Its light fills the shadow of the light that casts. */
+public class LitPoint(public val x: Float, public val d: Float, public val z: Float, public val strength: Float, public val reach: Float) {
+    /** How much it lights the point ([px], [pd], [pz]): falling off as the inverse square of the distance ([Falloff]). */
+    public fun at(px: Float, pd: Float, pz: Float): Float {
+        val dx = px - x; val dd = pd - d; val dz = pz - z
+        return strength * Falloff.of(kotlin.math.sqrt(dx * dx + dd * dd + dz * dz), reach)
+    }
+}
+
+/**
+ * The opening a light shines through when it stands inside something: a window's recess in the wall, a crate, a box. A rectangle on an upright plane [d] cm behind the
+ * reference line, from [left] to [right] across and [bottom] to [top] up (cm). The light reaches only what it can see through it; everything else is in the shadow of what
+ * holds it.
+ */
+public class Opening(public val d: Float, public val left: Float, public val bottom: Float, public val right: Float, public val top: Float)
+
+/**
+ * A light at one place in the room, in centimetres, and the size of what glows (a bulb, a flame): the bigger, the wider a shadow's soft edge grows with distance. [opening] is
+ * set when it stands inside something and shines out only through that ([Opening]).
+ */
+public class RoomLight(public var x: Float, public var d: Float, public var z: Float, public var radius: Float = 1.5f, public var opening: Opening? = null) {
+    /**
+     * Puts the light where the picture shows it: its foot drawn at ([footX], [footY]) on a level surface [footZ] cm above the floor, and what glows drawn at ([glowX], [glowY]) straight
+     * above the foot. False (and the light unmoved) when the picture points are not on the room's planes.
+     */
+    public fun place(camera: RoomCamera, glowX: Float, glowY: Float, footX: Float, footY: Float, footZ: Float, tmp: FloatArray = FloatArray(2)): Boolean {
+        if (!camera.onLevel(footX, footY, footZ, tmp)) return false
+        val fd = tmp[1]
+        if (!camera.onUpright(glowX, glowY, fd, tmp)) return false
+        x = tmp[0]; d = fd; z = maxOf(tmp[1], footZ + 1f)
+        return true
+    }
+
+    /** Copies another light, moved by ([dx], [dd], [dz]) cm: a point across what glows, for a soft edge. */
+    public fun setOffset(o: RoomLight, dx: Float, dd: Float, dz: Float) { x = o.x + dx; d = o.d + dd; z = o.z + dz; radius = o.radius; opening = o.opening }
+}
+
+/**
+ * A thing in the room as a picture: an upright card [d] cm behind the reference line (the middle of its footprint), resting on a surface [baseZ] cm above the floor. Its picture
+ * is drawn at [left], [top] to [right], [bottom] in world units; every point of it is a point of the card ([RoomCamera.onUpright]), so what the picture shows is what casts.
+ * [maxHeight] caps how far above [baseZ] it reaches: a thing lying flat (a sheet, a notepad) is drawn tall on the picture because it is seen from above, but it is only its
+ * thickness high, so its shadow is a thin rim round its footprint ([CasterKind.Lying]). A thing hung on a wall has no surface under it: [baseZ] is minus infinity.
+ */
+public class RoomCaster(
+    public var d: Float,
+    public var baseZ: Float,
+    public var left: Float,
+    public var top: Float,
+    public var right: Float,
+    public var bottom: Float,
+    public var maxHeight: Float = Float.POSITIVE_INFINITY,
+)
+
+/**
+ * A room's camera and the surfaces in it that catch shadows, with the exact projection of a thing's shadow onto each one: the ray from the light through every point of the thing's
+ * picture runs on until it meets the first surface in its way ([firstHit]). The shadow on one surface is the picture carried along those rays onto its plane, which from one plane to
+ * another through a point is a perspective, so it is right however the light and the thing stand: the shadow lengthens as `L = H / tan θ`, climbs a wall to `H − d tan θ`, slides
+ * sideways with the light's angle and is cut where its surface ends. Its soft edge comes from the size of the light ([RoomLight.radius]): `W = D_shadow · size / D_light`.
+ */
+public class ShadowRoom(public val camera: RoomCamera, public val receivers: List<ShadowReceiver>) {
+    private val tmp = FloatArray(2)
+    private val room3 = FloatArray(3)
+
+    /**
+     * How far along the ray from the light ([lx], [ld], [lz]) through the point ([px], [pd], [pz]) receiver [i]'s plane is, in units of the way to the point: above 1 is beyond the point.
+     * NaN when the ray runs along the plane.
+     */
+    public fun along(i: Int, lx: Float, ld: Float, lz: Float, px: Float, pd: Float, pz: Float): Float {
+        val r = receivers[i]
+        val from = r.along(lx, ld, lz)
+        val to = r.along(px, pd, pz)
+        val den = to - from
+        return if (den > -1e-5f && den < 1e-5f) Float.NaN else (r.at - from) / den
+    }
+
+    /** The index of the first receiver the ray from the light through the point meets beyond the point, inside its outline; -1 when it meets none. */
+    public fun firstHit(lx: Float, ld: Float, lz: Float, px: Float, pd: Float, pz: Float): Int {
+        var best = -1; var bestT = Float.POSITIVE_INFINITY
+        for (i in receivers.indices) {
+            val t = along(i, lx, ld, lz, px, pd, pz)
+            if (t.isNaN() || t <= 1f || t >= bestT) continue
+            val hx = lx + t * (px - lx); val hd = ld + t * (pd - ld); val hz = lz + t * (pz - lz)
+            val r = receivers[i]
+            if (r.holds(hx, hd, hz)) { best = i; bestT = t }
+        }
+        return best
+    }
+
+    /**
+     * Where the ray from the light through the point meets receiver [i]'s **plane**, outline or not, drawn on the picture, into [out]. A ray that would reach it only far away is stopped
+     * [maxReach] times the way to the point, so a shadow from a light almost level with a thing stays finite. False when the plane is not beyond the point.
+     */
+    public fun onPlane(i: Int, lx: Float, ld: Float, lz: Float, px: Float, pd: Float, pz: Float, out: FloatArray, maxReach: Float = MAX_REACH): Boolean {
+        var t = along(i, lx, ld, lz, px, pd, pz)
+        if (t.isNaN() || t <= 1f) return false
+        if (t > maxReach) t = maxReach
+        return camera.project(lx + t * (px - lx), ld + t * (pd - ld), lz + t * (pz - lz), out)
+    }
+
+    /** Receiver [i]'s outline drawn on the picture, as (x, y) pairs (corners behind the eye are left out). */
+    public fun outlineOnPicture(i: Int): FloatArray {
+        val r = receivers[i]
+        val n = r.outline.size / 2
+        val pts = FloatArray(n * 2); var k = 0
+        for (j in 0 until n) {
+            val u = r.outline[2 * j]; val v = r.outline[2 * j + 1]
+            r.toRoom(u, v, room3); val ok = camera.project(room3[0], room3[1], room3[2], tmp)
+            if (ok) { pts[k++] = tmp[0]; pts[k++] = tmp[1] }
+        }
+        return pts.copyOf(k)
+    }
+
+    /**
+     * The shadow receiver [blocker] throws on receiver [onto] from the light, drawn on the picture, as (x, y) pairs: the part of [onto] the light cannot reach because [blocker] is in the way
+     * (the desk top's shadow on the floor and on the wall below it). Null when [blocker] does not stand between the light and [onto].
+     */
+    public fun shadeOf(blocker: Int, onto: Int, light: RoomLight): FloatArray? {
+        val b = receivers[blocker]
+        val n = b.outline.size / 2
+        val pts = FloatArray(n * 2); var any = false
+        for (j in 0 until n) {
+            val u = b.outline[2 * j]; val v = b.outline[2 * j + 1]
+            b.toRoom(u, v, room3); val px = room3[0]; val pd = room3[1]; val pz = room3[2]
+            if (!onPlane(onto, light.x, light.d, light.z, px, pd, pz, tmp, BLOCKER_REACH)) {
+                // The corner is not between the light and the plane: its ray runs away from it. Its edge of the shade is as far as it goes.
+                camera.project(px, pd, pz, tmp)
+            } else any = true
+            pts[2 * j] = tmp[0]; pts[2 * j + 1] = tmp[1]
+        }
+        return if (any) pts else null
+    }
+
+    /**
+     * Where [light] reaches on receiver [i] through its [RoomLight.opening], drawn on the picture: the opening carried along the rays from the light onto that receiver's
+     * plane, as (x, y) pairs. Null when the light has no opening (it reaches everywhere), and an empty array when the opening does not face that receiver at all.
+     */
+    public fun litOnPicture(i: Int, light: RoomLight): FloatArray? {
+        val o = light.opening ?: return null
+        val r = receivers[i]
+        // The opening's corners in the room, then only the part of it whose rays head toward this receiver's plane (a ray through the top of a window above the flame
+        // rises and never reaches the desk): cut at the flame's height for a level receiver, at the flame's depth for an upright one.
+        var poly = listOf(floatArrayOf(o.left, o.d, o.bottom), floatArrayOf(o.right, o.d, o.bottom), floatArrayOf(o.right, o.d, o.top), floatArrayOf(o.left, o.d, o.top))
+        val axis = r.axis
+        val lightAt = r.along(light.x, light.d, light.z)
+        val sign = if (r.at < lightAt) -1f else 1f
+        poly = clipBelow(poly, axis, lightAt, sign)
+        if (poly.size < 3) return FloatArray(0)
+        // Where each ray meets the plane, in the room; then only the part of that patch in front of the eye (a ray near the flame's height lands far out, behind the
+        // viewer), and that drawn on the picture.
+        var hits = poly.map { c ->
+            val t = along(i, light.x, light.d, light.z, c[0], c[1], c[2])
+            if (t.isNaN() || t <= 1f) return FloatArray(0)
+            floatArrayOf(light.x + t * (c[0] - light.x), light.d + t * (c[1] - light.d), light.z + t * (c[2] - light.z))
+        }
+        hits = clipInView(hits)
+        if (hits.size < 3) return FloatArray(0)
+        val pts = FloatArray(hits.size * 2)
+        for ((j, c) in hits.withIndex()) {
+            if (!camera.project(c[0], c[1], c[2], tmp)) return FloatArray(0)
+            pts[2 * j] = tmp[0]; pts[2 * j + 1] = tmp[1]
+        }
+        return pts
+    }
+
+    /** The part of [poly] (room points) at least [IN_VIEW] cm in front of the eye along the camera's axis, where it can be drawn. */
+    private fun clipInView(poly: List<FloatArray>): List<FloatArray> {
+        fun ahead(c: FloatArray) = camera.along(c[1], c[2]) - IN_VIEW
+        val out = ArrayList<FloatArray>()
+        for (k in poly.indices) {
+            val a = poly[k]; val b = poly[(k + 1) % poly.size]
+            val fa = ahead(a); val fb = ahead(b)
+            if (fa >= 0f) out += a
+            if ((fa >= 0f) != (fb >= 0f)) {
+                val t = fa / (fa - fb)
+                out += floatArrayOf(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
+            }
+        }
+        return out
+    }
+
+    /** The part of [poly] on the side [sign] of [at] along [axis] (0 x, 1 d, 2 z), kept a hair short of it (Sutherland–Hodgman against one plane). */
+    private fun clipBelow(poly: List<FloatArray>, axis: Int, at: Float, sign: Float): List<FloatArray> {
+        val edge = at + sign * 0.05f
+        fun inside(c: FloatArray) = (c[axis] - edge) * sign >= 0f
+        val out = ArrayList<FloatArray>()
+        for (k in poly.indices) {
+            val a = poly[k]; val b = poly[(k + 1) % poly.size]
+            val ia = inside(a); val ib = inside(b)
+            if (ia) out += a
+            if (ia != ib) {
+                val t = (edge - a[axis]) / (b[axis] - a[axis])
+                out += floatArrayOf(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
+            }
+        }
+        return out
+    }
+
+    /** The opening itself on the picture (what holds the light seen from the room: the recess, the box's inside), as (x, y) pairs. */
+    public fun openingOnPicture(o: Opening): FloatArray {
+        val corners = floatArrayOf(o.left, o.bottom, o.right, o.bottom, o.right, o.top, o.left, o.top)
+        val pts = FloatArray(8)
+        for (j in 0 until 4) { camera.project(corners[2 * j], o.d, corners[2 * j + 1], tmp); pts[2 * j] = tmp[0]; pts[2 * j + 1] = tmp[1] }
+        return pts
+    }
+
+    public companion object {
+        /** How far the opening's outline is carried onto a surface (a surface right beside the light still gets a lit patch of finite size). */
+        public const val LIT_REACH: Float = 400f
+
+        /** How far in front of the eye a lit patch is kept, in cm. */
+        private const val IN_VIEW = 5f
+
+        /** The farthest a shadow is carried along its ray, as a multiple of the way from the light to the thing. */
+        public const val MAX_REACH: Float = 6f
+
+        /** A surface's own shade reaches farther (it is a big flat thing, its far edge must not fall short of the shadows inside it). */
+        public const val BLOCKER_REACH: Float = 60f
+    }
+}
+
+/**
+ * A thing's shadow in a [ShadowRoom], as a mesh of its picture laid on each surface: a grid of [cols] × [rows] cells over the picture, each corner carried along its ray onto every
+ * receiver's plane. For receiver `i`, [positions]`[i]` holds the corners on the picture (x, y pairs, the picture's grid row by row) and [valid]`[i]` whether each reached the plane;
+ * [owner] says which receiver each corner's ray really ends on (or -1), and [share]`[i]` how dark the shadow is where it lands on receiver `i`: the light's share of all the
+ * light at that spot (for every corner that reaches the plane, owner or not, so a cell cut by a surface's edge is as dark on both sides).
+ * Built in place, so a room draws its shadows without allocating.
+ */
+public class ShadowMesh(public val cols: Int, public val rows: Int, receivers: Int) {
+    public val corners: Int = (cols + 1) * (rows + 1)
+    public val positions: Array<FloatArray> = Array(receivers) { FloatArray(corners * 2) }
+    public val valid: Array<BooleanArray> = Array(receivers) { BooleanArray(corners) }
+    public val owner: IntArray = IntArray(corners)
+    public val share: Array<FloatArray> = Array(receivers) { FloatArray(corners) }
+
+    /** The picture coordinates of each corner (x, y pairs), the same for every receiver. */
+    public val texture: FloatArray = FloatArray(corners * 2)
+
+    private val tmp = FloatArray(2)
+
+    /**
+     * Lays [caster]'s picture on every receiver of [room] from [light]. [strength] is how hard the light lights what is [reach] cm away (it falls off as 1 / (1 + (r / reach)²)),
+     * [ambient] how much light there is everywhere, and [others] the other lights of the room: a shadow is only as dark as its light's share of all the light where it falls, so
+     * two lamps throw two lighter shadows, and the sun through the window fills a candle's.
+     */
+    public fun build(room: ShadowRoom, light: RoomLight, caster: RoomCaster, strength: Float = 1f, reach: Float = 150f, ambient: Float = 0.1f, others: List<LitPoint> = emptyList()) {
+        val cam = room.camera
+        val w = caster.right - caster.left; val h = caster.bottom - caster.top
+        for (r in 0..rows) for (c in 0..cols) {
+            val k = r * (cols + 1) + c
+            val sx = caster.left + w * c / cols; val sy = caster.top + h * r / rows
+            texture[2 * k] = sx - caster.left; texture[2 * k + 1] = sy - caster.top
+            // The point of the thing this corner of the picture shows: on its upright card, and never below the surface it stands on (the base's front half is drawn below the card's line).
+            var px = 0f; var pz = caster.baseZ
+            if (cam.onUpright(sx, sy, caster.d, tmp)) {
+                px = tmp[0]; pz = maxOf(tmp[1], caster.baseZ + 0.01f)
+                if (caster.maxHeight.isFinite()) pz = minOf(pz, caster.baseZ + caster.maxHeight)
+            }
+            val pd = caster.d
+            for (i in room.receivers.indices) {
+                val ok = room.onPlane(i, light.x, light.d, light.z, px, pd, pz, tmp)
+                valid[i][k] = ok
+                if (ok) { positions[i][2 * k] = tmp[0]; positions[i][2 * k + 1] = tmp[1] }
+                share[i][k] = if (!ok) 0f else {
+                    val t = room.along(i, light.x, light.d, light.z, px, pd, pz).coerceAtMost(ShadowRoom.MAX_REACH)
+                    val dx = t * (px - light.x); val dd = t * (pd - light.d); val dz = t * (pz - light.z)
+                    val dist = sqrt(dx * dx + dd * dd + dz * dz)
+                    val lit = strength * Falloff.of(dist, reach)
+                    var rest = ambient
+                    if (others.isNotEmpty()) { val hx = light.x + dx; val hd = light.d + dd; val hz = light.z + dz; for (o in others) rest += o.at(hx, hd, hz) }
+                    // Its share of all the light there (the others fill it), times how bright all that light looks (Exposure): light adds up, the eye does not.
+                    lit / (lit + rest) * Exposure.response(lit + rest)
+                }
+            }
+            owner[k] = room.firstHit(light.x, light.d, light.z, px, pd, pz)
+        }
+    }
+
+    /**
+     * Whether the cell at ([c], [r]) is drawn on receiver [i]: all four corners reached its plane and at least one corner's ray ends on it (the cells along an edge are drawn on both
+     * sides and cut there by each surface's outline).
+     */
+    public fun cellOn(i: Int, c: Int, r: Int): Boolean {
+        val a = r * (cols + 1) + c; val b = a + 1; val d = a + cols + 1; val e = d + 1
+        val v = valid[i]
+        if (!v[a] || !v[b] || !v[d] || !v[e]) return false
+        return owner[a] == i || owner[b] == i || owner[d] == i || owner[e] == i
+    }
+}
