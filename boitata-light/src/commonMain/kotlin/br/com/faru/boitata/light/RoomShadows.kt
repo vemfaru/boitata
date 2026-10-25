@@ -86,7 +86,8 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
 
     private fun buildMeshes(light: RoomLight) {
         val c = caster ?: return
-        val r = light.radius
+        // Never smaller than a flame and its halo: a shadow in a room is never razor-edged (LightField.MIN_GLOW_CM).
+        val r = maxOf(light.radius, br.com.faru.boitata.core.light.LightField.MIN_GLOW_CM)
         for (k in 0 until SAMPLES) {
             val (dx, dz) = OFFSETS[k]
             sample.setOffset(light, dx * r, 0f, dz * r)
@@ -144,8 +145,11 @@ class RoomShadow(private val room: ShadowRoom, private val cols: Int = 10, priva
     }
 
     companion object {
-        /** The points across what glows the shadow is drawn from: the middle and four round it (as shares of its radius, across and up). */
-        private val OFFSETS = arrayOf(0f to 0f, 1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f)
+        /** The points across what glows the shadow is drawn from: the middle and a ring of eight round it (as shares of its radius, across and up), so its edge fades in nine steps. */
+        private val OFFSETS: Array<Pair<Float, Float>> = (listOf(0f to 0f) + (0 until 8).map { k ->
+            val a = k * kotlin.math.PI.toFloat() / 4f
+            kotlin.math.cos(a) to kotlin.math.sin(a)
+        }).toTypedArray()
         /** How many points of the light a shadow is drawn from. */
         val SAMPLES: Int = OFFSETS.size
     }

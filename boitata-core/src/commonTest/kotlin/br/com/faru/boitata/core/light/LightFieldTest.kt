@@ -12,13 +12,15 @@ class LightFieldTest {
     private val room = ShadowRoom(cam, listOf(desk, wall, floor))
 
     @Test
-    fun lightFallsOffAndTurnsAwayWithTheSurface() {
-        val l = FieldLight(RoomLight(0f, 30f, 100f, 0.5f), 0xFFFFFF, 1f, 100f)
-        val under = LightField.arriving(room, 0, l, 0f, 30f, 67f)
-        val far = LightField.arriving(room, 0, l, 35f, 5f, 67f)
-        assertTrue(under > far, "$under > $far")
-        // Straight below, cos = 1 and r = 33: 1 / (1 + 0.33²).
-        assertEquals(1f / (1f + 0.33f * 0.33f), under, 0.01f)
+    fun lightFallsOffWithTheSquareOfTheDistance() {
+        // A lamp of reference distance 10 cm, straight above the desk: at 20 cm a quarter of what it gives at 10 cm reaches the top... at 40 cm a sixteenth (the inverse square).
+        val near = LightField.arriving(room, 0, FieldLight(RoomLight(0f, 30f, 87f, 0.5f), 0xFFFFFF, 1f, 10f), 0f, 30f, 67f)
+        val far = LightField.arriving(room, 0, FieldLight(RoomLight(0f, 30f, 107f, 0.5f), 0xFFFFFF, 1f, 10f), 0f, 30f, 67f)
+        assertEquals(4f, near / far, 0.15f)
+        // Off to the side the surface turns away from it: the cosine.
+        val aside = LightField.arriving(room, 0, FieldLight(RoomLight(0f, 30f, 87f, 0.5f), 0xFFFFFF, 1f, 10f), 20f, 30f, 67f)
+        assertTrue(aside < near / 2f)
+        assertEquals(1f / 16f, Falloff.of(40f, 10f) / Falloff.of(10f, 10f), 0.01f)
     }
 
     @Test

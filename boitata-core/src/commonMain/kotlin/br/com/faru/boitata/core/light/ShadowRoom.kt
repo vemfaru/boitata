@@ -65,11 +65,10 @@ public class ShadowReceiver(
 
 /** Another light in the room, for how dark a shadow is: where it is (cm), how hard it lights what is [reach] cm away. Its light fills the shadow of the light that casts. */
 public class LitPoint(public val x: Float, public val d: Float, public val z: Float, public val strength: Float, public val reach: Float) {
-    /** How much it lights the point ([px], [pd], [pz]): falling off as 1 / (1 + (r / reach)²). */
+    /** How much it lights the point ([px], [pd], [pz]): falling off as the inverse square of the distance ([Falloff]). */
     public fun at(px: Float, pd: Float, pz: Float): Float {
         val dx = px - x; val dd = pd - d; val dz = pz - z
-        val r2 = (dx * dx + dd * dd + dz * dz) / (reach * reach)
-        return strength / (1f + r2)
+        return strength * Falloff.of(kotlin.math.sqrt(dx * dx + dd * dd + dz * dz), reach)
     }
 }
 
@@ -330,7 +329,7 @@ public class ShadowMesh(public val cols: Int, public val rows: Int, receivers: I
                     val t = room.along(i, light.x, light.d, light.z, px, pd, pz).coerceAtMost(ShadowRoom.MAX_REACH)
                     val dx = t * (px - light.x); val dd = t * (pd - light.d); val dz = t * (pz - light.z)
                     val dist = sqrt(dx * dx + dd * dd + dz * dz)
-                    val lit = strength / (1f + (dist / reach) * (dist / reach))
+                    val lit = strength * Falloff.of(dist, reach)
                     var rest = ambient
                     if (others.isNotEmpty()) { val hx = light.x + dx; val hd = light.d + dd; val hz = light.z + dz; for (o in others) rest += o.at(hx, hd, hz) }
                     lit / (lit + rest)

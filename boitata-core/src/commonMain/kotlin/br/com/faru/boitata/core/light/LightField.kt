@@ -7,6 +7,7 @@ import kotlin.math.sqrt
  * what is [reach] cm away ([strength], falling off as 1 / (1 + (r / reach)²)).
  */
 public class FieldLight(public val light: RoomLight, public val color: Int, public val strength: Float, public val reach: Float)
+// [reach]: the distance (cm) at which it lights a surface at its full [strength]; it falls off as (reach / r)² beyond ([Falloff]).
 
 /**
  * How much light arrives at each point of one surface of a [ShadowRoom]: a grid of [cols] × [rows] cells over the part of the surface in view, its corners in the surface's own
@@ -66,7 +67,7 @@ public class SurfaceLight(public val receiver: Int, public val cols: Int, public
 }
 
 /**
- * The amount of light on the room's surfaces, as light adds up: at every point, for every light, `strength · cos θ / (1 + (r / reach)²) · V`, where θ is the angle between the
+ * The amount of light on the room's surfaces, as light adds up: at every point, for every light, `strength · cos θ · (reach / r)² · V` (the inverse-square law, [Falloff]), where θ is the angle between the
  * surface's normal and the way to the light and V how much of the light the point sees: the share of a few points across the flame or the bulb whose ray reaches the point past
  * the room's surfaces and, for a light standing inside something, through its opening. So a surface turned away from a light, or hidden from it by the edge of a ledge, gets
  * none of it, and the edge of what it does get is soft, wider the farther it is from what hides it.
@@ -83,8 +84,8 @@ public object LightField {
         }
     }.toTypedArray()
 
-    /** What glows of a light is never smaller than this, in cm, for the field: a flame's glow is wider than its core, and shadows in a room are never razor-edged. */
-    public const val MIN_GLOW_CM: Float = 3f
+    /** What glows of a light is never smaller than this, in cm, for its shadows: a flame and the bright halo round it, so a shadow in a room is never razor-edged. */
+    public const val MIN_GLOW_CM: Float = 6f
 
     /**
      * Fills [out] with the light on receiver [out].receiver of [room] from [lights], over the part of the surface within [view] (its plane box: u0, v0, u1, v1, or null for the
@@ -132,7 +133,7 @@ public object LightField {
         if (cos <= 0f) return 0f
         val seen = visibility(room, i, l, px, pd, pz)
         if (seen <= 0f) return 0f
-        val fall = 1f / (1f + (dist / fl.reach) * (dist / fl.reach))
+        val fall = Falloff.of(dist, fl.reach)
         return fl.strength * cos * fall * seen
     }
 
@@ -148,7 +149,7 @@ public object LightField {
             val dist = sqrt(dx * dx + dd * dd + dz * dz).coerceAtLeast(0.1f)
             val seen = visibility(room, -1, l, px, pd, pz)
             if (seen <= 0f) continue
-            sum += fl.strength * seen / (1f + (dist / fl.reach) * (dist / fl.reach))
+            sum += fl.strength * seen * Falloff.of(dist, fl.reach)
         }
         return sum
     }
@@ -193,7 +194,7 @@ public object LightField {
                     val dist = sqrt(dx * dx + dd * dd + dz * dz).coerceAtLeast(1f)
                     val toward = when (rec.axis) { 2 -> dz; 1 -> dd; else -> dx }
                     val cos = (rec.facing * toward / dist).coerceAtLeast(0f)
-                    val e = pn.power * cos / (1f + (dist / pn.reach) * (dist / pn.reach))
+                    val e = pn.power * cos * Falloff.of(dist, pn.reach)
                     add += e; ar += e * pn.r; ag += e * pn.g; ab += e * pn.b
                 }
                 if (add <= 0f) continue
